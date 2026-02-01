@@ -533,7 +533,7 @@
             const totalRow = document.createElement("tr");
             const totalLabel = document.createElement("td");
             totalLabel.colSpan = taskColumns.length - 5;
-            totalLabel.textContent = "TỔNG THEO GROUP";
+            totalLabel.textContent = "";
             totalRow.appendChild(totalLabel);
 
             [groupTotalEstimate, groupTotalSpent, groupTotalReopen].forEach(val => {
@@ -735,26 +735,36 @@
 
         tables.forEach((table, index) => {
             const headerText = headers[index]?.innerText || `Table ${index + 1}`;
-            csv += `### ${headerText}\n`; // ghi tên bảng trước mỗi bảng
+            csv += `${headerText}\n`; // ghi tên bảng trước mỗi bảng
 
-            // Duyệt từng dòng trong bảng
-            const rows = table.querySelectorAll('tr');
+            // Duyệt từng dòng trong bảng: tiêu đề, dữ liệu và cả dòng tổng cộng
+            const rows = table.querySelectorAll('thead tr, tbody tr, tfoot tr');
             rows.forEach(row => {
-                const cells = Array.from(row.cells).map(cell => {
-                    let text = cell.textContent.trim();
-                    if (text.includes(',') || text.includes('"')) {
+                const rowCells = [];
+                Array.from(row.cells).forEach(cell => {
+                    const link = cell.querySelector('a');
+                    // Nếu có link, ưu tiên lấy title (chứa link đầy đủ) hoặc href
+                    let text = link ? (link.title || link.href || link.innerText) : cell.textContent.trim();
+
+                    if (text.includes(',') || text.includes('"') || text.includes('\n')) {
                         text = `"${text.replace(/"/g, '""')}"`; // escape dấu "
                     }
-                    return text;
+
+                    rowCells.push(text);
+                    // Nếu cell có colSpan, thêm các ô trống để các cột sau không bị lệch
+                    const colSpan = cell.colSpan || 1;
+                    for (let i = 1; i < colSpan; i++) {
+                        rowCells.push('');
+                    }
                 });
-                csv += cells.join(',') + '\n';
+                csv += rowCells.join(',') + '\n';
             });
 
             csv += '\n'; // dòng trắng giữa các bảng
         });
 
-        // Tạo và tải file CSV
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        // Tạo và tải file CSV với BOM để tránh lỗi font UTF-8
+        const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = `${title}.csv`;

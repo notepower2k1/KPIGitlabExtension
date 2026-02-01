@@ -77,16 +77,19 @@
         });
 
 
-        document.getElementById("exportTask-btn").addEventListener("click", async () => {
-            const data = await getStoredIds('WorkItemIds');
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "text/plain" });
-            const url = URL.createObjectURL(blob);
+        document.getElementById("exportTask-btn").addEventListener("click", () => {
+            chrome.storage.local.get(null, (allData) => {
+                // Backup everything
+                const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const date = new Date().toISOString().slice(0, 10);
 
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "task_backup.txt";
-            a.click();
-            URL.revokeObjectURL(url);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `gitlab_productivity_backup_${date}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
         });
 
         document.getElementById("importTask-btn").addEventListener("click", () => {
@@ -99,18 +102,20 @@
 
             const text = await file.text();
             try {
-                const items = JSON.parse(text);
+                const data = JSON.parse(text);
 
-                // Ghi đè dữ liệu cũ bằng dữ liệu mới
-                if (Array.isArray(items)) {
-                    await chrome.storage.local.set({ ['WorkItemIds']: items });
-                    alert("Import thành công!");
+                if (typeof data === 'object' && data !== null) {
+                    if (confirm("Hành động này sẽ ghi đè dữ liệu hiện tại. Bạn có chắc chắn muốn tiếp tục?")) {
+                        await chrome.storage.local.set(data);
+                        alert("Import thành công! Vui lòng tải lại trang Dashboard nếu đang mở.");
+                        window.location.reload(); // Reload popup to reflect changes
+                    }
                 } else {
-                    alert("File không đúng định dạng.");
+                    alert("File không đúng định dạng JSON.");
                 }
             } catch (err) {
                 console.error(err);
-                alert("Đọc file thất bại.");
+                alert("Đọc file thất bại hoặc file không hợp lệ.");
             }
         });
 
