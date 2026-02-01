@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitLab Productivity - Kanban Board</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="todo.css" />
+</head>
+
+<body>
+    <div class="main-wrapper">
+        <header class="page-header">
+            <div class="header-left">
+                <h1>📋 Kanban Board</h1>
+                <p id="total-todo-count">0 công việc đang thực hiện</p>
+            </div>
+            <div class="header-right">
+                <button id="clear-btn" class="btn-danger-outline">Xóa tất cả</button>
+            </div>
+        </header>
+
+        <!-- Composer Area -->
+        <div class="todo-composer">
+            <div class="composer-card">
+                <div class="input-row">
+                    <input type="text" id="todo-input" placeholder="Việc cần làm là gì?" />
+                    <input type="datetime-local" id="deadline-input" title="Hạn chót" />
+                </div>
+
+                <div class="reminder-settings">
+                    <div class="setting-item">
+                        <label>⏰ Trước (phút):</label>
+                        <input type="number" id="reminder-before" min="1" value="30">
+                    </div>
+                    <div class="setting-item">
+                        <label>🔁 Lặp (phút):</label>
+                        <input type="number" id="reminder-repeat" min="1" value="10">
+                    </div>
+                    <button id="save-settings" class="btn-icon" title="Lưu cài đặt nhắc việc">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                            <polyline points="17 21 17 13 7 13 7 21" />
+                            <polyline points="7 3 7 8 15 8" />
+                        </svg>
+                    </button>
+                </div>
+
+                <button id="add-btn" class="btn-primary full-width">➕ Thêm công việc</button>
+            </div>
+        </div>
+
+        <!-- Kanban Board Area -->
+        <main class="kanban-board">
+            <!-- TODO Column -->
+            <div class="kanban-column" id="col-todo">
+                <div class="column-header">
+                    <span class="dot todo-dot"></span>
+                    <h3>CẦN LÀM</h3>
+                    <span class="count-badge" id="count-todo">0</span>
+                </div>
+                <div class="task-list" id="list-todo"></div>
+            </div>
+
+            <!-- PROCESSING Column -->
+            <div class="kanban-column" id="col-processing">
+                <div class="column-header">
+                    <span class="dot processing-dot"></span>
+                    <h3>ĐANG LÀM</h3>
+                    <span class="count-badge" id="count-processing">0</span>
+                </div>
+                <div class="task-list" id="list-processing"></div>
+            </div>
+
+            <!-- DONE Column -->
+            <div class="kanban-column" id="col-done">
+                <div class="column-header">
+                    <span class="dot done-dot"></span>
+                    <h3>HOÀN THÀNH</h3>
+                    <span class="count-badge" id="count-done">0</span>
+                </div>
+                <div class="task-list" id="list-done"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="../utils.js"></script>
+    <script src="todo.js"></script>
+</body>
+
+</html>

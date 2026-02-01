@@ -1,0 +1,94 @@
+(async () => {
+    console.log('Loading content_request.js');
+
+    const MERGE_ITEM_KEY = 'MergeItemIds';
+    const addedLinks = new Set();
+    const svgAdd = `
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="green" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        `;
+
+    const svgRemove = `
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="red" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        `;
+
+    // Sử dụng hàm từ utils.js
+    const storedItems = await getStoredIds(MERGE_ITEM_KEY);
+    storedItems.forEach(item => addedLinks.add(item.id));
+    const userProfile = await getUserProfile();
+
+    function createAddButton(mergeRequestId, href) {
+        const button = document.createElement('button');
+        button.className = 'btn btn-default btn-sm gl-button';
+        button.style.marginRight = '5px';
+
+        const updateButtonAppearance = () => {
+            if (addedLinks.has(mergeRequestId)) {
+                button.innerHTML = svgRemove;
+                button.classList.remove('btn-success');
+                button.classList.add('btn-danger');
+            } else {
+                button.innerHTML = svgAdd;
+                button.classList.remove('btn-danger');
+                button.classList.add('btn-success');
+            }
+        };
+
+        updateButtonAppearance();
+
+        button.addEventListener('click', async (e) => {
+            e.stopPropagation(); // chặn sự kiện lan lên DOM gốc
+            e.preventDefault();  // tránh hành vi mặc định
+            // Ngăn spam nút bằng cách vô hiệu hóa nó ngay khi nhấn
+            button.disabled = true;
+
+            try {
+                // Get group name
+                if (addedLinks.has(mergeRequestId)) {
+                    await removeIdFromStorage(MERGE_ITEM_KEY, mergeRequestId);
+                    addedLinks.delete(mergeRequestId);
+                } else {
+                    const today = new Date().toLocaleString();
+                    await addIdToStorage(MERGE_ITEM_KEY, mergeRequestId, href, today);
+                    addedLinks.add(mergeRequestId);
+                }
+            } catch (error) {
+                console.error('Error handling button click:', error);
+            } finally {
+                // Cho phép người dùng nhấn lại sau khi xử lý xong
+                button.disabled = false;
+            }
+
+            updateButtonAppearance();
+        });
+
+        return button;
+    }
+
+    function processTasks() {
+        // Handle for issue
+        const mergeRequestSection = document.querySelector('.merge-request > .is-merge-request');
+
+        const path = window.location.origin + window.location.pathname
+        const match = path.match(/^(https?:\/\/[^\/]+)(\/.*?\/)-\/merge_requests\/(\d+)/);
+        const id = match[3];
+
+        const headerAction = mergeRequestSection.querySelector('.detail-page-header-actions');
+        const addButton = createAddButton(id, path);
+        headerAction.prepend(addButton);
+    }
+
+    processTasks();
+
+    async function addIdToStorage(key, id, href, createAt) {
+        const items = await getStoredIds(key);
+        if (!items.some(item => item.id === id)) {
+            items.push({ id, href, createAt });
+            await chrome.storage.local.set({ [key]: items });
+        }
+    }
+
+})();

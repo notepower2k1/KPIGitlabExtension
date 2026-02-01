@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GitLab Dashboard - KPI Report</title>
+    <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="page.css">
+
+    <script src="../utils.js"></script>
+    <script src="page.js" defer></script>
+</head>
+
+<body>
+    <div class="main-wrapper">
+        <header class="page-header">
+            <h1>GitLab Productivity 📊</h1>
+            <div class="button-container">
+                <button id="deleteAllTaskBtn" class="btn-danger">🗑️ Xóa Task</button>
+                <button id="exportCSVBtn" class="btn-secondary">📁 Xuất CSV</button>
+                <button id="getDetailBtn" class="btn-primary">📊 Thống kê</button>
+                <button id="getDailyTaskBtn" class="btn-accent">⌛ Daily task</button>
+            </div>
+        </header>
+
+        <main class="content-grid">
+            <aside class="sidebar">
+                <div class="filter-card">
+                    <label for="weekdaySelect">📅 Lọc theo ngày</label>
+                    <select id="weekdaySelect">
+                        <option value="">-- Tất cả --</option>
+                    </select>
+                </div>
+
+                <div id="allTaskContainer" class="list-container"></div>
+                <div id="allMergeRequestContainer" class="list-container"></div>
+            </aside>
+
+            <section class="report-area">
+                <div id="spinner" class="loading-spinner" style="display: none;"></div>
+                <div id="kpiContainer"></div>
+                <!-- KPI Stat is now a separate visual piece -->
+                <div id="kpiStatsContainer"></div>
+            </section>
+        </main>
+    </div>
+</body>
+
+</html>

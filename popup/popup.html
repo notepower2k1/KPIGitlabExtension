@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <title>GitLab Productivity Popup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <!-- Màn hình đăng nhập -->
+    <div id="login-screen" class="screen">
+        <div class="login-header">
+            <img src="../icon128.png" alt="Logo" id="logo" />
+            <h2>Chào bạn 👋</h2>
+            <p>Nhập Personal Access Token để bắt đầu</p>
+        </div>
+        <div class="login-form">
+            <input type="password" id="token" placeholder="Your GitLab Token..." />
+            <button id="login-btn" class="btn-primary">Kết nối ngay</button>
+            <button id="tutorial-btn" class="btn-secondary">Hướng dẫn sử dụng</button>
+        </div>
+    </div>
+
+    <!-- Màn hình sau khi đăng nhập -->
+    <div id="user-screen" class="screen" style="display: none;">
+        <button id="logout-btn" class="btn-icon-danger" title="Đăng xuất">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+        </button>
+
+        <header class="user-header">
+            <div class="user-info">
+                <a id="avatar-link" href="#" target="_blank">
+                    <img id="avatar" src="" alt="Avatar" class="avatar">
+                </a>
+                <h3 id="username">username</h3>
+            </div>
+        </header>
+
+        <!-- Thanh tab -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="main-tab">KPI</button>
+            <button class="tab-btn" data-tab="tools-tab">Công cụ</button>
+        </nav>
+
+        <!-- Nội dung Tab 1 -->
+        <div id="main-tab" class="tab-content active">
+            <div class="stats-card">
+                <div class="stat-header">
+                    <h4>⭐ Thống kê tuần</h4>
+                    <span id="stats-time" class="time-badge"></span>
+                </div>
+
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <span class="label">Tổng Task</span>
+                        <span id="total-tasks" class="value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">Estimate</span>
+                        <span id="estimate-time" class="value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">Spent</span>
+                        <span id="spent-time" class="value">-</span>
+                    </div>
+                </div>
+
+                <div class="progress-section">
+                    <div class="progress-header">
+                        <span class="label">Tiến trình tuần: <strong id="estimate-time-total">-</strong></span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                </div>
+
+                <div class="progress-section">
+                    <div class="progress-header">
+                        <span class="label">Tiến trình ngày: <strong id="estimate-time-daily">-</strong></span>
+                    </div>
+                    <div class="progress-bar accent">
+                        <div id="progress-fill-daily" class="progress-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="manage-btn" class="btn-primary full-width">Mở Dashboard 📊</button>
+        </div>
+
+        <!-- Nội dung Tab 2 -->
+        <div id="tools-tab" class="tab-content">
+            <div class="stats-card">
+                <h4>📦 Bộ nhớ</h4>
+                <div class="storage-info">
+                    <div class="progress-bar small">
+                        <div id="storage-fill" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="storage-labels">
+                        <span id="used-bytes">0 KB</span>
+                        <span id="max-bytes">5 MB</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tools-grid">
+                <button id="note-btn" class="btn-secondary">Ghi chú 📋</button>
+                <button id="todo-btn" class="btn-secondary">Việc cần làm 📝</button>
+                <button id="exportTask-btn" class="btn-secondary">Export 💿</button>
+                <button id="importTask-btn" class="btn-secondary">Import 📀</button>
+            </div>
+            <input type="file" id="importFile" style="display: none" />
+        </div>
+    </div>
+
+    <script src="../utils.js"></script>
+    <script src="popup.js"></script>
+</body>
+
+</html>
