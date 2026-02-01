@@ -74,7 +74,7 @@
 
         const path = window.location.origin + window.location.pathname
         const match = path.match(/^(https?:\/\/[^\/]+)(\/.*?\/)-\/merge_requests\/(\d+)/);
-        const id = match[3];
+        const id = match[3] || 0;
 
         const headerAction = mergeRequestSection.querySelector('.detail-page-header-actions');
         const addButton = createAddButton(id, path);
