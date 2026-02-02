@@ -72,6 +72,8 @@
         // Handle for issue
         const mergeRequestSection = document.querySelector('.merge-request > .is-merge-request');
 
+        if (!mergeRequestSection) return;
+
         const path = window.location.origin + window.location.pathname
         const match = path.match(/^(https?:\/\/[^\/]+)(\/.*?\/)-\/merge_requests\/(\d+)/);
         const id = match[3] || 0;
