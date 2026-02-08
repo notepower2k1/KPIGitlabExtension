@@ -37,10 +37,49 @@
         select.appendChild(option);
     });
 
-    select.addEventListener('change', () => {
+    select.addEventListener('change', async () => {
         const selectedDate = select.value;
         getAllTasks(selectedDate);
         getAllMergeRequest(selectedDate);
+
+        // Hide Get Detail button when a specific date is selected
+        const getDetailBtn = document.getElementById('getDetailBtn');
+        if (selectedDate) {
+            getDetailBtn.style.display = 'none';
+        } else {
+            getDetailBtn.style.display = 'inline-block';
+        }
+
+        // Re-render KPI if data exists
+        const oldKpiInfo = await getStoredIds('KpiInfo');
+        if (oldKpiInfo && oldKpiInfo.length > 0) {
+            const oldKpiStats = await getStoredIds('KpiStats');
+            const lastUpdatedTime = new Date(oldKpiStats.lastUpdated);
+
+            // Clear only the KPI tables, but keep the "Last Updated" title if we can
+            // For simplicity, we'll let renderKpi handle its own rendering.
+            // But we should remove existing tables first.
+            document.getElementById('kpiContainer').innerHTML = '';
+
+            const lastUpdateTitle = document.createElement('h1');
+            lastUpdateTitle.textContent = 'Lần thống kê cuối: ' + lastUpdatedTime.toLocaleString();
+
+            if (isInPreviousWeek(lastUpdatedTime)) {
+                lastUpdateTitle.textContent += ' (Tuần trước)';
+                lastUpdateTitle.style.color = 'red';
+            }
+
+            document.getElementById('kpiContainer').appendChild(lastUpdateTitle);
+
+            const divider = document.createElement('div');
+            divider.style.height = '1px';
+            divider.style.width = '100%';
+            divider.style.backgroundColor = 'gray';
+            divider.style.margin = '10px 0';
+            document.getElementById('kpiContainer').appendChild(divider);
+
+            await renderKpi(oldKpiInfo);
+        }
     });
 
     async function getAllTasks(filterDate = null) {
@@ -264,18 +303,7 @@
 
         console.log('Loading new data');
 
-        const selectedDate = document.getElementById('weekdaySelect').value;
-
-        // Filter tasks/MRs if date is selected
-        const filteredTasks = selectedDate
-            ? allTaskInfo.filter(task => toIsoDate(task.createAt) === selectedDate)
-            : allTaskInfo;
-
-        const filteredMRs = selectedDate
-            ? allMergeRequestInfo.filter(mr => toIsoDate(mr.createAt) === selectedDate)
-            : allMergeRequestInfo;
-
-        const allItems = [...filteredTasks, ...filteredMRs];
+        const allItems = [...allTaskInfo, ...allMergeRequestInfo];
 
         const kpiInfoPromises = allItems.map(({ createAt, href, id, groupName }) => {
             return getWorkItemDetailNew(createAt, href, groupName);
@@ -370,8 +398,7 @@
         const selectedDate = document.getElementById('weekdaySelect').value;
         allDailyTaskInfo = [];
 
-        // Các cột muốn hiển thị (bạn chỉnh theo đúng key trong kpiData nếu cần)
-        const columns = ["Tasks", "Start date", "Due date", "Closed date", "Estimate (h)", "Spent (h)", "Số lần bị reopen", "Loại task", "Tiến độ"];
+        // Columns display mapping
         const columnFieldMap = {
             "Tasks": "taskUrl",
             "Start date": "startDate",
@@ -383,79 +410,103 @@
             "Loại task": "type",
             "Tiến độ": "progress"
         };
+        const taskColumns = ["Tasks", "Start date", "Due date", "Closed date", "Estimate (h)", "Spent (h)", "Số lần bị reopen", "Loại task", "Tiến độ"];
 
-        // Nhóm dữ liệu: Tasks theo groupName, MRs vào 1 nhóm riêng
+        const calculateStats = (data) => {
+            const totalTask = data.length;
+            let totalPlannedTask = 0;
+            let totalEstimate = 0;
+            let totalSpent = 0;
+            let totalSpentPlannedTask = 0;
+            let totalTaskNoStartDate = 0;
+            let totalTaskNoDueDate = 0;
+            let totalTaskNoEstimate = 0;
+            let totalTaskNoSpent = 0;
+            let totalTaskInTime = 0;
+            let reopenCount = 0;
+            let dailySpentTime = 0;
+
+            const compareDateStr = selectedDate || toIsoDate(today);
+
+            data.forEach(item => {
+                if (item.type === 'Kế hoạch') {
+                    totalPlannedTask += 1;
+                    totalSpentPlannedTask += item.spent;
+                }
+                if (item.startDate == '') totalTaskNoStartDate += 1;
+                if (item.dueDate == '') totalTaskNoDueDate += 1;
+                if (item.estimate == 0) totalTaskNoEstimate += 1;
+                if (item.spent == 0) totalTaskNoSpent += 1;
+                if (item.progress === 'Đúng hạn') totalTaskInTime += 1;
+                if (item.reopenTotal > 0) reopenCount += 1;
+
+                const createdAt = toIsoDate(item.addedAt);
+                if (createdAt === compareDateStr) {
+                    dailySpentTime += item.spent;
+                    // Note: allDailyTaskInfo is filled here, but only during the display calculation
+                    // We'll handle this by ensuring display stats are calculated last or correctly.
+                    if (data === kpiData || (selectedDate && data === displayData)) {
+                        // Only add to global daily task info if it matches the current view's date
+                        // Wait, easier: always calculate this based on compareDateStr.
+                    }
+                }
+
+                totalEstimate += item.estimate;
+                totalSpent += item.spent;
+            });
+
+            return {
+                totalTask,
+                totalPlannedTask,
+                totalUnplannedTask: totalTask - totalPlannedTask,
+                totalTimeWorkingInCompany: 48,
+                totalEstimate: parseFloat(totalEstimate).toFixed(2),
+                totalSpent: parseFloat(totalSpent).toFixed(2),
+                totalSpentPlannedTask: parseFloat(totalSpentPlannedTask).toFixed(2),
+                totalSpentUnplannedTask: parseFloat(totalSpent - totalSpentPlannedTask).toFixed(2),
+                totalTaskNoStartDate,
+                totalTaskNoDueDate,
+                totalTaskNoEstimate,
+                totalTaskNoSpent,
+                totalTaskInTime,
+                totalTaskLate: totalTask - totalTaskInTime,
+                totalTaskNotReopen: totalTask - reopenCount,
+                totalTaskReopen: reopenCount,
+                dailySpentTime: parseFloat(dailySpentTime).toFixed(2),
+                lastUpdated: new Date().toLocaleString(),
+            };
+        };
+
+        // 1. Calculate and Save Weekly Stats if requested
+        if (isSaveKpiStats) {
+            const weeklyStats = calculateStats(kpiData);
+            await saveKpiStats(weeklyStats);
+        }
+
+        // 2. Filter data for display
+        const displayData = selectedDate ? kpiData.filter(item => toIsoDate(item.addedAt) === selectedDate) : kpiData;
+
+        // Fill allDailyTaskInfo for the "What did I do today?" button based on selectedDate or Today
+        const compareDateStr = selectedDate || toIsoDate(today);
+        kpiData.forEach(item => {
+            if (toIsoDate(item.addedAt) === compareDateStr) {
+                allDailyTaskInfo.push(item);
+            }
+        });
+
+        // 3. Render tables for displayData
         const taskGroups = {};
         const mrItems = [];
 
-
-        const totalTask = kpiData.length;
-        let totalPlannedTask = 0;
-        let totalEstimate = 0;
-        let totalSpent = 0;
-        let totalSpentPlannedTask = 0;
-        let totalTaskNoStartDate = 0;
-        let totalTaskNoDueDate = 0;
-        let totalTaskNoEstimate = 0;
-        let totalTaskNoSpent = 0;
-        let totalTaskInTime = 0;
-        let reopenCount = 0;
-        let dailySpentTime = 0;
-
-        kpiData.forEach(item => {
+        displayData.forEach(item => {
             if (item.isMR) {
                 mrItems.push(item);
             } else {
                 const group = item.groupName || 'Khác';
-                if (!taskGroups[group]) {
-                    taskGroups[group] = [];
-                }
+                if (!taskGroups[group]) taskGroups[group] = [];
                 taskGroups[group].push(item);
             }
-
-            if (item.type === 'Kế hoạch') {
-                totalPlannedTask += 1;
-                totalSpentPlannedTask += item.spent;
-            }
-
-            if (item.startDate == '') {
-                totalTaskNoStartDate += 1;
-            }
-
-            if (item.dueDate == '') {
-                totalTaskNoDueDate += 1;
-            }
-
-            if (item.estimate == 0) {
-                totalTaskNoEstimate += 1;
-            }
-
-            if (item.spent == 0) {
-                totalTaskNoSpent += 1;
-            }
-
-            if (item.progress === 'Đúng hạn') {
-                totalTaskInTime += 1;
-            }
-
-            if (item.reopenTotal > 0) {
-                reopenCount += 1;
-            }
-
-            const createdAt = toIsoDate(item.addedAt);
-            const compareDateStr = selectedDate || toIsoDate(today);
-
-            if (createdAt === compareDateStr) {
-                dailySpentTime += item.spent;
-                allDailyTaskInfo.push(item);
-            }
-
-            totalEstimate += item.estimate;
-            totalSpent += item.spent;
         });
-
-        // Với mỗi nhóm Task, tạo bảng riêng
-        const taskColumns = ["Tasks", "Start date", "Due date", "Closed date", "Estimate (h)", "Spent (h)", "Số lần bị reopen", "Loại task", "Tiến độ"];
 
         for (const [groupName, items] of Object.entries(taskGroups)) {
             const section = document.createElement("div");
@@ -503,7 +554,7 @@
                     if (key === "taskUrl") {
                         const link = document.createElement('a');
                         link.href = value;
-                        link.textContent = value.split('/').pop(); // Show just ID if long
+                        link.textContent = value.split('/').pop();
                         link.title = value;
                         link.target = '_blank';
                         td.appendChild(link);
@@ -548,11 +599,9 @@
             container.appendChild(section);
         }
 
-        // Render bảng Merge Request (nếu có)
         if (mrItems.length > 0) {
             const section = document.createElement("div");
             section.className = "report-section";
-
             const groupTitle = document.createElement('h3');
             groupTitle.textContent = "🚀 DANH SÁCH MERGE REQUEST";
             section.appendChild(groupTitle);
@@ -576,13 +625,11 @@
             mrItems.forEach(item => {
                 mrTotalEstimate += item.estimate || 0;
                 mrTotalSpent += item.spent || 0;
-
                 const row = document.createElement("tr");
                 mrColumns.forEach(col => {
                     const td = document.createElement("td");
                     const key = columnFieldMap[col];
                     const value = item[key];
-
                     if (key === "taskUrl") {
                         const link = document.createElement('a');
                         link.href = value;
@@ -618,32 +665,9 @@
             container.appendChild(section);
         }
 
-        const kpiStats = {
-            totalTask: totalTask,
-            totalPlannedTask: totalPlannedTask,
-            totalUnplannedTask: totalTask - totalPlannedTask,
-            totalTimeWorkingInCompany: 48, // Default value
-            totalEstimate: parseFloat(totalEstimate).toFixed(2),
-            totalSpent: parseFloat(totalSpent).toFixed(2),
-            totalSpentPlannedTask: parseFloat(totalSpentPlannedTask).toFixed(2),
-            totalSpentUnplannedTask: parseFloat(totalSpent - totalSpentPlannedTask).toFixed(2),
-            totalTaskNoStartDate: totalTaskNoStartDate,
-            totalTaskNoDueDate: totalTaskNoDueDate,
-            totalTaskNoEstimate: totalTaskNoEstimate,
-            totalTaskNoSpent: totalTaskNoSpent,
-            totalTaskInTime: totalTaskInTime,
-            totalTaskLate: totalTask - totalTaskInTime,
-            totalTaskNotReopen: totalTask - reopenCount,
-            totalTaskReopen: reopenCount,
-            dailySpentTime: parseFloat(dailySpentTime).toFixed(2),
-            lastUpdated: new Date().toLocaleString(),
-        }
-
-        if (isSaveKpiStats) {
-            await saveKpiStats(kpiStats);
-        }
-
-        await renderKpiStats(kpiStats);
+        // 4. Update Dashboard Stats (based on whatever is displayed)
+        const dashboardStats = calculateStats(displayData);
+        await renderKpiStats(dashboardStats);
     }
 
     async function renderKpiStats(kpiStats) {
@@ -721,12 +745,12 @@
             document.getElementById('kpiContainer').appendChild(divider);
 
             await renderKpi(oldKpiInfo);
-            await renderKpiStats(oldKpiStats);
         }
     }
 
     function exportAllTablesToCSV() {
-        const title = 'KPI_File'; // dùng làm tên file
+        const date = new Date().toISOString().slice(0, 10);
+        const title = `KPI_Export_${date}`; // Tên file có chứa ngày hiện tại
         const container = document.getElementById('kpiContainer');
         const tables = container.querySelectorAll('table');
         const headers = container.querySelectorAll('h3');

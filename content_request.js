@@ -72,12 +72,16 @@
         // Handle for issue
         const mergeRequestSection = document.querySelector('.merge-request > .is-merge-request');
 
-        const path = window.location.origin + window.location.pathname
-        const match = path.match(/^(https?:\/\/[^\/]+)(\/.*?\/)-\/merge_requests\/(\d+)/);
-        const id = match[3] || 0;
+        const fullPath = window.location.origin + window.location.pathname;
+        const match = fullPath.match(/^(https?:\/\/[^\/]+)(\/.*?\/-\/merge_requests\/(\d+))/);
+
+        if (!match) return;
+
+        const baseUrl = match[1] + match[2]; // https://gitlab.widosoft.com/path/to/project/-/merge_requests/123
+        const id = match[3];
 
         const headerAction = mergeRequestSection.querySelector('.detail-page-header-actions');
-        const addButton = createAddButton(id, path);
+        const addButton = createAddButton(id, baseUrl);
         headerAction.prepend(addButton);
     }
 
