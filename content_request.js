@@ -52,7 +52,12 @@
                     addedLinks.delete(mergeRequestId);
                 } else {
                     const today = new Date().toLocaleString();
-                    await addIdToStorage(MERGE_ITEM_KEY, mergeRequestId, href, today);
+                    const titleEl = document.querySelector('h1.title, [data-testid="mr-title"], .issue-details .title');
+                    let mrTitle = titleEl ? titleEl.innerText.trim() : '';
+                    if (!mrTitle && document.title) {
+                        mrTitle = document.title.replace(/\s*·.*$/, '').trim();
+                    }
+                    await addIdToStorage(MERGE_ITEM_KEY, mergeRequestId, href, today, { title: mrTitle });
                     addedLinks.add(mergeRequestId);
                 }
             } catch (error) {
@@ -89,12 +94,15 @@
 
     processTasks();
 
-    async function addIdToStorage(key, id, href, createAt) {
+    async function addIdToStorage(key, id, href, createAt, extra = {}) {
         const items = await getStoredIds(key);
-        if (!items.some(item => item.id === id)) {
-            items.push({ id, href, createAt });
-            await chrome.storage.local.set({ [key]: items });
+        const existingIdx = items.findIndex(item => item.id === id);
+        if (existingIdx === -1) {
+            items.push({ id, href, createAt, ...extra });
+        } else {
+            items[existingIdx] = { ...items[existingIdx], ...extra };
         }
+        await chrome.storage.local.set({ [key]: items });
     }
 
 })();

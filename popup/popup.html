@@ -47,12 +47,13 @@
 
         <!-- Thanh tab -->
         <nav class="tab-nav">
-            <button class="tab-btn active" data-tab="main-tab">KPI</button>
-            <button class="tab-btn" data-tab="tools-tab">Công cụ</button>
+            <button class="tab-btn active" data-tab="week-tab">📅 Tuần</button>
+            <button class="tab-btn" data-tab="month-tab">📊 Tháng</button>
+            <button class="tab-btn" data-tab="tools-tab">🛠️ Công cụ</button>
         </nav>
 
-        <!-- Nội dung Tab 1 -->
-        <div id="main-tab" class="tab-content active">
+        <!-- Nội dung Tab 1: Tuần -->
+        <div id="week-tab" class="tab-content active">
             <div class="stats-card">
                 <div class="stat-header">
                     <h4>⭐ Thống kê tuần</h4>
@@ -92,11 +93,54 @@
                     </div>
                 </div>
             </div>
-
-            <button id="manage-btn" class="btn-primary full-width">Mở Dashboard 📊</button>
         </div>
 
-        <!-- Nội dung Tab 2 -->
+        <!-- Nội dung Tab 2: Tháng -->
+        <div id="month-tab" class="tab-content">
+            <div class="stats-card">
+                <div class="stat-header">
+                    <h4>⭐ Thống kê tháng</h4>
+                    <span id="month-stats-time" class="time-badge"></span>
+                </div>
+
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <span class="label">Tổng Task</span>
+                        <span id="month-total-tasks" class="value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">Estimate</span>
+                        <span id="month-estimate-time" class="value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">Spent</span>
+                        <span id="month-spent-time" class="value">-</span>
+                    </div>
+                </div>
+
+                <div class="month-metrics-grid">
+                    <div class="metric-badge-item">
+                        <span class="metric-label">Đúng hạn</span>
+                        <span id="month-ontime-val" class="metric-value">-</span>
+                    </div>
+                    <div class="metric-badge-item">
+                        <span class="metric-label">Dự báo KPI</span>
+                        <div id="month-kpi-score" class="metric-value score-text">-</div>
+                    </div>
+                </div>
+
+                <div class="progress-section" style="margin-top: 14px;">
+                    <div class="progress-header">
+                        <span class="label">Tiến trình tháng: <strong id="month-spent-total">-</strong></span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="month-progress-fill" class="progress-fill"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nội dung Tab 3: Công cụ -->
         <div id="tools-tab" class="tab-content">
             <div class="stats-card">
                 <h4>📦 Bộ nhớ</h4>
@@ -118,6 +162,27 @@
                 <button id="importTask-btn" class="btn-secondary">Nhập dữ liệu 📀</button>
             </div>
             <input type="file" id="importFile" style="display: none" />
+        </div>
+
+        <!-- Chân trang dùng chung -->
+        <div class="popup-footer">
+            <!-- Mở nhanh trên GitLab -->
+            <div class="gitlab-quick-section">
+                <div class="gitlab-quick-title">🦊 Mở nhanh trên GitLab</div>
+                <div class="gitlab-quick-buttons">
+                    <button id="quickIssuesBtn" class="btn-gitlab-quick" title="Issues được giao cho bạn">
+                        <span>📋 Issues</span>
+                    </button>
+                    <button id="quickMRsBtn" class="btn-gitlab-quick" title="Merge Requests của bạn">
+                        <span>🚀 MRs</span>
+                    </button>
+                    <button id="quickTodosBtn" class="btn-gitlab-quick" title="Việc cần làm trên GitLab">
+                        <span>📝 To-Do</span>
+                    </button>
+                </div>
+            </div>
+
+            <button id="manage-btn" class="btn-primary full-width">Mở Dashboard 📊</button>
         </div>
     </div>
 

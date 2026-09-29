@@ -111,20 +111,23 @@ body {
     background: var(--bg-sub);
     padding: 4px;
     border-radius: var(--radius-md);
-    margin-bottom: 20px;
+    margin-bottom: 16px;
+    gap: 4px;
 }
 
 .tab-btn {
     flex: 1;
-    padding: 8px;
+    padding: 7px 4px;
     border: none;
     background: transparent;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--text-muted);
     cursor: pointer;
     border-radius: 6px;
     transition: all 0.2s;
+    white-space: nowrap;
+    text-align: center;
 }
 
 .tab-btn.active {
@@ -296,4 +299,111 @@ button {
 
 .tab-content.active {
     display: block;
+}
+
+/* GitLab Quick Section */
+.gitlab-quick-section {
+    margin-bottom: 16px;
+}
+
+.gitlab-quick-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.gitlab-quick-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.btn-gitlab-quick {
+    background: var(--bg-sub);
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    padding: 8px 6px;
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    text-decoration: none;
+    font-family: inherit;
+}
+
+.btn-gitlab-quick:hover {
+    background: #eef2ff;
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(99, 102, 241, 0.15);
+}
+
+/* Month Metrics & KPI */
+.month-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.metric-badge-item {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.metric-badge-item .metric-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.metric-badge-item .metric-value {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.kpi-score-badge {
+    font-size: 0.6875rem;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-top: 2px;
+}
+
+.badge-success { background: #dcfce7; color: #15803d; }
+.badge-info { background: #e0f2fe; color: #0369a1; }
+.badge-warning { background: #fef9c3; color: #a16207; }
+.badge-danger { background: #fee2e2; color: #b91c1c; }
+.badge-neutral { background: #f1f5f9; color: #64748b; }
+
+.popup-footer {
+    margin-top: 14px;
 }

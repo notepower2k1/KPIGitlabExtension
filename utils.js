@@ -39,12 +39,37 @@ function compareDate(first, second) {
 }
 
 function formatDate(dateStr) {
-    if (!dateStr) {
-        return '';
+    if (!dateStr) return '';
+    if (dateStr instanceof Date) {
+        if (isNaN(dateStr.getTime())) return '';
+        const d = String(dateStr.getDate()).padStart(2, '0');
+        const m = String(dateStr.getMonth() + 1).padStart(2, '0');
+        const y = dateStr.getFullYear();
+        return `${d}/${m}/${y}`;
+    }
+    const str = String(dateStr).trim();
+    if (!str) return '';
+
+    // 1. Nếu đã là định dạng DD/MM/YYYY
+    const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) {
+        return `${dmy[1].padStart(2, '0')}/${dmy[2].padStart(2, '0')}/${dmy[3]}`;
     }
 
-    const [year, month, day] = dateStr.split("-");
-    return `${day}/${month}/${year}`;
+    // 2. Nếu là YYYY-MM-DD hoặc ISO datetime
+    const iso = (typeof parseToIsoDate === 'function') ? parseToIsoDate(str) : null;
+    if (iso && iso.includes('-')) {
+        const [y, m, d] = iso.split('-');
+        return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+
+    // 3. Fallback split '-' nếu có 3 phần
+    const parts = str.split('-');
+    if (parts.length === 3) {
+        return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+    }
+
+    return str;
 }
 
 function isInPreviousWeek(date) {
@@ -93,3 +118,580 @@ function getCurrentWeekDates() {
 function cleanGroupName(groupName) {
     return groupName.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
+
+function parseToIsoDate(dateStr) {
+    if (!dateStr) return '';
+    if (dateStr instanceof Date) {
+        if (isNaN(dateStr.getTime())) return '';
+        const y = dateStr.getFullYear();
+        const m = String(dateStr.getMonth() + 1).padStart(2, '0');
+        const d = String(dateStr.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    const str = String(dateStr).trim();
+
+    // 1. Try standard YYYY-MM-DD pattern
+    const isoMatch = str.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (isoMatch) {
+        const y = isoMatch[1];
+        const m = String(isoMatch[2]).padStart(2, '0');
+        const d = String(isoMatch[3]).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    // 2. Try Date.parse (handles ISO strings and US locale 'M/D/YYYY')
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+        const year = parsed.getFullYear();
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+        const day = String(parsed.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // 3. Fallback for DD/MM/YYYY or strings containing dates like '12:52:22 30/09/2026'
+    const dmyMatch = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmyMatch) {
+        const first = parseInt(dmyMatch[1], 10);
+        const second = parseInt(dmyMatch[2], 10);
+        const y = dmyMatch[3];
+        if (first <= 12 && second > 12) {
+            return `${y}-${String(first).padStart(2, '0')}-${String(second).padStart(2, '0')}`;
+        }
+        return `${y}-${String(second).padStart(2, '0')}-${String(first).padStart(2, '0')}`;
+    }
+
+    return '';
+}
+
+function getMonday(d) {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = (day === 0 ? -6 : 1 - day);
+    date.setDate(date.getDate() + diff);
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
+function getCurrentWeekRange() {
+    const today = new Date();
+    const monday = getMonday(today);
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+
+    const start = parseToIsoDate(monday);
+    const end = parseToIsoDate(sunday);
+    const startDisplay = `${String(monday.getDate()).padStart(2, '0')}/${String(monday.getMonth() + 1).padStart(2, '0')}`;
+    const endDisplay = `${String(sunday.getDate()).padStart(2, '0')}/${String(sunday.getMonth() + 1).padStart(2, '0')}`;
+
+    return {
+        start,
+        end,
+        startDisplay,
+        endDisplay,
+        label: `⭐ Tuần hiện tại (${startDisplay} - ${endDisplay})`
+    };
+}
+
+function getWeeksOfMonth(year, month) {
+    const weeks = [];
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+
+    let currentMonday = getMonday(firstDay);
+    const currentWeekRange = getCurrentWeekRange();
+
+    let weekNum = 1;
+    while (currentMonday <= lastDay) {
+        const sunday = new Date(currentMonday);
+        sunday.setDate(sunday.getDate() + 6);
+
+        const start = parseToIsoDate(currentMonday);
+        const end = parseToIsoDate(sunday);
+
+        const startDisplay = `${String(currentMonday.getDate()).padStart(2, '0')}/${String(currentMonday.getMonth() + 1).padStart(2, '0')}`;
+        const endDisplay = `${String(sunday.getDate()).padStart(2, '0')}/${String(sunday.getMonth() + 1).padStart(2, '0')}`;
+
+        const isCurrent = (start === currentWeekRange.start && end === currentWeekRange.end);
+        const label = `Tuần ${weekNum} (${startDisplay} - ${endDisplay})${isCurrent ? ' (Tuần này)' : ''}`;
+
+        weeks.push({
+            weekNum,
+            start,
+            end,
+            startDisplay,
+            endDisplay,
+            label,
+            isCurrent
+        });
+
+        currentMonday.setDate(currentMonday.getDate() + 7);
+        weekNum++;
+    }
+    return weeks;
+}
+
+function getRecentMonths(count = 6) {
+    const months = [];
+    const today = new Date();
+    for (let i = 0; i < count; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const year = d.getFullYear();
+        const month = d.getMonth() + 1;
+        const val = `${year}-${String(month).padStart(2, '0')}`;
+        const label = `Tháng ${String(month).padStart(2, '0')}/${year}${i === 0 ? ' (Tháng này)' : ''}`;
+        months.push({ year, month, value: val, label });
+    }
+    return months;
+}
+
+function getAvailableMonths(storedTasks = [], storedMRs = [], storedKpi = []) {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const currentIsoMonth = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+    const monthSet = new Set();
+
+    // 1. Luôn thêm đủ 12 tháng của năm hiện tại
+    for (let m = 1; m <= 12; m++) {
+        monthSet.add(`${currentYear}-${String(m).padStart(2, '0')}`);
+    }
+
+    // 2. Quét toàn bộ ngày tháng trong dữ liệu đã lưu
+    const allItems = [...(storedTasks || []), ...(storedMRs || []), ...(storedKpi || [])];
+    allItems.forEach(item => {
+        const dateStr = item?.addedAt || item?.createAt || item?.startDate || item?.dueDate || item?.closeDate;
+        if (dateStr) {
+            const iso = parseToIsoDate(dateStr);
+            if (iso && iso.length >= 7) {
+                const ym = iso.slice(0, 7);
+                const y = parseInt(ym.slice(0, 4));
+                if (y >= 2020 && y <= 2050) {
+                    monthSet.add(ym);
+                }
+            }
+        }
+    });
+
+    const sortedMonths = Array.from(monthSet).sort().reverse();
+
+    return sortedMonths.map(val => {
+        const [year, month] = val.split('-');
+        const isCurrent = (val === currentIsoMonth);
+        return {
+            year: parseInt(year),
+            month: parseInt(month),
+            value: val,
+            label: `Tháng ${month}/${year}${isCurrent ? ' (Tháng này)' : ''}`,
+            isCurrent
+        };
+    });
+}
+
+function isDateInWeek(dateStr, startStr, endStr) {
+    const iso = parseToIsoDate(dateStr);
+    if (!iso) return false;
+    return iso >= startStr && iso <= endStr;
+}
+
+function matchesFilter(itemDateStr, filterVal, selectedMonth, customStart = null, customEnd = null) {
+    const iso = parseToIsoDate(itemDateStr);
+    if (!iso) return false;
+
+    if (filterVal === 'current_week') {
+        const cw = getCurrentWeekRange();
+        return iso >= cw.start && iso <= cw.end;
+    }
+
+    if (filterVal === 'all_month') {
+        return iso.startsWith(selectedMonth);
+    }
+
+    if (filterVal.startsWith('week:')) {
+        const parts = filterVal.split(':');
+        const start = parts[1];
+        const end = parts[2];
+        return iso >= start && iso <= end;
+    }
+
+    if (filterVal.startsWith('day:')) {
+        const targetDay = filterVal.replace('day:', '');
+        return iso === targetDay;
+    }
+
+    if (filterVal === 'custom_range') {
+        if (!customStart && !customEnd) return true;
+        if (customStart && customEnd) return iso >= customStart && iso <= customEnd;
+        if (customStart) return iso >= customStart;
+        if (customEnd) return iso <= customEnd;
+    }
+
+    return true;
+}
+
+function isItemActiveInWeek(item, startIso, endIso) {
+    if (!item) return false;
+    const addedIso = parseToIsoDate(item.addedAt || item.createAt);
+    if (!addedIso) return false;
+
+    // 1. Tạo trong tuần này
+    if (addedIso >= startIso && addedIso <= endIso) {
+        return true;
+    }
+
+    // 2. Tạo trước tuần này nhưng chưa đóng, hoặc đóng trong/sau tuần này
+    if (addedIso < startIso) {
+        const closeIso = parseToIsoDate(item.closeDate);
+        const isClosed = (item.state && ['closed', 'merged'].includes(String(item.state).toLowerCase())) || !!closeIso;
+
+        // Nếu chưa đóng -> kéo sang tuần này
+        if (!isClosed) return true;
+
+        // Nếu có ngày đóng, ngày đóng phải >= ngày bắt đầu tuần này
+        if (closeIso && closeIso >= startIso) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function isItemCarryOver(item, weekStartIso) {
+    if (!item || !weekStartIso) return false;
+    const addedIso = parseToIsoDate(item.addedAt || item.createAt);
+    return !!(addedIso && addedIso < weekStartIso);
+}
+
+function isItemActiveInFilter(item, filterVal, selectedMonth, customStart = null, customEnd = null) {
+    if (!item) return false;
+    const addedIso = parseToIsoDate(item.addedAt || item.createAt);
+    if (!addedIso) return false;
+
+    if (filterVal === 'current_week') {
+        const cw = getCurrentWeekRange();
+        return isItemActiveInWeek(item, cw.start, cw.end);
+    }
+
+    if (filterVal === 'all_month') {
+        // Tạo trong tháng này
+        if (addedIso.startsWith(selectedMonth)) {
+            return true;
+        }
+        // Hoặc tạo trước tháng này nhưng chưa đóng trước ngày đầu tháng
+        const monthStartIso = `${selectedMonth}-01`;
+        if (addedIso < monthStartIso) {
+            const closeIso = parseToIsoDate(item.closeDate);
+            const isClosed = (item.state && ['closed', 'merged'].includes(String(item.state).toLowerCase())) || !!closeIso;
+            if (!isClosed) return true;
+            if (closeIso && closeIso >= monthStartIso) return true;
+        }
+        return false;
+    }
+
+    if (filterVal.startsWith('week:')) {
+        const parts = filterVal.split(':');
+        return isItemActiveInWeek(item, parts[1], parts[2]);
+    }
+
+    if (filterVal.startsWith('day:')) {
+        const targetDay = filterVal.replace('day:', '');
+        return addedIso === targetDay;
+    }
+
+    if (filterVal === 'custom_range') {
+        if (!customStart && !customEnd) return true;
+        const s = customStart || '2000-01-01';
+        const e = customEnd || '2099-12-31';
+        return isItemActiveInWeek(item, s, e);
+    }
+
+    return true;
+}
+
+function getWeeksForRange(startIso, endIso) {
+    if (!startIso || !endIso) return [];
+    if (startIso > endIso) {
+        const tmp = startIso;
+        startIso = endIso;
+        endIso = tmp;
+    }
+
+    const startDate = new Date(startIso);
+    const endDate = new Date(endIso);
+    let currentMonday = getMonday(startDate);
+    const weeks = [];
+    let weekNum = 1;
+
+    while (currentMonday <= endDate) {
+        const sunday = new Date(currentMonday);
+        sunday.setDate(sunday.getDate() + 6);
+
+        const wStart = parseToIsoDate(currentMonday);
+        const wEnd = parseToIsoDate(sunday);
+
+        const startDisplay = `${String(currentMonday.getDate()).padStart(2, '0')}/${String(currentMonday.getMonth() + 1).padStart(2, '0')}`;
+        const endDisplay = `${String(sunday.getDate()).padStart(2, '0')}/${String(sunday.getMonth() + 1).padStart(2, '0')}`;
+
+        weeks.push({
+            weekNum,
+            start: wStart,
+            end: wEnd,
+            startDisplay,
+            endDisplay,
+            label: `Tuần ${weekNum} (${startDisplay} - ${endDisplay})`
+        });
+
+        currentMonday.setDate(currentMonday.getDate() + 7);
+        weekNum++;
+    }
+    return weeks;
+}
+
+function normalizeGitLabUrl(url) {
+    if (!url) return '';
+    return String(url)
+        .trim()
+        .replace(/^http:\/\//i, 'https://')
+        .split(/[?#]/)[0]
+        .replace(/\/+$/, '')
+        .replace(/\/-\//g, '/');
+}
+
+function isSameItem(itemA, itemB) {
+    if (!itemA || !itemB) return false;
+
+    // 1. So sánh ID nếu cả hai có ID
+    const idA = itemA.id || itemA.workItemId || itemA.mergeRequestId;
+    const idB = itemB.id || itemB.workItemId || itemB.mergeRequestId;
+    if (idA && idB && String(idA) === String(idB)) {
+        return true;
+    }
+
+    // 2. So sánh URL
+    const urlA = itemA.taskUrl || itemA.href || '';
+    const urlB = itemB.taskUrl || itemB.href || '';
+    if (!urlA || !urlB) return false;
+
+    const normA = normalizeGitLabUrl(urlA);
+    const normB = normalizeGitLabUrl(urlB);
+    if (normA && normB && normA === normB) {
+        return true;
+    }
+
+    // 3. So sánh projectPath và IID cho cả work_items, issues, merge_requests
+    const matchA = normA.match(/\.com\/(.+?)\/(?:issues|work_items|merge_requests)\/(\d+)$/i);
+    const matchB = normB.match(/\.com\/(.+?)\/(?:issues|work_items|merge_requests)\/(\d+)$/i);
+    if (matchA && matchB) {
+        if (matchA[1].toLowerCase() === matchB[1].toLowerCase() && matchA[2] === matchB[2]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function getAttitudeScore(percent) {
+    if (percent >= 80) return 1;
+    if (percent >= 50) return 2;
+    if (percent >= 30) return 3;
+    if (percent >= 10) return 4;
+    return 5;
+}
+
+function getVolumeScore(percent) {
+    if (percent < 70) return 1;
+    if (percent < 80) return 2;
+    if (percent < 90) return 3;
+    if (percent < 100) return 4;
+    return 5;
+}
+
+function getQualityScore(percent) {
+    if (percent >= 80) return 1;
+    if (percent >= 50) return 2;
+    if (percent >= 30) return 3;
+    if (percent >= 10) return 4;
+    return 5;
+}
+
+function calculateKpiScore(stats) {
+    if (!stats || !stats.totalTask || stats.totalTask === 0) {
+        return {
+            totalScore: 0,
+            attitudeScore: 0,
+            volumeScore: 0,
+            qualityScore: 0,
+            badge: { text: "Chưa có dữ liệu", class: "badge-neutral", icon: "⚪" }
+        };
+    }
+    const s15 = getAttitudeScore(parseFloat(stats.noEstimateRate || 0));
+    const s20 = getAttitudeScore(parseFloat(stats.noStartDateRate || 0));
+    const s25 = getAttitudeScore(parseFloat(stats.noDueDateRate || 0));
+    const s30 = getAttitudeScore(parseFloat(stats.noSpentRate || 0));
+    const s35 = getVolumeScore(parseFloat(stats.spentTimeVsWorkingHoursRate || 0));
+    const s40 = getQualityScore(parseFloat(stats.lateRate || 0));
+    const s45 = getQualityScore(parseFloat(stats.reopenRate || 0));
+
+    const attitudeScore = (s15 * 0.25 + s20 * 0.25 + s25 * 0.25 + s30 * 0.25);
+    const volumeScore = s35;
+    const qualityScore = (s40 + s45) / 2;
+
+    const total = (
+        s15 * 0.25 +
+        s20 * 0.25 +
+        s25 * 0.25 +
+        s30 * 0.25 +
+        s35 * 3 +
+        s40 * 3 +
+        s45 * 3
+    ) / 10;
+
+    const totalScore = parseFloat(total.toFixed(2));
+
+    let badge = { text: "Cần chú ý", class: "badge-danger", icon: "⚠️" };
+    if (totalScore >= 4.5) {
+        badge = { text: "Xuất sắc", class: "badge-success", icon: "🌟" };
+    } else if (totalScore >= 3.8) {
+        badge = { text: "Tốt", class: "badge-info", icon: "🟢" };
+    } else if (totalScore >= 3.0) {
+        badge = { text: "Khá", class: "badge-warning", icon: "🟡" };
+    }
+
+    return {
+        totalScore,
+        attitudeScore: parseFloat(attitudeScore.toFixed(2)),
+        volumeScore: parseFloat(volumeScore.toFixed(2)),
+        qualityScore: parseFloat(qualityScore.toFixed(2)),
+        badge
+    };
+}
+
+function calculateStats(data, customFilterVal = null, customMonth = null) {
+    const totalItems = (data && data.length) ? data.length : 0;
+    const workItems = Array.isArray(data) ? data.filter(it => !it.isMR) : [];
+    const totalTask = workItems.length;
+
+    let totalPlannedTask = 0;
+    let totalEstimate = 0;
+    let totalSpent = 0;
+    let totalSpentPlannedTask = 0;
+    let totalTaskNoStartDate = 0;
+    let totalTaskNoDueDate = 0;
+    let totalTaskNoEstimate = 0;
+    let totalTaskNoSpent = 0;
+    let totalTaskInTime = 0;
+    let reopenCount = 0;
+    let dailySpentTime = 0;
+
+    const effectiveFilter = customFilterVal || 'all';
+    const compareDateStr = (effectiveFilter && effectiveFilter.startsWith('day:'))
+        ? effectiveFilter.replace('day:', '')
+        : (typeof parseToIsoDate === 'function' ? parseToIsoDate(new Date()) : new Date().toISOString().slice(0, 10));
+
+    if (Array.isArray(data)) {
+        data.forEach(item => {
+            const spent = typeof item.spent === 'number' ? item.spent : (parseFloat(item.spent) || 0);
+            const est = typeof item.estimate === 'number' ? item.estimate : (parseFloat(item.estimate) || 0);
+
+            if (!item.isMR) {
+                if (item.type === 'Kế hoạch') {
+                    totalPlannedTask += 1;
+                    totalSpentPlannedTask += spent;
+                }
+                if (!item.startDate) totalTaskNoStartDate += 1;
+                if (!item.dueDate) totalTaskNoDueDate += 1;
+                if (est === 0) totalTaskNoEstimate += 1;
+                if (spent === 0) totalTaskNoSpent += 1;
+                if (item.progress === 'Đúng hạn') totalTaskInTime += 1;
+                if (item.reopenTotal > 0) reopenCount += 1;
+            }
+
+            const createdAt = parseToIsoDate(item.addedAt || item.createAt);
+            if (createdAt === compareDateStr) {
+                dailySpentTime += spent;
+            }
+
+            totalEstimate += est;
+            totalSpent += spent;
+        });
+    }
+
+    const totalUnplannedTask = Math.max(0, totalTask - totalPlannedTask);
+    const totalSpentUnplannedTask = Math.max(0, totalSpent - totalSpentPlannedTask);
+    const totalTaskLate = Math.max(0, totalTask - totalTaskInTime);
+    const totalTaskNotReopen = Math.max(0, totalTask - reopenCount);
+
+    const calcRate = (num, denom) => (denom > 0 ? parseFloat(((num / denom) * 100).toFixed(2)) : 0);
+
+    const noStartDateRate = calcRate(totalTaskNoStartDate, totalTask);
+    const noDueDateRate = calcRate(totalTaskNoDueDate, totalTask);
+    const noEstimateRate = calcRate(totalTaskNoEstimate, totalTask);
+    const noSpentRate = calcRate(totalTaskNoSpent, totalTask);
+    const onTimeRate = calcRate(totalTaskInTime, totalTask);
+    const lateRate = calcRate(totalTaskLate, totalTask);
+    const noReopenRate = calcRate(totalTaskNotReopen, totalTask);
+    const reopenRate = calcRate(reopenCount, totalTask);
+    const unplannedTaskRate = calcRate(totalUnplannedTask, totalTask);
+
+    // Giờ làm việc tiêu chuẩn công ty: 192h cho cả tháng, 48h cho 1 tuần
+    const isMonthReport = (customMonth || effectiveFilter === 'all_month' || (effectiveFilter && effectiveFilter.startsWith('month:')));
+    const workingHours = isMonthReport ? 192 : 48;
+
+    const spentTimeVsWorkingHoursRate = calcRate(totalSpent, workingHours);
+    const spentTimeVsEstimateRate = calcRate(totalSpent, totalEstimate);
+    const plannedSpentTimeVsTotalSpentTimeRate = calcRate(totalSpentPlannedTask, totalSpent);
+    const unplannedSpentTimeVsTotalSpentTimeRate = calcRate(totalSpentUnplannedTask, totalSpent);
+
+    return {
+        totalItems,
+        totalTask,
+        totalPlannedTask,
+        totalUnplannedTask,
+        totalTimeWorkingInCompany: 48,
+        totalEstimate: parseFloat(totalEstimate).toFixed(2),
+        totalSpent: parseFloat(totalSpent).toFixed(2),
+        totalSpentPlannedTask: parseFloat(totalSpentPlannedTask).toFixed(2),
+        totalSpentUnplannedTask: parseFloat(totalSpentUnplannedTask).toFixed(2),
+        totalTaskNoStartDate,
+        totalTaskNoDueDate,
+        totalTaskNoEstimate,
+        totalTaskNoSpent,
+        totalTaskInTime,
+        totalTaskLate,
+        totalTaskNotReopen,
+        totalTaskReopen: reopenCount,
+        dailySpentTime: parseFloat(dailySpentTime).toFixed(2),
+        lastUpdated: new Date().toLocaleString(),
+
+        totalTasks: totalTask,
+        totalPlannedTasks: totalPlannedTask,
+        totalUnplannedTasks: totalUnplannedTask,
+        workingHours,
+        totalEstimateTime: parseFloat(totalEstimate).toFixed(2),
+        totalSpentTime: parseFloat(totalSpent).toFixed(2),
+        totalPlannedSpentTime: parseFloat(totalSpentPlannedTask).toFixed(2),
+        totalUnplannedSpentTime: parseFloat(totalSpentUnplannedTask).toFixed(2),
+        tasksNoStartDate: totalTaskNoStartDate,
+        tasksNoDueDate: totalTaskNoDueDate,
+        tasksNoEstimate: totalTaskNoEstimate,
+        tasksNoSpent: totalTaskNoSpent,
+        tasksOnTime: totalTaskInTime,
+        tasksLate: totalTaskLate,
+        tasksNoReopen: totalTaskNotReopen,
+        tasksReopen: reopenCount,
+
+        noStartDateRate,
+        noDueDateRate,
+        noEstimateRate,
+        noSpentRate,
+        onTimeRate,
+        lateRate,
+        noReopenRate,
+        reopenRate,
+        unplannedTaskRate,
+        spentTimeVsWorkingHoursRate,
+        spentTimeVsEstimateRate,
+        plannedSpentTimeVsTotalSpentTimeRate,
+        unplannedSpentTimeVsTotalSpentTimeRate
+    };
+}

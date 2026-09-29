@@ -21,7 +21,23 @@
     storedItems.forEach(item => addedLinks.add(item.id));
     const userProfile = await getUserProfile();
 
-    function createAddButton(workItemId, href) {
+    function getParentIssueInfo() {
+        const pageUrl = (window.location.origin + window.location.pathname).replace(/\/+$/, '');
+        const issueIidMatch = pageUrl.match(/\/issues\/(\d+)/);
+        const parentIid = issueIidMatch ? issueIidMatch[1] : '';
+        const parentUrl = issueIidMatch ? pageUrl : '';
+        const titleEl = document.querySelector('h1.title, [data-testid="issue-title"], .issue-details .title');
+        let parentTitle = titleEl ? titleEl.innerText.trim() : '';
+        if (!parentTitle && document.title) {
+            parentTitle = document.title.replace(/\s*·.*$/, '').trim();
+        }
+        if (parentIid && !parentTitle) {
+            parentTitle = `Issue #${parentIid}`;
+        }
+        return { parentTitle, parentUrl, parentIid };
+    }
+
+    function createAddButton(workItemId, href, taskTitle = '') {
         const button = document.createElement('button');
         button.className = 'btn btn-default btn-sm gl-button';
 
@@ -52,7 +68,13 @@
                     addedLinks.delete(workItemId);
                 } else {
                     const today = new Date().toLocaleString();
-                    await addIdToStorage(WORK_ITEM_KEY, workItemId, href, today);
+                    const parentInfo = getParentIssueInfo();
+                    await addIdToStorage(WORK_ITEM_KEY, workItemId, href, today, {
+                        parentTitle: parentInfo.parentTitle,
+                        parentUrl: parentInfo.parentUrl,
+                        parentIid: parentInfo.parentIid,
+                        taskTitle: taskTitle
+                    });
                     addedLinks.add(workItemId);
                 }
             } catch (error) {
@@ -107,7 +129,11 @@
     function processTasks() {
         // Handle for issue
         const taskSection = document.querySelector('#tasks > .crud-body');
+        if (!taskSection) return;
+
         const taskItems = taskSection.querySelectorAll('ul[data-testid="child-items-container"] > li.tree-item');
+        const parentInfo = getParentIssueInfo();
+        const currentTasks = new Map();
 
         taskItems.forEach(li => {
             const container = li.querySelector('div[data-testid="links-child"]');
@@ -120,16 +146,24 @@
 
             if (userProfile && avatarUrl != userProfile.web_url) return;
 
+            const taskTitle = anchor.innerText?.trim() || anchor.title?.trim() || '';
+            currentTasks.set(workItemId, { href: anchor.href, title: taskTitle });
+
             const position = li.querySelector('div[data-testid="child-contents-container"] > div[data-testid="links-child"]');
 
             // Kiểm tra nếu đã có nút thì bỏ qua
             if (position.querySelector('.custom-add-button')) return;
 
-            const addButton = createAddButton(workItemId, anchor.href);
+            const addButton = createAddButton(workItemId, anchor.href, taskTitle);
             addButton.classList.add('custom-add-button'); // Gắn class để kiểm tra sau này
 
             position.prepend(addButton);
         });
+
+        // Tự động bổ sung thông tin Issue cha cho các task đang mở trên trang này nếu trước đó chưa có
+        if (currentTasks.size > 0 && parentInfo.parentTitle) {
+            backfillParentInfo(currentTasks, parentInfo);
+        }
     }
 
 
@@ -150,12 +184,39 @@
         subtree: true,
     });
 
-    async function addIdToStorage(key, id, href, createAt) {
-        const items = await getStoredIds(key);
-        if (!items.some(item => item.id === id)) {
-            items.push({ id, href, createAt });
-            await chrome.storage.local.set({ [key]: items });
+    async function backfillParentInfo(currentTasks, parentInfo) {
+        try {
+            const items = await getStoredIds(WORK_ITEM_KEY);
+            let updated = false;
+            items.forEach(item => {
+                if (currentTasks.has(item.id)) {
+                    const taskMeta = currentTasks.get(item.id);
+                    if (!item.parentTitle || !item.parentUrl) {
+                        item.parentTitle = item.parentTitle || parentInfo.parentTitle;
+                        item.parentUrl = item.parentUrl || parentInfo.parentUrl;
+                        item.parentIid = item.parentIid || parentInfo.parentIid;
+                        if (!item.taskTitle && taskMeta.title) item.taskTitle = taskMeta.title;
+                        updated = true;
+                    }
+                }
+            });
+            if (updated) {
+                await chrome.storage.local.set({ [WORK_ITEM_KEY]: items });
+            }
+        } catch (err) {
+            console.error('Error backfilling parent info:', err);
         }
+    }
+
+    async function addIdToStorage(key, id, href, createAt, extra = {}) {
+        const items = await getStoredIds(key);
+        const existingIdx = items.findIndex(item => item.id === id);
+        if (existingIdx === -1) {
+            items.push({ id, href, createAt, ...extra });
+        } else {
+            items[existingIdx] = { ...items[existingIdx], ...extra };
+        }
+        await chrome.storage.local.set({ [key]: items });
     }
 
 })();

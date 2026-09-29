@@ -55,6 +55,37 @@
             chrome.tabs.create({ url: chrome.runtime.getURL("../page/page.html") });
         };
 
+        const gitlabUsername = user?.username || '';
+        const gitlabBaseUrl = 'https://gitlab.widosoft.com';
+
+        const quickIssuesBtn = document.getElementById("quickIssuesBtn");
+        const quickMRsBtn = document.getElementById("quickMRsBtn");
+        const quickTodosBtn = document.getElementById("quickTodosBtn");
+
+        if (quickIssuesBtn) {
+            quickIssuesBtn.onclick = () => {
+                const url = gitlabUsername
+                    ? `${gitlabBaseUrl}/dashboard/issues?assignee_username=${encodeURIComponent(gitlabUsername)}`
+                    : `${gitlabBaseUrl}/dashboard/issues`;
+                chrome.tabs.create({ url });
+            };
+        }
+
+        if (quickMRsBtn) {
+            quickMRsBtn.onclick = () => {
+                const url = gitlabUsername
+                    ? `${gitlabBaseUrl}/dashboard/merge_requests?assignee_username=${encodeURIComponent(gitlabUsername)}`
+                    : `${gitlabBaseUrl}/dashboard/merge_requests`;
+                chrome.tabs.create({ url });
+            };
+        }
+
+        if (quickTodosBtn) {
+            quickTodosBtn.onclick = () => {
+                chrome.tabs.create({ url: `${gitlabBaseUrl}/dashboard/todos` });
+            };
+        }
+
         document.getElementById("note-btn").onclick = () => {
             chrome.tabs.create({ url: chrome.runtime.getURL("../note/note.html") });
         };
@@ -119,29 +150,87 @@
             }
         });
 
+        const storedKpi = await getStoredIds('KpiInfo');
         const kpiStats = await getStoredIds('KpiStats');
-        const statsCard = document.querySelector(".stats-card");
 
-        if (!kpiStats || kpiStats.length === 0) {
-            if (statsCard) statsCard.style.display = "none";
+        const today = new Date();
+        const cw = getCurrentWeekRange();
+        const currentMonthIso = (typeof parseToIsoDate === 'function' ? parseToIsoDate(today) : today.toISOString().slice(0, 10)).slice(0, 7);
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const y = today.getFullYear();
+
+        // 1. Dữ liệu tuần
+        let weekStats = null;
+        if (Array.isArray(storedKpi) && storedKpi.length > 0) {
+            const currentWeekData = storedKpi.filter(item => isItemActiveInWeek(item, cw.start, cw.end));
+            weekStats = calculateStats(currentWeekData.length > 0 ? currentWeekData : storedKpi, 'current_week');
+        } else if (kpiStats && !Array.isArray(kpiStats) && Object.keys(kpiStats).length > 0) {
+            weekStats = kpiStats;
+        }
+
+        const weekStatsCard = document.querySelector("#week-tab .stats-card");
+        if (!weekStats) {
+            if (weekStatsCard) weekStatsCard.style.display = "none";
         } else {
-            if (statsCard) statsCard.style.display = "block";
-            document.getElementById("stats-time").textContent = kpiStats.lastUpdated ? new Date(kpiStats.lastUpdated).toLocaleDateString('vi-VN') : '';
-            document.getElementById("total-tasks").textContent = kpiStats.totalTask || 0;
-            document.getElementById("estimate-time").textContent = (kpiStats.totalEstimate || 0) + 'h';
-            document.getElementById("spent-time").textContent = (kpiStats.totalSpent || 0) + 'h';
+            if (weekStatsCard) weekStatsCard.style.display = "block";
+            const statsTimeEl = document.getElementById("stats-time");
+            if (statsTimeEl) statsTimeEl.textContent = `${cw.startDisplay} - ${cw.endDisplay}`;
 
-            const dailySpent = kpiStats.dailySpentTime || 0;
+            document.getElementById("total-tasks").textContent = weekStats.totalTask || 0;
+            document.getElementById("estimate-time").textContent = (weekStats.totalEstimate || 0) + 'h';
+            document.getElementById("spent-time").textContent = (weekStats.totalSpent || 0) + 'h';
+
+            const dailySpent = parseFloat(weekStats.dailySpentTime) || 0;
             const dailyTarget = 8;
             const dailyProgress = Math.min((dailySpent / dailyTarget) * 100, 100);
             document.getElementById("estimate-time-daily").textContent = `${dailySpent}h / ${dailyTarget}h`;
             document.getElementById("progress-fill-daily").style.width = `${dailyProgress}%`;
 
-            const totalSpent = kpiStats.totalSpent || 0;
-            const totalTarget = kpiStats.totalTimeWorkingInCompany || 48;
+            const totalSpent = parseFloat(weekStats.totalSpent) || 0;
+            const totalTarget = weekStats.totalTimeWorkingInCompany || 48;
             const totalProgress = Math.min((totalSpent / totalTarget) * 100, 100);
             document.getElementById("estimate-time-total").textContent = `${totalSpent}h / ${totalTarget}h`;
             document.getElementById("progress-fill").style.width = `${totalProgress}%`;
+        }
+
+        // 2. Dữ liệu tháng
+        let monthStats = null;
+        if (Array.isArray(storedKpi) && storedKpi.length > 0) {
+            const currentMonthData = storedKpi.filter(item => isItemActiveInFilter(item, 'all_month', currentMonthIso));
+            monthStats = calculateStats(currentMonthData, 'all_month', currentMonthIso);
+        }
+
+        const monthStatsCard = document.querySelector("#month-tab .stats-card");
+        if (!monthStats) {
+            if (monthStatsCard) monthStatsCard.style.display = "none";
+        } else {
+            if (monthStatsCard) monthStatsCard.style.display = "block";
+            const monthTimeEl = document.getElementById("month-stats-time");
+            if (monthTimeEl) monthTimeEl.textContent = `${m}/${y}`;
+
+            document.getElementById("month-total-tasks").textContent = monthStats.totalTask || 0;
+            document.getElementById("month-estimate-time").textContent = (monthStats.totalEstimate || 0) + 'h';
+            document.getElementById("month-spent-time").textContent = (monthStats.totalSpent || 0) + 'h';
+
+            // Đúng hạn
+            document.getElementById("month-ontime-val").textContent = `${monthStats.onTimeRate || 0}%`;
+
+            // Dự báo KPI
+            const kpiResult = calculateKpiScore(monthStats);
+            const kpiScoreEl = document.getElementById("month-kpi-score");
+            if (kpiScoreEl) {
+                kpiScoreEl.innerHTML = `
+                    <span>${kpiResult.totalScore}/5.0</span>
+                    <span class="kpi-score-badge ${kpiResult.badge.class}">${kpiResult.badge.icon} ${kpiResult.badge.text}</span>
+                `;
+            }
+
+            // Tiến trình tháng (chuẩn 192h)
+            const monthSpent = parseFloat(monthStats.totalSpent) || 0;
+            const monthTarget = monthStats.workingHours || 192;
+            const monthProgress = Math.min((monthSpent / monthTarget) * 100, 100);
+            document.getElementById("month-spent-total").textContent = `${monthSpent}h / ${monthTarget}h`;
+            document.getElementById("month-progress-fill").style.width = `${monthProgress}%`;
         }
     }
 

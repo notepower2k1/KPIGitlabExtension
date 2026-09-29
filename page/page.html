@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="page.css">
 
     <script src="../utils.js"></script>
+    <script src="exceljs.min.js"></script>
     <script src="page.js" defer></script>
 </head>
 
@@ -18,32 +19,122 @@
         <header class="page-header">
             <h1>GitLab Productivity 📊</h1>
             <div class="button-container">
-                <button id="deleteAllTaskBtn" class="btn-danger">🗑️ Xóa Task</button>
-                <button id="exportCSVBtn" class="btn-secondary">📁 Xuất CSV</button>
-                <button id="getDetailBtn" class="btn-primary">📊 Thống kê</button>
-                <button id="getDailyTaskBtn" class="btn-accent">⌛ Daily task</button>
+                <button id="deleteWeekBtn" class="btn-danger" title="Xóa toàn bộ Task và Merge Request trong tuần đang chọn">🗑️ Xóa tuần</button>
+                <button id="deleteMonthBtn" class="btn-danger" title="Xóa toàn bộ Task và Merge Request trong tháng đang chọn">🗑️ Xóa tháng</button>
+                <button id="exportWeekKpiBtn" class="btn-excel" title="Xuất danh sách task và MR của tuần ra file Excel">📅 Xuất KPI tuần</button>
+                <button id="exportMonthKpiBtn" class="btn-excel" title="Xuất báo cáo KPI đầy đủ của tháng ra file Excel">📊 Xuất KPI Tháng</button>
+                <button id="getDetailBtn" class="btn-primary" title="Thống kê dữ liệu KPI">
+                    <span>📊 Thống kê</span>
+                    <span id="pendingCountBadge" class="btn-badge" style="display: none;">0</span>
+                </button>
+                <button id="getDailyTaskBtn" class="btn-accent" title="Sao chép báo cáo daily 3 phần">📋 Xuất Daily report</button>
             </div>
         </header>
 
-        <main class="content-grid">
-            <aside class="sidebar">
-                <div class="filter-card">
-                    <label for="weekdaySelect">📅 Lọc theo ngày</label>
-                    <select id="weekdaySelect">
-                        <option value="">-- Tất cả --</option>
-                    </select>
+        <!-- Filter Toolbar (Thanh bộ lọc ngang căn đều phía trên) -->
+        <div class="filter-card">
+            <div class="filter-group">
+                <label for="monthSelect">🗓️ Chọn Tháng</label>
+                <select id="monthSelect"></select>
+            </div>
+            <div class="filter-group">
+                <label for="timeFilterSelect">📅 Lọc theo Tuần / Ngày</label>
+                <select id="timeFilterSelect"></select>
+            </div>
+            <div id="customRangeCard" class="custom-range-card" style="display: none;">
+                <div class="range-inputs">
+                    <div class="range-field">
+                        <label for="startDateInput">Từ ngày</label>
+                        <input type="date" id="startDateInput">
+                    </div>
+                    <div class="range-field">
+                        <label for="endDateInput">Đến ngày</label>
+                        <input type="date" id="endDateInput">
+                    </div>
+                    <button id="applyRangeBtn" class="btn-primary">🔍 Áp dụng</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Controls: Tìm kiếm nhanh, Lọc phát hiện lỗi & Mở nhanh GitLab -->
+        <div class="quick-controls-card" id="quickControlsCard">
+            <div class="collapse-header" id="toggleControlsBtn" role="button" tabindex="0" title="Bấm để mở rộng / thu gọn bộ lọc">
+                <div class="collapse-header-title">
+                    <span class="collapse-icon">⚡</span>
+                    <span class="collapse-text">Tìm kiếm & Lọc nhanh</span>
+                    <span id="controlsActiveSummary" class="collapse-summary-badge" style="display: none;"></span>
+                </div>
+                <div class="collapse-header-right">
+                    <span id="controlsCollapseArrow" class="collapse-arrow">▼</span>
+                </div>
+            </div>
+
+            <div class="collapse-body" id="controlsBody" style="display: none;">
+                <div class="controls-top-row">
+                    <div class="search-bar-container">
+                        <div class="search-box-wrapper">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" id="kpiSearchInput" placeholder="Tìm kiếm theo tên task, #iid, URL, issue cha, dự án..." autocomplete="off">
+                            <button id="clearSearchBtn" class="btn-clear-search" title="Xóa tìm kiếm" style="display: none;">✕</button>
+                        </div>
+                        <span id="searchResultCount" class="search-result-count" style="display: none;"></span>
+                    </div>
+                    <div class="quick-actions-wrapper">
+                        <button id="openFilteredTabsBtn" class="btn-secondary btn-quick-action" title="Mở các task đang lọc trong danh sách trên các tab mới">
+                            <span>🌐 Mở tab</span>
+                            <span id="openTabsCountBadge" class="filter-count-badge">0</span>
+                        </button>
+                    </div>
                 </div>
 
-                <div id="allTaskContainer" class="list-container"></div>
-                <div id="allMergeRequestContainer" class="list-container"></div>
-            </aside>
+                <!-- Quick Filter Chips -->
+                <div class="chips-container">
+                    <span class="chips-label">⚡ Lọc nhanh:</span>
+                    <div class="chips-list">
+                        <button class="filter-chip active" data-filter="all" title="Hiển thị tất cả công việc">
+                            <span>Tất cả</span>
+                            <span class="chip-badge" id="chipCountAll">0</span>
+                        </button>
+                        <button class="filter-chip chip-mr" data-filter="mr" title="Chỉ hiển thị Merge Requests">
+                            <span>🚀 Merge Requests</span>
+                            <span class="chip-badge" id="chipCountMR">0</span>
+                        </button>
+                        <button class="filter-chip chip-late" data-filter="late" title="Công việc trễ hạn">
+                            <span>🔴 Trễ hạn</span>
+                            <span class="chip-badge" id="chipCountLate">0</span>
+                        </button>
+                        <button class="filter-chip chip-missing-time" data-filter="missing_time" title="Thiếu Estimate hoặc Spent">
+                            <span>⚠️ Thiếu Est/Spent</span>
+                            <span class="chip-badge" id="chipCountMissingTime">0</span>
+                        </button>
+                        <button class="filter-chip chip-missing-date" data-filter="missing_date" title="Thiếu ngày bắt đầu hoặc hạn chót">
+                            <span>📅 Thiếu Ngày</span>
+                            <span class="chip-badge" id="chipCountMissingDate">0</span>
+                        </button>
+                        <button class="filter-chip chip-reopen" data-filter="reopen" title="Công việc bị reopen">
+                            <span>🔄 Bị Reopen</span>
+                            <span class="chip-badge" id="chipCountReopen">0</span>
+                        </button>
+                        <button class="filter-chip chip-unplanned" data-filter="unplanned" title="Công việc phát sinh ngoài kế hoạch">
+                            <span>⚡ Phát sinh</span>
+                            <span class="chip-badge" id="chipCountUnplanned">0</span>
+                        </button>
+                        <button class="filter-chip chip-open" data-filter="open" title="Công việc đang mở (chưa đóng)">
+                            <span>⏳ Đang mở</span>
+                            <span class="chip-badge" id="chipCountOpen">0</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-            <section class="report-area">
-                <div id="spinner" class="loading-spinner" style="display: none;"></div>
-                <div id="kpiContainer"></div>
-                <!-- KPI Stat is now a separate visual piece -->
-                <div id="kpiStatsContainer"></div>
-            </section>
+        <main class="report-area">
+            <div id="spinner" class="loading-spinner" style="display: none;"></div>
+            <!-- Widget Dự Báo Điểm KPI & Sức Khỏe -->
+            <div id="kpiHealthContainer"></div>
+            <div id="kpiContainer"></div>
+            <!-- KPI Stat is now a separate visual piece -->
+            <div id="kpiStatsContainer"></div>
         </main>
     </div>
 </body>

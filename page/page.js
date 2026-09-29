@@ -20,281 +20,775 @@
     const WORK_ITEM_KEY = 'WorkItemIds';
     const MERGE_ITEM_KEY = 'MergeItemIds';
 
-    await getAllTasks();
-    await getAllMergeRequest();
+    const monthSelect = document.getElementById('monthSelect');
+    const timeFilterSelect = document.getElementById('timeFilterSelect');
+    const customRangeCard = document.getElementById('customRangeCard');
+    const startDateInput = document.getElementById('startDateInput');
+    const endDateInput = document.getElementById('endDateInput');
+    const applyRangeBtn = document.getElementById('applyRangeBtn');
 
-    if (allTaskInfo.length > 0) {
-        await renderOldKpi();
+    let currentPage = 1;
+    let pageSize = 25;
+    let groupSortStates = {};
+    let currentMRSort = { column: null, direction: null };
+
+    let currentSearchQuery = '';
+    let currentQuickFilter = 'all';
+    let currentFilteredUrls = [];
+    let isControlsCollapsed = true;
+    let isHealthCollapsed = true;
+
+    const kpiSearchInput = document.getElementById('kpiSearchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const searchResultCount = document.getElementById('searchResultCount');
+    const filterChips = document.querySelectorAll('.filter-chip');
+    const openFilteredTabsBtn = document.getElementById('openFilteredTabsBtn');
+    const openTabsCountBadge = document.getElementById('openTabsCountBadge');
+
+    const toggleControlsBtn = document.getElementById('toggleControlsBtn');
+    const controlsBody = document.getElementById('controlsBody');
+    const controlsCollapseArrow = document.getElementById('controlsCollapseArrow');
+    const controlsActiveSummary = document.getElementById('controlsActiveSummary');
+
+    function updateControlsSummary() {
+        if (!controlsActiveSummary) return;
+        const filterText = currentQuickFilter !== 'all' ? getFilterLabel(currentQuickFilter) : '';
+        const searchText = currentSearchQuery ? `"${currentSearchQuery}"` : '';
+
+        if (filterText && searchText) {
+            controlsActiveSummary.textContent = `Lọc: ${filterText} • ${searchText}`;
+            controlsActiveSummary.style.display = 'inline-flex';
+        } else if (filterText) {
+            controlsActiveSummary.textContent = `Lọc: ${filterText}`;
+            controlsActiveSummary.style.display = 'inline-flex';
+        } else if (searchText) {
+            controlsActiveSummary.textContent = `Tìm: ${searchText}`;
+            controlsActiveSummary.style.display = 'inline-flex';
+        } else {
+            controlsActiveSummary.style.display = 'none';
+        }
     }
 
-    const select = document.getElementById('weekdaySelect');
-    const days = getCurrentWeekDates();
+    function setControlsCollapsed(collapsed) {
+        isControlsCollapsed = collapsed;
+        if (controlsBody) {
+            controlsBody.style.display = collapsed ? 'none' : 'flex';
+        }
+        if (controlsCollapseArrow) {
+            controlsCollapseArrow.textContent = collapsed ? '▼' : '▲';
+        }
+    }
 
-    days.forEach(({ label, value }) => {
+    if (toggleControlsBtn) {
+        toggleControlsBtn.addEventListener('click', () => {
+            setControlsCollapsed(!isControlsCollapsed);
+        });
+    }
+
+    // Populate month options (quét thông minh toàn bộ tháng năm nay + các tháng có task)
+    const storedTasksForMonths = await getStoredIds(WORK_ITEM_KEY);
+    const storedMRsForMonths = await getStoredIds(MERGE_ITEM_KEY);
+    const storedKpiForMonths = await getStoredIds('KpiInfo');
+
+    const availableMonths = getAvailableMonths(storedTasksForMonths, storedMRsForMonths, storedKpiForMonths);
+    const currentMonthIso = parseToIsoDate(today).slice(0, 7);
+
+    availableMonths.forEach(m => {
         const option = document.createElement('option');
-        option.value = value;
-        option.textContent = label.charAt(0).toUpperCase() + label.slice(1); // Viết hoa chữ cái đầu
-        select.appendChild(option);
+        option.value = m.value;
+        option.textContent = m.label;
+        monthSelect.appendChild(option);
     });
 
-    select.addEventListener('change', async () => {
-        const selectedDate = select.value;
-        getAllTasks(selectedDate);
-        getAllMergeRequest(selectedDate);
+    monthSelect.value = currentMonthIso;
 
-        // Hide Get Detail button when a specific date is selected
-        const getDetailBtn = document.getElementById('getDetailBtn');
-        if (selectedDate) {
-            getDetailBtn.style.display = 'none';
-        } else {
-            getDetailBtn.style.display = 'inline-block';
+    function updateTimeFilterOptions() {
+        timeFilterSelect.innerHTML = '';
+        const selectedMonth = monthSelect.value;
+        const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+        const currentMonthVal = parseToIsoDate(today).slice(0, 7);
+        const isCurrentMonth = (selectedMonth === currentMonthVal);
+
+        // Group 1: Phạm vi chính
+        const mainGroup = document.createElement('optgroup');
+        mainGroup.label = 'Phạm vi xem';
+
+        if (isCurrentMonth) {
+            const cw = getCurrentWeekRange();
+            const curWeekOpt = document.createElement('option');
+            curWeekOpt.value = 'current_week';
+            curWeekOpt.textContent = cw.label;
+            mainGroup.appendChild(curWeekOpt);
         }
 
-        // Re-render KPI if data exists
-        const oldKpiInfo = await getStoredIds('KpiInfo');
-        if (oldKpiInfo && oldKpiInfo.length > 0) {
-            const oldKpiStats = await getStoredIds('KpiStats');
-            const lastUpdatedTime = new Date(oldKpiStats.lastUpdated);
+        const allMonthOpt = document.createElement('option');
+        allMonthOpt.value = 'all_month';
+        allMonthOpt.textContent = `📅 Cả tháng (${String(selMonth).padStart(2, '0')}/${selYear})`;
+        mainGroup.appendChild(allMonthOpt);
 
-            // Clear only the KPI tables, but keep the "Last Updated" title if we can
-            // For simplicity, we'll let renderKpi handle its own rendering.
-            // But we should remove existing tables first.
-            document.getElementById('kpiContainer').innerHTML = '';
+        const customRangeOpt = document.createElement('option');
+        customRangeOpt.value = 'custom_range';
+        customRangeOpt.textContent = '🗓️ Tùy chọn khoảng ngày...';
+        mainGroup.appendChild(customRangeOpt);
 
-            const lastUpdateTitle = document.createElement('h1');
-            lastUpdateTitle.textContent = 'Lần thống kê cuối: ' + lastUpdatedTime.toLocaleString();
+        timeFilterSelect.appendChild(mainGroup);
 
-            if (isInPreviousWeek(lastUpdatedTime)) {
-                lastUpdateTitle.textContent += ' (Tuần trước)';
-                lastUpdateTitle.style.color = 'red';
+        // Group 2: Các tuần trong tháng
+        const weeksGroup = document.createElement('optgroup');
+        weeksGroup.label = '── Các tuần trong tháng ──';
+        const weeks = getWeeksOfMonth(selYear, selMonth);
+        weeks.forEach(w => {
+            const opt = document.createElement('option');
+            opt.value = `week:${w.start}:${w.end}`;
+            opt.textContent = w.label;
+            weeksGroup.appendChild(opt);
+        });
+        timeFilterSelect.appendChild(weeksGroup);
+
+        // Group 3: Các ngày trong tháng
+        const daysGroup = document.createElement('optgroup');
+        daysGroup.label = '── Lọc theo ngày cụ thể ──';
+        const lastDayOfMonth = new Date(selYear, selMonth, 0).getDate();
+        const todayIso = parseToIsoDate(today);
+
+        for (let d = 1; d <= lastDayOfMonth; d++) {
+            const dateObj = new Date(selYear, selMonth - 1, d);
+            const dayIso = parseToIsoDate(dateObj);
+            const isToday = (dayIso === todayIso);
+            const dayName = dateObj.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
+            const opt = document.createElement('option');
+            opt.value = `day:${dayIso}`;
+            opt.textContent = `${dayName}${isToday ? ' (Hôm nay)' : ''}`;
+            daysGroup.appendChild(opt);
+        }
+        timeFilterSelect.appendChild(daysGroup);
+
+        // Default: current_week if current month, else all_month
+        if (isCurrentMonth) {
+            timeFilterSelect.value = 'current_week';
+        } else {
+            timeFilterSelect.value = 'all_month';
+        }
+
+        if (customRangeCard) {
+            customRangeCard.style.display = 'none';
+        }
+
+        if (startDateInput && !startDateInput.value) {
+            startDateInput.value = `${selYear}-${String(selMonth).padStart(2, '0')}-01`;
+        }
+        if (endDateInput && !endDateInput.value) {
+            endDateInput.value = parseToIsoDate(today);
+        }
+    }
+
+    updateTimeFilterOptions();
+
+    if (openFilteredTabsBtn) {
+        openFilteredTabsBtn.addEventListener('click', () => {
+            if (!currentFilteredUrls || currentFilteredUrls.length === 0) {
+                alert('Không có công việc nào trong danh sách đang lọc để mở.');
+                return;
             }
 
-            document.getElementById('kpiContainer').appendChild(lastUpdateTitle);
+            const count = currentFilteredUrls.length;
+            if (count > 5) {
+                const confirmed = confirm(`Bạn có muốn mở đồng thời ${count} tab công việc trên trình duyệt không?`);
+                if (!confirmed) return;
+            }
 
-            const divider = document.createElement('div');
-            divider.style.height = '1px';
-            divider.style.width = '100%';
-            divider.style.backgroundColor = 'gray';
-            divider.style.margin = '10px 0';
-            document.getElementById('kpiContainer').appendChild(divider);
+            currentFilteredUrls.forEach(url => {
+                window.open(url, '_blank');
+            });
+        });
+    }
+
+    if (kpiSearchInput) {
+        let searchDebounceTimer = null;
+        kpiSearchInput.addEventListener('input', (e) => {
+            clearTimeout(searchDebounceTimer);
+            const val = e.target.value.trim();
+            if (clearSearchBtn) {
+                clearSearchBtn.style.display = val ? 'inline-flex' : 'none';
+            }
+            searchDebounceTimer = setTimeout(async () => {
+                currentSearchQuery = val;
+                currentPage = 1;
+                updateControlsSummary();
+                await applyFilter();
+            }, 150);
+        });
+    }
+
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', async () => {
+            if (kpiSearchInput) {
+                kpiSearchInput.value = '';
+            }
+            clearSearchBtn.style.display = 'none';
+            currentSearchQuery = '';
+            currentPage = 1;
+            updateControlsSummary();
+            await applyFilter();
+        });
+    }
+
+    if (filterChips) {
+        filterChips.forEach(chip => {
+            chip.addEventListener('click', async () => {
+                const filterKey = chip.getAttribute('data-filter') || 'all';
+                currentQuickFilter = filterKey;
+                currentPage = 1;
+
+                filterChips.forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+
+                updateControlsSummary();
+                await applyFilter();
+            });
+        });
+    }
+
+    function isItemOpen(item) {
+        if (!item) return false;
+        if (item.isMR) {
+            return !item.closeDate || (item.state && String(item.state).toLowerCase() === 'opened');
+        }
+        return !item.closeDate || (item.state && String(item.state).toLowerCase() !== 'closed');
+    }
+
+    function getFilterLabel(key) {
+        switch (key) {
+            case 'mr': return '🚀 Merge Requests';
+            case 'late': return '🔴 Trễ hạn';
+            case 'missing_time': return '⚠️ Thiếu Estimate / Spent';
+            case 'missing_date': return '📅 Thiếu Ngày';
+            case 'reopen': return '🔄 Bị Reopen';
+            case 'unplanned': return '⚡ Phát sinh';
+            case 'open': return '⏳ Đang mở';
+            default: return 'Tất cả';
+        }
+    }
+
+    function setQuickFilter(filterKey) {
+        currentQuickFilter = filterKey;
+        currentPage = 1;
+        if (filterChips) {
+            filterChips.forEach(c => {
+                if (c.getAttribute('data-filter') === filterKey) {
+                    c.classList.add('active');
+                } else {
+                    c.classList.remove('active');
+                }
+            });
+        }
+        updateControlsSummary();
+        setControlsCollapsed(false); // Mở rộng thanh điều khiển để người dùng thấy rõ filter đang active
+    }
+
+    function updateChipCounts(items) {
+        const counts = {
+            all: (items || []).length,
+            mr: 0,
+            late: 0,
+            missing_time: 0,
+            missing_date: 0,
+            reopen: 0,
+            unplanned: 0,
+            open: 0
+        };
+
+        (items || []).forEach(it => {
+            if (it.isMR) {
+                counts.mr++;
+                return;
+            }
+
+            if (it.progress === 'Trễ hạn') counts.late++;
+            if (!it.estimate || Number(it.estimate) === 0 || !it.spent || Number(it.spent) === 0) counts.missing_time++;
+            if (!it.startDate || !it.dueDate) counts.missing_date++;
+            if ((it.reopenTotal || 0) > 0) counts.reopen++;
+            if (it.type === 'Phát sinh') counts.unplanned++;
+            if (isItemOpen(it)) counts.open++;
+        });
+
+        const setVal = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+        setVal('chipCountAll', counts.all);
+        setVal('chipCountMR', counts.mr);
+        setVal('chipCountLate', counts.late);
+        setVal('chipCountMissingTime', counts.missing_time);
+        setVal('chipCountMissingDate', counts.missing_date);
+        setVal('chipCountReopen', counts.reopen);
+        setVal('chipCountUnplanned', counts.unplanned);
+        setVal('chipCountOpen', counts.open);
+    }
+
+    function calculateKpiScore(stats) {
+        if (!stats || !stats.totalTask || stats.totalTask === 0) {
+            return {
+                totalScore: 0,
+                attitudeScore: 0,
+                volumeScore: 0,
+                qualityScore: 0,
+                badge: { text: "Chưa có dữ liệu", class: "badge-neutral", icon: "⚪" }
+            };
+        }
+        const s15 = getAttitudeScore(parseFloat(stats.noEstimateRate || 0));
+        const s20 = getAttitudeScore(parseFloat(stats.noStartDateRate || 0));
+        const s25 = getAttitudeScore(parseFloat(stats.noDueDateRate || 0));
+        const s30 = getAttitudeScore(parseFloat(stats.noSpentRate || 0));
+        const s35 = getVolumeScore(parseFloat(stats.spentTimeVsWorkingHoursRate || 0));
+        const s40 = getQualityScore(parseFloat(stats.lateRate || 0));
+        const s45 = getQualityScore(parseFloat(stats.reopenRate || 0));
+
+        const attitudeScore = (s15 * 0.25 + s20 * 0.25 + s25 * 0.25 + s30 * 0.25);
+        const volumeScore = s35;
+        const qualityScore = (s40 + s45) / 2;
+
+        const total = (
+            s15 * 0.25 +
+            s20 * 0.25 +
+            s25 * 0.25 +
+            s30 * 0.25 +
+            s35 * 3 +
+            s40 * 3 +
+            s45 * 3
+        ) / 10;
+
+        const totalScore = parseFloat(total.toFixed(2));
+
+        let badge = { text: "Cần chú ý", class: "badge-danger", icon: "⚠️" };
+        if (totalScore >= 4.5) {
+            badge = { text: "Xuất sắc", class: "badge-success", icon: "🌟" };
+        } else if (totalScore >= 3.8) {
+            badge = { text: "Tốt", class: "badge-info", icon: "🟢" };
+        } else if (totalScore >= 3.0) {
+            badge = { text: "Khá", class: "badge-warning", icon: "🟡" };
+        }
+
+        return {
+            totalScore,
+            attitudeScore: parseFloat(attitudeScore.toFixed(2)),
+            volumeScore: parseFloat(volumeScore.toFixed(2)),
+            qualityScore: parseFloat(qualityScore.toFixed(2)),
+            badge
+        };
+    }
+
+    function renderKpiHealthCard(periodStats, periodLabel, baseItemsCount) {
+        const container = document.getElementById('kpiHealthContainer');
+        if (!container) return;
+
+        if (!baseItemsCount || baseItemsCount === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const scoreInfo = calculateKpiScore(periodStats);
+        const spentVal = parseFloat(periodStats.totalSpent) || 0;
+        const targetHours = periodStats.workingHours || 48;
+        const spentPercent = targetHours > 0 ? (spentVal / targetHours) * 100 : 0;
+
+        let hoursBarClass = 'bar-red';
+        if (spentPercent >= 90) hoursBarClass = 'bar-green';
+        else if (spentPercent >= 75) hoursBarClass = 'bar-blue';
+        else if (spentPercent >= 50) hoursBarClass = 'bar-amber';
+
+        // Build actionable checklist items
+        const alerts = [];
+
+        if (periodStats.totalTaskLate > 0) {
+            alerts.push({
+                type: 'danger',
+                filter: 'late',
+                text: `🔴 Có <strong>${periodStats.totalTaskLate}</strong> công việc trễ hạn (${periodStats.lateRate}%)`,
+                actionText: 'Xem lỗi ➔'
+            });
+        } else {
+            alerts.push({
+                type: 'success',
+                text: `🟢 100% công việc đúng hạn`
+            });
+        }
+
+        const missingEstCount = periodStats.totalTaskNoEstimate || 0;
+        const missingSpentCount = periodStats.totalTaskNoSpent || 0;
+        if (missingEstCount > 0 || missingSpentCount > 0) {
+            alerts.push({
+                type: 'warning',
+                filter: 'missing_time',
+                text: `⚠️ Thiếu Estimate: <strong>${missingEstCount}</strong> • Thiếu Spent: <strong>${missingSpentCount}</strong>`,
+                actionText: 'Xem lỗi ➔'
+            });
+        } else {
+            alerts.push({
+                type: 'success',
+                text: `🟢 Đầy đủ Estimate và Spent`
+            });
+        }
+
+        const missingDateCount = Math.max(periodStats.totalTaskNoStartDate || 0, periodStats.totalTaskNoDueDate || 0);
+        if (missingDateCount > 0) {
+            alerts.push({
+                type: 'warning',
+                filter: 'missing_date',
+                text: `📅 Có <strong>${missingDateCount}</strong> công việc thiếu Ngày`,
+                actionText: 'Xem lỗi ➔'
+            });
+        }
+
+        if (periodStats.totalTaskReopen > 0) {
+            alerts.push({
+                type: 'info',
+                filter: 'reopen',
+                text: `🔄 Có <strong>${periodStats.totalTaskReopen}</strong> công việc bị reopen (${periodStats.reopenRate}%)`,
+                actionText: 'Xem lỗi ➔'
+            });
+        }
+
+        const alertsHtml = alerts.map(a => {
+            const isClickable = Boolean(a.filter);
+            return `
+                <div class="health-alert-item alert-${a.type} ${isClickable ? 'clickable' : ''}" ${isClickable ? `data-alert-filter="${a.filter}"` : ''} title="${isClickable ? 'Bấm để lọc các công việc này' : ''}">
+                    <span>${a.text}</span>
+                    ${isClickable ? `<span class="alert-action-pill">${a.actionText}</span>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        const isExpanded = !isHealthCollapsed;
+        container.innerHTML = `
+            <div class="kpi-health-card">
+                <div class="kpi-health-header ${isExpanded ? 'expanded' : ''}" id="toggleHealthBtn" role="button" tabindex="0" title="Bấm để mở rộng / thu gọn chi tiết dự báo KPI">
+                    <div class="kpi-health-title">
+                        <span class="health-icon">🎯</span>
+                        <div class="health-title-text">
+                            <h3>Dự Báo Điểm KPI & Sức Khỏe Hiệu Suất</h3>
+                            <span>Kỳ đánh giá: <strong>${periodLabel}</strong></span>
+                        </div>
+                    </div>
+                    <div class="kpi-health-header-right">
+                        <div class="kpi-health-badge ${scoreInfo.badge.class}">
+                            ${scoreInfo.badge.icon} ${scoreInfo.badge.text} (${scoreInfo.totalScore} / 5.0)
+                        </div>
+                        <span class="collapse-arrow health-collapse-arrow">${isExpanded ? '▲' : '▼'}</span>
+                    </div>
+                </div>
+
+                <div class="kpi-health-body" id="kpiHealthBody" style="${isExpanded ? 'display: block;' : 'display: none;'}">
+                    <div class="kpi-health-grid">
+                        <!-- Col 1: Điểm dự báo -->
+                        <div class="health-card-item">
+                            <div class="score-header-label">Dự báo điểm KPI (Thang 5.0)</div>
+                            <div class="big-score-display">
+                                <span class="big-score">${scoreInfo.totalScore}</span>
+                                <span class="score-scale">/ 5.0</span>
+                            </div>
+                            <div class="score-pills">
+                                <div class="score-pill" title="Thái độ (Estimate, Spent, Ngày tháng): Hệ số 1.0">
+                                    <span class="pill-label">Thái độ</span>
+                                    <span class="pill-val">${scoreInfo.attitudeScore}/5</span>
+                                </div>
+                                <div class="score-pill" title="Khối lượng (Giờ làm việc): Hệ số 3.0">
+                                    <span class="pill-label">Khối lượng</span>
+                                    <span class="pill-val">${scoreInfo.volumeScore}/5</span>
+                                </div>
+                                <div class="score-pill" title="Chất lượng (Đúng hạn & Reopen): Hệ số 6.0">
+                                    <span class="pill-label">Chất lượng</span>
+                                    <span class="pill-val">${scoreInfo.qualityScore}/5</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Col 2: Tiến độ giờ làm việc -->
+                        <div class="health-card-item">
+                            <div class="hours-meta-top">
+                                <span class="hours-title">⌛ Tiến độ giờ làm việc</span>
+                                <span class="hours-numbers"><strong>${periodStats.totalSpent}h</strong> / ${targetHours}h</span>
+                            </div>
+                            <div class="hours-track">
+                                <div class="hours-bar ${hoursBarClass}" style="width: ${Math.min(100, spentPercent)}%;"></div>
+                            </div>
+                            <div class="hours-meta-bottom">
+                                <span>Đạt <strong>${spentPercent.toFixed(1)}%</strong> tiêu chuẩn</span>
+                                <span>Kế hoạch: ${periodStats.totalSpentPlannedTask}h • Phát sinh: ${periodStats.totalSpentUnplannedTask}h</span>
+                            </div>
+                        </div>
+
+                        <!-- Col 3: Cảnh báo & Đề xuất xử lý -->
+                        <div class="health-card-item">
+                            <div class="alerts-title">🛡️ Sức khỏe KPI & Lối tắt xử lý</div>
+                            <div class="health-alerts-list">
+                                ${alertsHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const toggleHealthBtn = container.querySelector('#toggleHealthBtn');
+        const healthBody = container.querySelector('#kpiHealthBody');
+        const healthArrow = container.querySelector('.health-collapse-arrow');
+
+        if (toggleHealthBtn) {
+            toggleHealthBtn.addEventListener('click', () => {
+                isHealthCollapsed = !isHealthCollapsed;
+                if (healthBody) healthBody.style.display = isHealthCollapsed ? 'none' : 'block';
+                if (healthArrow) healthArrow.textContent = isHealthCollapsed ? '▼' : '▲';
+                toggleHealthBtn.classList.toggle('expanded', !isHealthCollapsed);
+            });
+        }
+
+        container.querySelectorAll('.health-alert-item.clickable').forEach(item => {
+            item.addEventListener('click', async () => {
+                const targetFilter = item.getAttribute('data-alert-filter');
+                if (targetFilter) {
+                    setQuickFilter(targetFilter);
+                    await applyFilter();
+                    const kpiTable = document.getElementById('kpiContainer');
+                    if (kpiTable) {
+                        kpiTable.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
+            });
+        });
+    }
+
+    async function applyFilter() {
+        const oldKpiInfo = await getStoredIds('KpiInfo');
+        const healthContainer = document.getElementById('kpiHealthContainer');
+        if (oldKpiInfo && oldKpiInfo.length > 0) {
+            const oldKpiStats = await getStoredIds('KpiStats');
+            const lastUpdatedTime = oldKpiStats?.lastUpdated ? new Date(oldKpiStats.lastUpdated) : null;
+
+            document.getElementById('kpiContainer').innerHTML = '';
+
+            if (lastUpdatedTime && !isNaN(lastUpdatedTime.getTime())) {
+                const lastUpdateTitle = document.createElement('h1');
+                lastUpdateTitle.textContent = 'Lần thống kê cuối: ' + lastUpdatedTime.toLocaleString();
+
+                if (isInPreviousWeek(lastUpdatedTime)) {
+                    lastUpdateTitle.textContent += ' (Tuần trước)';
+                    lastUpdateTitle.style.color = 'red';
+                }
+
+                document.getElementById('kpiContainer').appendChild(lastUpdateTitle);
+
+                const divider = document.createElement('div');
+                divider.style.height = '1px';
+                divider.style.width = '100%';
+                divider.style.backgroundColor = 'gray';
+                divider.style.margin = '10px 0';
+                document.getElementById('kpiContainer').appendChild(divider);
+            }
 
             await renderKpi(oldKpiInfo);
+        } else {
+            if (healthContainer) healthContainer.innerHTML = '';
+        }
+    }
+
+    monthSelect.addEventListener('change', async () => {
+        currentPage = 1;
+        updateTimeFilterOptions();
+        await applyFilter();
+    });
+
+    timeFilterSelect.addEventListener('change', async () => {
+        currentPage = 1;
+        if (timeFilterSelect.value === 'custom_range') {
+            if (customRangeCard) customRangeCard.style.display = 'block';
+            await applyFilter();
+        } else {
+            if (customRangeCard) customRangeCard.style.display = 'none';
+            await applyFilter();
         }
     });
 
-    async function getAllTasks(filterDate = null) {
-
-        const container = document.getElementById('allTaskContainer');
-        container.innerHTML = ''; // Clear table mỗi lần render
-
-        const storedItems = await getStoredIds(WORK_ITEM_KEY);
-
-        const groups = {};
-        allTaskInfo = []; // Reset lại mảng lưu thông tin
-
-        storedItems.forEach(({ id, href, createAt }) => {
-            const match = href.match(/gitlab\.widosoft\.com\/[^\/]+\/([^\/]+)\//);
-            const groupName = match ? match[1] : 'Khác';
-
-            if (!groups[groupName]) groups[groupName] = [];
-
-            groups[groupName].push({ id, href });
-            allTaskInfo.push({ href, id, groupName, createAt });
+    if (applyRangeBtn) {
+        applyRangeBtn.addEventListener('click', async () => {
+            if (!startDateInput.value || !endDateInput.value) {
+                alert('Vui lòng chọn đầy đủ ngày bắt đầu và ngày kết thúc!');
+                return;
+            }
+            if (startDateInput.value > endDateInput.value) {
+                alert('Ngày bắt đầu không được lớn hơn ngày kết thúc!');
+                return;
+            }
+            currentPage = 1;
+            await applyFilter();
         });
-
-        // Lọc theo ngày nếu có filterDate
-        const filteredTasks = filterDate
-            ? allTaskInfo.filter(task => toIsoDate(task.createAt) === filterDate)
-            : allTaskInfo;
-
-        if (filteredTasks.length === 0) {
-            renderEmptyTable();
-            checkAndDisableGetDetailBtn();
-            return;
-        } else {
-            enableGetDetailBtn();
-        };
-
-        const table = document.createElement('table');
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Group</th>
-                    <th>Ngày tạo</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        `;
-
-        const tbody = table.querySelector('tbody');
-
-        for (const taskInfo of filteredTasks) {
-            const row = document.createElement('tr');
-
-            const urlCell = document.createElement('td');
-            const link = document.createElement('a');
-            link.href = taskInfo.href;
-            link.textContent = '#' + taskInfo.href.split('/').pop();
-            link.title = taskInfo.href;
-            link.target = '_blank';
-            urlCell.appendChild(link);
-
-            const groupNameCell = document.createElement('td');
-            const groupLink = document.createElement('a');
-            const newUrl = taskInfo.href.replace(/\/work_items\/\d+/, "/issues");
-            groupLink.href = newUrl;
-            groupLink.target = '_blank';
-            groupLink.textContent = cleanGroupName(taskInfo.groupName);
-            groupLink.style.fontSize = '0.75rem';
-            groupNameCell.appendChild(groupLink);
-
-            const createDateCell = document.createElement('td');
-            createDateCell.textContent = taskInfo.createAt.split(',')[0]; // Chỉ hiện ngày, bỏ giờ
-            createDateCell.style.fontSize = '0.75rem';
-
-            const deleteCell = document.createElement('td');
-            deleteCell.style.textAlign = 'right';
-            const deleteButton = document.createElement('button');
-            deleteButton.innerHTML = '🗑️';
-            deleteButton.title = 'Xóa';
-            deleteButton.style.padding = '4px 8px';
-            deleteButton.style.fontSize = '12px';
-            deleteButton.className = 'btn-danger';
-
-            deleteButton.addEventListener('click', async () => {
-                await removeIdFromStorage(WORK_ITEM_KEY, taskInfo.id);
-                row.remove();
-                allTaskInfo = allTaskInfo.filter(item => item.id !== taskInfo.id);
-
-                if (tbody.children.length === 0) {
-                    table.remove();
-                    renderEmptyTable();
-                }
-            });
-
-            deleteCell.appendChild(deleteButton);
-
-            row.appendChild(urlCell);
-            row.appendChild(groupNameCell);
-            row.appendChild(createDateCell);
-            row.appendChild(deleteCell);
-            tbody.appendChild(row);
-        }
-
-        container.appendChild(table);
     }
 
+    // Khởi tạo trang: kiểm tra dữ liệu và render KPI nếu đã có
+    await checkAndDisableGetDetailBtn();
 
-    async function getAllMergeRequest(filterDate = null) {
-
-        const container = document.getElementById('allMergeRequestContainer');
-        container.innerHTML = ''; // Clear table mỗi lần render
-
-        const mergeRequestData = await getStoredIds(MERGE_ITEM_KEY);
-
-        allMergeRequestInfo = [];
-
-        mergeRequestData.forEach(({ id, href, createAt }) => {
-            const match = href.match(/gitlab\.widosoft\.com\/[^\/]+\/([^\/]+)\//);
-            const groupName = match ? match[1] : 'Khác';
-            allMergeRequestInfo.push({ id, href, createAt, groupName });
-        });
-
-        // Lọc theo ngày nếu có filterDate
-        const filteredTasks = filterDate
-            ? allMergeRequestInfo.filter(item => toIsoDate(item.createAt) === filterDate)
-            : allMergeRequestInfo;
-
-        if (filteredTasks.length === 0) {
-            renderEmptyMergeRequestTable();
-            checkAndDisableGetDetailBtn();
-            return;
+    const initialKpiInfo = await getStoredIds('KpiInfo');
+    if (initialKpiInfo && initialKpiInfo.length > 0) {
+        await renderOldKpi();
+    } else {
+        const storedTasks = await getStoredIds(WORK_ITEM_KEY);
+        const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
+        if ((storedTasks && storedTasks.length > 0) || (storedMRs && storedMRs.length > 0)) {
+            document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">Bấm nút "📊 Thống kê" ở góc trên để bắt đầu tính toán KPI.</div>';
         } else {
-            enableGetDetailBtn();
-        };
+            document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">Chưa có task hoặc Merge Request nào được lưu trữ.</div>';
+        }
+    }
 
-        const table = document.createElement('table');
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Group</th>
-                    <th>Ngày tạo</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        `;
-
-        const tbody = table.querySelector('tbody');
-
-        for (const mergeRequestInfo of filteredTasks) {
-            const row = document.createElement('tr');
-
-            const urlCell = document.createElement('td');
-            const link = document.createElement('a');
-            link.href = mergeRequestInfo.href;
-            link.textContent = '!' + mergeRequestInfo.href.split('/').pop(); // MR thường dùng dấu !
-            link.title = mergeRequestInfo.href;
-            link.target = '_blank';
-            urlCell.appendChild(link);
-
-            const groupNameCell = document.createElement('td');
-            const groupLink = document.createElement('a');
-            const newUrl = mergeRequestInfo.href.replace(/\/merge_requests\/\d+/, "/merge_requests");
-            groupLink.href = newUrl;
-            groupLink.target = '_blank';
-            groupLink.textContent = cleanGroupName(mergeRequestInfo.groupName);
-            groupLink.style.fontSize = '0.75rem';
-            groupNameCell.appendChild(groupLink);
-
-            const createDateCell = document.createElement('td');
-            createDateCell.textContent = mergeRequestInfo.createAt.split(',')[0];
-            createDateCell.style.fontSize = '0.75rem';
-
-            const deleteCell = document.createElement('td');
-            deleteCell.style.textAlign = 'right';
-            const deleteButton = document.createElement('button');
-            deleteButton.innerHTML = '🗑️';
-            deleteButton.title = 'Xóa';
-            deleteButton.style.padding = '4px 8px';
-            deleteButton.style.fontSize = '12px';
-            deleteButton.className = 'btn-danger';
-
-            deleteButton.addEventListener('click', async () => {
-                await removeIdFromStorage(MERGE_ITEM_KEY, mergeRequestInfo.id);
-                row.remove();
-                allMergeRequestInfo = allMergeRequestInfo.filter(item => item.id !== mergeRequestInfo.id);
-
-                if (tbody.children.length === 0) {
-                    table.remove();
-                    renderEmptyMergeRequestTable();
-                }
-            });
-
-            deleteCell.appendChild(deleteButton);
-
-            row.appendChild(urlCell);
-            row.appendChild(groupNameCell);
-            row.appendChild(createDateCell);
-            row.appendChild(deleteCell);
-            tbody.appendChild(row);
+    async function deleteKpiItems(itemsToDelete, confirmMsg = null) {
+        if (!itemsToDelete || itemsToDelete.length === 0) {
+            alert('Không có công việc nào để xóa.');
+            return;
         }
 
-        container.appendChild(table);
+        if (confirmMsg) {
+            const confirmed = confirm(confirmMsg);
+            if (!confirmed) return;
+        }
+
+        const storedTasks = await getStoredIds(WORK_ITEM_KEY);
+        const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
+        const storedKpi = await getStoredIds('KpiInfo');
+
+        const shouldDelete = (raw) => itemsToDelete.some(target => isSameItem(raw, target));
+
+        const newTasks = (storedTasks || []).filter(raw => !shouldDelete(raw));
+        const newMRs = (storedMRs || []).filter(raw => !shouldDelete(raw));
+        const newKpi = (storedKpi || []).filter(k => !shouldDelete(k));
+
+        await chrome.storage.local.set({
+            [WORK_ITEM_KEY]: newTasks,
+            [MERGE_ITEM_KEY]: newMRs,
+            ['KpiInfo']: newKpi
+        });
+
+        currentPage = 1;
+        await applyFilter();
+        await checkAndDisableGetDetailBtn();
+    }
+
+    async function deleteKpiItem(itemToDelete) {
+        const itemLabel = itemToDelete.title || itemToDelete.taskUrl;
+        const typeLabel = itemToDelete.isMR ? 'Merge Request' : 'Task';
+        const msg = `Bạn có chắc muốn xóa ${typeLabel} "${itemLabel}" khỏi danh sách?`;
+        await deleteKpiItems([itemToDelete], msg);
+    }
+
+    async function deleteWeekItems(wb) {
+        if (!wb || !wb.items || wb.items.length === 0) {
+            alert('Không có công việc nào trong tuần này để xóa.');
+            return;
+        }
+        const cleanTitle = wb.title.replace(/^📦\s*/, '');
+        const count = wb.items.length;
+        const msg = `Bạn có chắc muốn xóa toàn bộ ${count} công việc (bao gồm cả Task và Merge Request) trong "${cleanTitle}"?`;
+        await deleteKpiItems(wb.items, msg);
+    }
+
+    async function deleteByDateRange(startIso, endIso, confirmMsg = null) {
+        const storedTasks = await getStoredIds(WORK_ITEM_KEY);
+        const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
+        const storedKpi = await getStoredIds('KpiInfo');
+
+        const inRange = (dStr) => isDateInWeek(dStr, startIso, endIso);
+
+        const tasksToDelete = (storedTasks || []).filter(item => inRange(item.createAt || item.addedAt));
+        const mrsToDelete = (storedMRs || []).filter(item => inRange(item.createAt || item.addedAt));
+        const kpiToDelete = (storedKpi || []).filter(item => inRange(item.addedAt || item.createAt));
+
+        const totalCount = Math.max(tasksToDelete.length + mrsToDelete.length, kpiToDelete.length);
+        if (totalCount === 0) {
+            alert('Không có công việc hoặc Merge Request nào trong khoảng thời gian này để xóa.');
+            return;
+        }
+
+        if (confirmMsg) {
+            const confirmed = confirm(confirmMsg);
+            if (!confirmed) return;
+        }
+
+        const itemsToDeleteList = [...tasksToDelete, ...mrsToDelete, ...kpiToDelete];
+        const isTarget = (raw) => {
+            if (inRange(raw.createAt || raw.addedAt)) return true;
+            return itemsToDeleteList.some(target => isSameItem(raw, target));
+        };
+
+        const newTasks = (storedTasks || []).filter(raw => !isTarget(raw));
+        const newMRs = (storedMRs || []).filter(raw => !isTarget(raw));
+        const newKpi = (storedKpi || []).filter(k => !isTarget(k));
+
+        await chrome.storage.local.set({
+            [WORK_ITEM_KEY]: newTasks,
+            [MERGE_ITEM_KEY]: newMRs,
+            ['KpiInfo']: newKpi
+        });
+
+        currentPage = 1;
+        await applyFilter();
+        await checkAndDisableGetDetailBtn();
+    }
+
+    async function deleteByMonth(monthIso, confirmMsg = null) {
+        const storedTasks = await getStoredIds(WORK_ITEM_KEY);
+        const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
+        const storedKpi = await getStoredIds('KpiInfo');
+
+        const inMonth = (dStr) => {
+            const iso = parseToIsoDate(dStr);
+            return iso && iso.startsWith(monthIso);
+        };
+
+        const tasksToDelete = (storedTasks || []).filter(item => inMonth(item.createAt || item.addedAt));
+        const mrsToDelete = (storedMRs || []).filter(item => inMonth(item.createAt || item.addedAt));
+        const kpiToDelete = (storedKpi || []).filter(item => inMonth(item.addedAt || item.createAt));
+
+        const totalCount = Math.max(tasksToDelete.length + mrsToDelete.length, kpiToDelete.length);
+        if (totalCount === 0) {
+            alert('Không có công việc hoặc Merge Request nào trong tháng này để xóa.');
+            return;
+        }
+
+        if (confirmMsg) {
+            const confirmed = confirm(confirmMsg);
+            if (!confirmed) return;
+        }
+
+        const itemsToDeleteList = [...tasksToDelete, ...mrsToDelete, ...kpiToDelete];
+        const isTarget = (raw) => {
+            if (inMonth(raw.createAt || raw.addedAt)) return true;
+            return itemsToDeleteList.some(target => isSameItem(raw, target));
+        };
+
+        const newTasks = (storedTasks || []).filter(raw => !isTarget(raw));
+        const newMRs = (storedMRs || []).filter(raw => !isTarget(raw));
+        const newKpi = (storedKpi || []).filter(k => !isTarget(k));
+
+        await chrome.storage.local.set({
+            [WORK_ITEM_KEY]: newTasks,
+            [MERGE_ITEM_KEY]: newMRs,
+            ['KpiInfo']: newKpi
+        });
+
+        currentPage = 1;
+        await applyFilter();
+        await checkAndDisableGetDetailBtn();
     }
 
 
     document.getElementById('getDetailBtn').addEventListener('click', async () => {
-        const accessToken = getAccessToken();
+        const accessToken = await getAccessToken();
 
         if (!accessToken) {
             alert('Chưa set access token');
             return;
         }
 
+        currentPage = 1;
         document.getElementById('kpiContainer').innerHTML = '';
         document.getElementById('kpiStatsContainer').innerHTML = '';
 
@@ -303,16 +797,46 @@
 
         console.log('Loading new data');
 
-        const allItems = [...allTaskInfo, ...allMergeRequestInfo];
+        const storedTasks = await getStoredIds(WORK_ITEM_KEY);
+        const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
 
-        const kpiInfoPromises = allItems.map(({ createAt, href, id, groupName }) => {
-            return getWorkItemDetailNew(createAt, href, groupName);
+        const allItems = [];
+        (storedTasks || []).forEach(task => {
+            const { id, href, createAt, parentTitle, parentUrl, parentIid, taskTitle } = task;
+            const match = href.match(/gitlab\.widosoft\.com\/[^\/]+\/([^\/]+)\//);
+            const groupName = match ? match[1] : 'Khác';
+            allItems.push({
+                id,
+                href,
+                createAt,
+                groupName,
+                isMR: false,
+                storedData: { parentTitle, parentUrl, parentIid, taskTitle }
+            });
         });
-        const kpiInfo = await Promise.all(kpiInfoPromises);
+        (storedMRs || []).forEach(mr => {
+            const { id, href, createAt, parentTitle, parentUrl, title } = mr;
+            const match = href.match(/gitlab\.widosoft\.com\/[^\/]+\/([^\/]+)\//);
+            const groupName = match ? match[1] : 'Khác';
+            allItems.push({
+                id,
+                href,
+                createAt,
+                groupName,
+                isMR: true,
+                storedData: { parentTitle, parentUrl, taskTitle: title }
+            });
+        });
+
+        const kpiInfoPromises = allItems.map(({ createAt, href, id, groupName, isMR, storedData }) => {
+            return getWorkItemDetailNew(createAt, href, groupName, id, isMR, storedData);
+        });
+        const kpiInfoRaw = await Promise.all(kpiInfoPromises);
+        const kpiInfo = kpiInfoRaw.filter(item => item !== null);
 
         if (kpiInfo.length === 0) {
             document.getElementById('spinner').style.display = 'none'; // Ẩn loading sau khi render xong
-            document.getElementById('kpiContainer').innerHTML = ''; // Xóa nội dung cũ trước khi render
+            document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">Không có dữ liệu để thống kê.</div>';
             return;
         }
 
@@ -334,32 +858,153 @@
         divider.style.margin = '10px 0';
         document.getElementById('kpiContainer').appendChild(divider);
 
-        await renderKpi(kpiInfo, true);
         await saveKpiInfo(kpiInfo);
+        await renderKpi(kpiInfo, true);
+        await updatePendingStatsBadge();
 
         document.getElementById('spinner').style.display = 'none'; // Ẩn loading sau khi render xong
     });
 
-    document.getElementById('deleteAllTaskBtn').addEventListener('click', async () => {
-        const confirmDelete = confirm('Xóa tất cả task?');
+    const deleteWeekBtn = document.getElementById('deleteWeekBtn');
+    if (deleteWeekBtn) {
+        deleteWeekBtn.addEventListener('click', async () => {
+            const selectedMonth = monthSelect.value;
+            const filterVal = timeFilterSelect.value;
+            const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+            const monthWeeks = getWeeksOfMonth(selYear, selMonth);
 
-        if (!confirmDelete) {
-            return;
-        }
+            let targetStart = null;
+            let targetEnd = null;
+            let targetLabel = '';
 
-        const WORK_ITEM_KEY = 'WorkItemIds';
-        allTaskInfo = [];
-        await deletelocalStorage(WORK_ITEM_KEY);
-        renderEmptyTable();
-    });
+            if (filterVal === 'current_week') {
+                const cw = getCurrentWeekRange();
+                targetStart = cw.start;
+                targetEnd = cw.end;
+                targetLabel = cw.label;
+            } else if (filterVal.startsWith('week:')) {
+                const parts = filterVal.split(':');
+                targetStart = parts[1];
+                targetEnd = parts[2];
+                const found = monthWeeks.find(w => w.start === targetStart && w.end === targetEnd);
+                targetLabel = found ? found.label : `Tuần (${formatDate(targetStart)} - ${formatDate(targetEnd)})`;
+            } else if (filterVal.startsWith('day:')) {
+                const dayIso = filterVal.replace('day:', '');
+                targetStart = dayIso;
+                targetEnd = dayIso;
+                targetLabel = `Ngày ${formatDate(dayIso)}`;
+            } else if (filterVal === 'custom_range') {
+                targetStart = startDateInput?.value;
+                targetEnd = endDateInput?.value;
+                if (!targetStart || !targetEnd) {
+                    alert('Vui lòng chọn ngày bắt đầu và kết thúc ở bộ lọc khoảng ngày.');
+                    return;
+                }
+                targetLabel = `Khoảng ngày ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
+            } else if (filterVal === 'all_month') {
+                const storedKpi = await getStoredIds('KpiInfo');
+                const monthItems = (storedKpi || []).filter(item => matchesFilter(item.addedAt, 'all_month', selectedMonth, '', ''));
+                const activeWeeks = monthWeeks.filter(w => monthItems.some(item => isDateInWeek(item.addedAt, w.start, w.end)));
 
-    document.getElementById('exportCSVBtn').addEventListener('click', async () => {
-        const container = document.getElementById('kpiContainer');
+                if (activeWeeks.length === 0) {
+                    alert(`Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có công việc nào để xóa.`);
+                    return;
+                }
 
-        if (container.innerHTML != '') {
-            exportAllTablesToCSV();
-        }
-    })
+                if (activeWeeks.length === 1) {
+                    targetStart = activeWeeks[0].start;
+                    targetEnd = activeWeeks[0].end;
+                    targetLabel = activeWeeks[0].label;
+                } else {
+                    let promptText = `Chọn tuần trong tháng ${String(selMonth).padStart(2, '0')}/${selYear} bạn muốn xóa:\n\n`;
+                    activeWeeks.forEach((w, idx) => {
+                        const itemsCount = monthItems.filter(item => isDateInWeek(item.addedAt, w.start, w.end)).length;
+                        promptText += `${idx + 1}. ${w.label} (${itemsCount} công việc)\n`;
+                    });
+                    promptText += `\nNhập số thứ tự tuần (1 - ${activeWeeks.length}) hoặc nhấn Hủy:`;
+                    const choice = prompt(promptText);
+                    if (!choice) return;
+                    const chosenIdx = parseInt(choice, 10) - 1;
+                    if (chosenIdx >= 0 && chosenIdx < activeWeeks.length) {
+                        targetStart = activeWeeks[chosenIdx].start;
+                        targetEnd = activeWeeks[chosenIdx].end;
+                        targetLabel = activeWeeks[chosenIdx].label;
+                    } else {
+                        alert('Lựa chọn không hợp lệ.');
+                        return;
+                    }
+                }
+            }
+
+            if (!targetStart || !targetEnd) {
+                alert('Không xác định được phạm vi tuần cần xóa.');
+                return;
+            }
+
+            const storedTasks = await getStoredIds(WORK_ITEM_KEY);
+            const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
+            const storedKpi = await getStoredIds('KpiInfo');
+
+            const inRange = (dStr) => isDateInWeek(dStr, targetStart, targetEnd);
+            const taskCount = (storedTasks || []).filter(it => inRange(it.createAt || it.addedAt)).length;
+            const mrCount = (storedMRs || []).filter(it => inRange(it.createAt || it.addedAt)).length;
+            const kpiItems = (storedKpi || []).filter(it => inRange(it.addedAt || it.createAt));
+
+            const totalCount = Math.max(taskCount + mrCount, kpiItems.length);
+            if (totalCount === 0) {
+                alert(`Không có công việc hoặc Merge Request nào trong "${targetLabel}" để xóa.`);
+                return;
+            }
+
+            const msg = `Bạn có chắc muốn xóa toàn bộ ${totalCount} công việc (bao gồm cả Task và Merge Request) trong "${targetLabel}"?`;
+            await deleteByDateRange(targetStart, targetEnd, msg);
+        });
+    }
+
+    const deleteMonthBtn = document.getElementById('deleteMonthBtn');
+    if (deleteMonthBtn) {
+        deleteMonthBtn.addEventListener('click', async () => {
+            const selectedMonth = monthSelect.value;
+            const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+            const monthLabel = `Tháng ${String(selMonth).padStart(2, '0')}/${selYear}`;
+
+            const storedTasks = await getStoredIds(WORK_ITEM_KEY);
+            const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
+            const storedKpi = await getStoredIds('KpiInfo');
+
+            const inMonth = (dStr) => {
+                const iso = parseToIsoDate(dStr);
+                return iso && iso.startsWith(selectedMonth);
+            };
+
+            const taskCount = (storedTasks || []).filter(it => inMonth(it.createAt || it.addedAt)).length;
+            const mrCount = (storedMRs || []).filter(it => inMonth(it.createAt || it.addedAt)).length;
+            const kpiItems = (storedKpi || []).filter(it => inMonth(it.addedAt || it.createAt));
+
+            const totalCount = Math.max(taskCount + mrCount, kpiItems.length);
+            if (totalCount === 0) {
+                alert(`Không có công việc hoặc Merge Request nào trong ${monthLabel} để xóa.`);
+                return;
+            }
+
+            const msg = `⚠️ CẢNH BÁO: Bạn có chắc muốn xóa TOÀN BỘ ${totalCount} công việc (bao gồm cả Task và Merge Request) trong ${monthLabel}?`;
+            await deleteByMonth(selectedMonth, msg);
+        });
+    }
+
+    const exportWeekBtn = document.getElementById('exportWeekKpiBtn') || document.getElementById('exportCSVBtn');
+    if (exportWeekBtn) {
+        exportWeekBtn.addEventListener('click', async () => {
+            await exportWeeklyKPIExcel();
+        });
+    }
+
+    const exportMonthBtn = document.getElementById('exportMonthKpiBtn');
+    if (exportMonthBtn) {
+        exportMonthBtn.addEventListener('click', async () => {
+            await exportMonthlyKPIExcel();
+        });
+    }
 
     document.getElementById('getDailyTaskBtn').addEventListener('click', async () => {
         if (allDailyTaskInfo.length === 0) {
@@ -367,35 +1012,320 @@
             return;
         }
 
-        let dailyTask = 'What did I do today?\n';
-
         // Group task theo groupName
         const groupedTasks = {};
 
         allDailyTaskInfo.forEach(item => {
-            const groupName = cleanGroupName(item.groupName);
+            const groupName = cleanGroupName(item.groupName || 'Khác');
             if (!groupedTasks[groupName]) {
                 groupedTasks[groupName] = [];
             }
-            groupedTasks[groupName].push(item.title);
+            let rawTitle = item.title ? item.title.trim() : (item.taskUrl ? item.taskUrl.split('/').pop() : 'Task');
+            rawTitle = rawTitle.replace(/\s*\((?:Done|\d+%)\)$/i, '').trim();
+
+            const isClosed = Boolean(
+                (item.state && ['closed', 'merged'].includes(String(item.state).toLowerCase())) ||
+                (item.closeDate && String(item.closeDate).trim() !== '')
+            );
+            const statusLabel = isClosed ? '(Done)' : '(0%)';
+            const formattedLine = `+ ${rawTitle} ${statusLabel}`;
+
+            if (!groupedTasks[groupName].includes(formattedLine)) {
+                groupedTasks[groupName].push(formattedLine);
+            }
         });
 
-        // Render report
-        Object.entries(groupedTasks).forEach(([groupName, titles]) => {
-            dailyTask += `\n- [${groupName}]\n`;
-            titles.forEach(title => {
-                dailyTask += `+ ${title} (Done)\n`;
+        // Tạo danh sách task đã format
+        let taskListStr = '';
+        Object.entries(groupedTasks).forEach(([groupName, lines]) => {
+            taskListStr += `- [${groupName}]\n`;
+            lines.forEach(line => {
+                taskListStr += `${line}\n`;
             });
         });
+
+        // Ghép thành định dạng daily 3 phần theo yêu cầu
+        const dailyTask = `What did I do today?\n${taskListStr}What will I do Tomorrow?\n${taskListStr}What problems are hindering my progress?\n- None\n`;
 
         // copy to clipboard and show alert
         navigator.clipboard.writeText(dailyTask);
         alert('Daily task copied to clipboard');
     });
 
+    const NUMERIC_SORT_COLS = new Set(['estimate', 'spent', 'reopenTotal']);
+
+    function getItemSortValue(item, col) {
+        if (!item) return '';
+        switch (col) {
+            case 'tasks': {
+                if (!item.taskUrl) return 0;
+                const match = item.taskUrl.match(/\/(\d+)$/);
+                return match ? parseInt(match[1], 10) : item.taskUrl;
+            }
+            case 'title':
+                return (item.title || '').trim();
+            case 'parentTitle':
+                return (item.parentTitle || '').trim();
+            case 'startDate':
+                return parseToIsoDate(item.startDate) || '';
+            case 'dueDate':
+                return parseToIsoDate(item.dueDate) || '';
+            case 'closeDate':
+                return parseToIsoDate(item.closeDate) || '';
+            case 'estimate':
+                return Number(item.estimate) || 0;
+            case 'spent':
+                return Number(item.spent) || 0;
+            case 'reopenTotal':
+                return Number(item.reopenTotal) || 0;
+            case 'type':
+                return (item.type || '').trim();
+            case 'progress':
+                return (item.progress || '').trim();
+            default:
+                return '';
+        }
+    }
+
+    function compareKpiItems(a, b, col, dir) {
+        const isNum = NUMERIC_SORT_COLS.has(col);
+        const isDate = ['startDate', 'dueDate', 'closeDate'].includes(col);
+        const valA = getItemSortValue(a, col);
+        const valB = getItemSortValue(b, col);
+
+        if (isDate) {
+            if (!valA && !valB) return 0;
+            if (!valA) return 1;
+            if (!valB) return -1;
+            const res = valA.localeCompare(valB);
+            return dir === 'desc' ? -res : res;
+        }
+
+        if (isNum) {
+            const numA = Number(valA) || 0;
+            const numB = Number(valB) || 0;
+            return dir === 'desc' ? numB - numA : numA - numB;
+        }
+
+        if (col === 'tasks') {
+            if (typeof valA === 'number' && typeof valB === 'number') {
+                return dir === 'desc' ? valB - valA : valA - valB;
+            }
+            const sA = String(valA);
+            const sB = String(valB);
+            const res = sA.localeCompare(sB, 'vi', { numeric: true, sensitivity: 'base' });
+            return dir === 'desc' ? -res : res;
+        }
+
+        const sA = String(valA || '');
+        const sB = String(valB || '');
+        if (!sA && !sB) return 0;
+        if (!sA) return 1;
+        if (!sB) return -1;
+        const res = sA.localeCompare(sB, 'vi', { numeric: true, sensitivity: 'base' });
+        return dir === 'desc' ? -res : res;
+    }
+
+    function sortItems(items, col, dir) {
+        if (!col || !dir || !items || items.length <= 1) return items;
+        return [...items].sort((a, b) => compareKpiItems(a, b, col, dir));
+    }
+
+    async function handleGroupHeaderSort(groupName, colKey) {
+        if (!colKey || !groupName) return;
+        const isNum = NUMERIC_SORT_COLS.has(colKey);
+        if (!groupSortStates[groupName]) {
+            groupSortStates[groupName] = { column: null, direction: null };
+        }
+        const sortState = groupSortStates[groupName];
+
+        if (sortState.column === colKey) {
+            if (isNum) {
+                if (sortState.direction === 'desc') {
+                    sortState.direction = 'asc';
+                } else {
+                    sortState.column = null;
+                    sortState.direction = null;
+                }
+            } else {
+                if (sortState.direction === 'asc') {
+                    sortState.direction = 'desc';
+                } else {
+                    sortState.column = null;
+                    sortState.direction = null;
+                }
+            }
+        } else {
+            sortState.column = colKey;
+            sortState.direction = isNum ? 'desc' : 'asc';
+        }
+
+        currentPage = 1;
+        await applyFilter();
+    }
+
+    async function handleMRHeaderSort(colKey) {
+        if (!colKey) return;
+        const isNum = NUMERIC_SORT_COLS.has(colKey);
+
+        if (currentMRSort.column === colKey) {
+            if (isNum) {
+                if (currentMRSort.direction === 'desc') {
+                    currentMRSort.direction = 'asc';
+                } else {
+                    currentMRSort.column = null;
+                    currentMRSort.direction = null;
+                }
+            } else {
+                if (currentMRSort.direction === 'asc') {
+                    currentMRSort.direction = 'desc';
+                } else {
+                    currentMRSort.column = null;
+                    currentMRSort.direction = null;
+                }
+            }
+        } else {
+            currentMRSort.column = colKey;
+            currentMRSort.direction = isNum ? 'desc' : 'asc';
+        }
+
+        currentPage = 1;
+        await applyFilter();
+    }
+
+    function calculateStats(data, customFilterVal = null, customMonth = null) {
+        const totalItems = (data && data.length) ? data.length : 0;
+        const workItems = Array.isArray(data) ? data.filter(it => !it.isMR) : [];
+        const totalTask = workItems.length;
+
+        let totalPlannedTask = 0;
+        let totalEstimate = 0;
+        let totalSpent = 0;
+        let totalSpentPlannedTask = 0;
+        let totalTaskNoStartDate = 0;
+        let totalTaskNoDueDate = 0;
+        let totalTaskNoEstimate = 0;
+        let totalTaskNoSpent = 0;
+        let totalTaskInTime = 0;
+        let reopenCount = 0;
+        let dailySpentTime = 0;
+
+        const effectiveFilter = customFilterVal || (typeof timeFilterSelect !== 'undefined' && timeFilterSelect ? timeFilterSelect.value : 'all');
+        const compareDateStr = (effectiveFilter && effectiveFilter.startsWith('day:'))
+            ? effectiveFilter.replace('day:', '')
+            : (typeof today !== 'undefined' ? parseToIsoDate(today) : parseToIsoDate(new Date()));
+
+        if (Array.isArray(data)) {
+            data.forEach(item => {
+                const spent = typeof item.spent === 'number' ? item.spent : (parseFloat(item.spent) || 0);
+                const est = typeof item.estimate === 'number' ? item.estimate : (parseFloat(item.estimate) || 0);
+
+                if (!item.isMR) {
+                    if (item.type === 'Kế hoạch') {
+                        totalPlannedTask += 1;
+                        totalSpentPlannedTask += spent;
+                    }
+                    if (!item.startDate) totalTaskNoStartDate += 1;
+                    if (!item.dueDate) totalTaskNoDueDate += 1;
+                    if (est === 0) totalTaskNoEstimate += 1;
+                    if (spent === 0) totalTaskNoSpent += 1;
+                    if (item.progress === 'Đúng hạn') totalTaskInTime += 1;
+                    if (item.reopenTotal > 0) reopenCount += 1;
+                }
+
+                const createdAt = parseToIsoDate(item.addedAt || item.createAt);
+                if (createdAt === compareDateStr) {
+                    dailySpentTime += spent;
+                }
+
+                totalEstimate += est;
+                totalSpent += spent;
+            });
+        }
+
+        const totalUnplannedTask = Math.max(0, totalTask - totalPlannedTask);
+        const totalSpentUnplannedTask = Math.max(0, totalSpent - totalSpentPlannedTask);
+        const totalTaskLate = Math.max(0, totalTask - totalTaskInTime);
+        const totalTaskNotReopen = Math.max(0, totalTask - reopenCount);
+
+        const calcRate = (num, denom) => (denom > 0 ? parseFloat(((num / denom) * 100).toFixed(2)) : 0);
+
+        const noStartDateRate = calcRate(totalTaskNoStartDate, totalTask);
+        const noDueDateRate = calcRate(totalTaskNoDueDate, totalTask);
+        const noEstimateRate = calcRate(totalTaskNoEstimate, totalTask);
+        const noSpentRate = calcRate(totalTaskNoSpent, totalTask);
+        const onTimeRate = calcRate(totalTaskInTime, totalTask);
+        const lateRate = calcRate(totalTaskLate, totalTask);
+        const noReopenRate = calcRate(totalTaskNotReopen, totalTask);
+        const reopenRate = calcRate(reopenCount, totalTask);
+        const unplannedTaskRate = calcRate(totalUnplannedTask, totalTask);
+
+        // Giờ làm việc tiêu chuẩn công ty: 192h cho cả tháng, 48h cho 1 tuần
+        const isMonthReport = (customMonth || effectiveFilter === 'all_month' || (effectiveFilter && effectiveFilter.startsWith('month:')));
+        const workingHours = isMonthReport ? 192 : 48;
+
+        const spentTimeVsWorkingHoursRate = calcRate(totalSpent, workingHours);
+        const spentTimeVsEstimateRate = calcRate(totalSpent, totalEstimate);
+        const plannedSpentTimeVsTotalSpentTimeRate = calcRate(totalSpentPlannedTask, totalSpent);
+        const unplannedSpentTimeVsTotalSpentTimeRate = calcRate(totalSpentUnplannedTask, totalSpent);
+
+        return {
+            totalTask,
+            totalPlannedTask,
+            totalUnplannedTask,
+            totalTimeWorkingInCompany: 48,
+            totalEstimate: parseFloat(totalEstimate).toFixed(2),
+            totalSpent: parseFloat(totalSpent).toFixed(2),
+            totalSpentPlannedTask: parseFloat(totalSpentPlannedTask).toFixed(2),
+            totalSpentUnplannedTask: parseFloat(totalSpentUnplannedTask).toFixed(2),
+            totalTaskNoStartDate,
+            totalTaskNoDueDate,
+            totalTaskNoEstimate,
+            totalTaskNoSpent,
+            totalTaskInTime,
+            totalTaskLate,
+            totalTaskNotReopen,
+            totalTaskReopen: reopenCount,
+            dailySpentTime: parseFloat(dailySpentTime).toFixed(2),
+            lastUpdated: new Date().toLocaleString(),
+
+            totalTasks: totalTask,
+            totalPlannedTasks: totalPlannedTask,
+            totalUnplannedTasks: totalUnplannedTask,
+            workingHours,
+            totalEstimateTime: parseFloat(totalEstimate).toFixed(2),
+            totalSpentTime: parseFloat(totalSpent).toFixed(2),
+            totalPlannedSpentTime: parseFloat(totalSpentPlannedTask).toFixed(2),
+            totalUnplannedSpentTime: parseFloat(totalSpentUnplannedTask).toFixed(2),
+            tasksNoStartDate: totalTaskNoStartDate,
+            tasksNoDueDate: totalTaskNoDueDate,
+            tasksNoEstimate: totalTaskNoEstimate,
+            tasksNoSpent: totalTaskNoSpent,
+            tasksOnTime: totalTaskInTime,
+            tasksLate: totalTaskLate,
+            tasksNoReopen: totalTaskNotReopen,
+            tasksReopen: reopenCount,
+
+            noStartDateRate,
+            noDueDateRate,
+            noEstimateRate,
+            noSpentRate,
+            onTimeRate,
+            lateRate,
+            noReopenRate,
+            reopenRate,
+            unplannedTaskRate,
+            spentTimeVsWorkingHoursRate,
+            spentTimeVsEstimateRate,
+            plannedSpentTimeVsTotalSpentTimeRate,
+            unplannedSpentTimeVsTotalSpentTimeRate
+        };
+    }
+
     async function renderKpi(kpiData, isSaveKpiStats = false) {
         const container = document.getElementById('kpiContainer');
-        const selectedDate = document.getElementById('weekdaySelect').value;
+        const selectedMonth = monthSelect.value;
+        const filterVal = timeFilterSelect.value;
         allDailyTaskInfo = [];
 
         // Columns display mapping
@@ -412,110 +1342,174 @@
         };
         const taskColumns = ["Tasks", "Start date", "Due date", "Closed date", "Estimate (h)", "Spent (h)", "Số lần bị reopen", "Loại task", "Tiến độ"];
 
-        const calculateStats = (data) => {
-            const totalTask = data.length;
-            let totalPlannedTask = 0;
-            let totalEstimate = 0;
-            let totalSpent = 0;
-            let totalSpentPlannedTask = 0;
-            let totalTaskNoStartDate = 0;
-            let totalTaskNoDueDate = 0;
-            let totalTaskNoEstimate = 0;
-            let totalTaskNoSpent = 0;
-            let totalTaskInTime = 0;
-            let reopenCount = 0;
-            let dailySpentTime = 0;
-
-            const compareDateStr = selectedDate || toIsoDate(today);
-
-            data.forEach(item => {
-                if (item.type === 'Kế hoạch') {
-                    totalPlannedTask += 1;
-                    totalSpentPlannedTask += item.spent;
-                }
-                if (item.startDate == '') totalTaskNoStartDate += 1;
-                if (item.dueDate == '') totalTaskNoDueDate += 1;
-                if (item.estimate == 0) totalTaskNoEstimate += 1;
-                if (item.spent == 0) totalTaskNoSpent += 1;
-                if (item.progress === 'Đúng hạn') totalTaskInTime += 1;
-                if (item.reopenTotal > 0) reopenCount += 1;
-
-                const createdAt = toIsoDate(item.addedAt);
-                if (createdAt === compareDateStr) {
-                    dailySpentTime += item.spent;
-                    // Note: allDailyTaskInfo is filled here, but only during the display calculation
-                    // We'll handle this by ensuring display stats are calculated last or correctly.
-                    if (data === kpiData || (selectedDate && data === displayData)) {
-                        // Only add to global daily task info if it matches the current view's date
-                        // Wait, easier: always calculate this based on compareDateStr.
-                    }
-                }
-
-                totalEstimate += item.estimate;
-                totalSpent += item.spent;
-            });
-
-            return {
-                totalTask,
-                totalPlannedTask,
-                totalUnplannedTask: totalTask - totalPlannedTask,
-                totalTimeWorkingInCompany: 48,
-                totalEstimate: parseFloat(totalEstimate).toFixed(2),
-                totalSpent: parseFloat(totalSpent).toFixed(2),
-                totalSpentPlannedTask: parseFloat(totalSpentPlannedTask).toFixed(2),
-                totalSpentUnplannedTask: parseFloat(totalSpent - totalSpentPlannedTask).toFixed(2),
-                totalTaskNoStartDate,
-                totalTaskNoDueDate,
-                totalTaskNoEstimate,
-                totalTaskNoSpent,
-                totalTaskInTime,
-                totalTaskLate: totalTask - totalTaskInTime,
-                totalTaskNotReopen: totalTask - reopenCount,
-                totalTaskReopen: reopenCount,
-                dailySpentTime: parseFloat(dailySpentTime).toFixed(2),
-                lastUpdated: new Date().toLocaleString(),
-            };
-        };
-
-        // 1. Calculate and Save Weekly Stats if requested
+        // 1. Calculate and Save Current Week Stats if requested (keeps popup synced with current week)
         if (isSaveKpiStats) {
-            const weeklyStats = calculateStats(kpiData);
+            const cw = getCurrentWeekRange();
+            const currentWeekData = kpiData.filter(item => isItemActiveInWeek(item, cw.start, cw.end));
+            const weeklyStats = calculateStats(currentWeekData.length > 0 ? currentWeekData : kpiData, filterVal);
             await saveKpiStats(weeklyStats);
         }
 
-        // 2. Filter data for display
-        const displayData = selectedDate ? kpiData.filter(item => toIsoDate(item.addedAt) === selectedDate) : kpiData;
+        // 2. Base data for current period filter (independent of search / chip filters)
+        const cStart = startDateInput ? startDateInput.value : '';
+        const cEnd = endDateInput ? endDateInput.value : '';
+        const baseFiltered = kpiData.filter(item => isItemActiveInFilter(item, filterVal, selectedMonth, cStart, cEnd));
 
-        // Fill allDailyTaskInfo for the "What did I do today?" button based on selectedDate or Today
-        const compareDateStr = selectedDate || toIsoDate(today);
+        // Period Label for KPI Health Card
+        const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+        let periodLabel = `Tháng ${String(selMonth).padStart(2, '0')}/${selYear}`;
+        if (filterVal === 'current_week') {
+            const cw = getCurrentWeekRange();
+            periodLabel = `Tuần này (${cw.label})`;
+        } else if (filterVal.startsWith('week:')) {
+            const parts = filterVal.split(':');
+            periodLabel = `Tuần (${formatDate(parts[1])} - ${formatDate(parts[2])})`;
+        } else if (filterVal.startsWith('day:')) {
+            const dayIso = filterVal.replace('day:', '');
+            periodLabel = `Ngày ${formatDate(dayIso)}`;
+        } else if (filterVal === 'custom_range') {
+            periodLabel = `${formatDate(cStart)} - ${formatDate(cEnd)}`;
+        }
+
+        // Calculate Period Overall Stats (used for Health Card & Forecast)
+        const periodStats = calculateStats(baseFiltered, filterVal, selectedMonth);
+
+        // Update Quick Filter Chip Badges
+        updateChipCounts(baseFiltered);
+
+        // Render KPI Health Card (Widget)
+        renderKpiHealthCard(periodStats, periodLabel, baseFiltered.length);
+
+        // Fill allDailyTaskInfo for the "What did I do today?" button based on selected day or today
+        const compareDailyDate = (filterVal.startsWith('day:') ? filterVal.replace('day:', '') : parseToIsoDate(today));
         kpiData.forEach(item => {
-            if (toIsoDate(item.addedAt) === compareDateStr) {
+            if (parseToIsoDate(item.addedAt) === compareDailyDate) {
                 allDailyTaskInfo.push(item);
             }
         });
 
-        // 3. Render tables for displayData
-        const taskGroups = {};
-        const mrItems = [];
+        // 3. Apply Quick Filter Chip: chỉ áp dụng lọc nhanh với Work Items, hoặc riêng Merge Request
+        let filteredData = baseFiltered;
+        if (currentQuickFilter !== 'all') {
+            filteredData = filteredData.filter(it => {
+                if (currentQuickFilter === 'mr') {
+                    return !!it.isMR;
+                }
+                if (it.isMR) return false; // Không áp dụng tiêu chí lọc nhanh cho Merge Request
+                if (currentQuickFilter === 'late') {
+                    return it.progress === 'Trễ hạn';
+                }
+                if (currentQuickFilter === 'missing_time') {
+                    return !it.estimate || Number(it.estimate) === 0 || !it.spent || Number(it.spent) === 0;
+                }
+                if (currentQuickFilter === 'missing_date') {
+                    return !it.startDate || !it.dueDate;
+                }
+                if (currentQuickFilter === 'reopen') {
+                    return (it.reopenTotal || 0) > 0;
+                }
+                if (currentQuickFilter === 'unplanned') {
+                    return it.type === 'Phát sinh';
+                }
+                if (currentQuickFilter === 'open') {
+                    return isItemOpen(it);
+                }
+                return true;
+            });
+        }
 
-        displayData.forEach(item => {
-            if (item.isMR) {
-                mrItems.push(item);
-            } else {
-                const group = item.groupName || 'Khác';
-                if (!taskGroups[group]) taskGroups[group] = [];
-                taskGroups[group].push(item);
+        // 4. Apply Quick Search Query
+        if (currentSearchQuery) {
+            const q = currentSearchQuery.toLowerCase();
+            filteredData = filteredData.filter(item => {
+                const title = (item.title || '').toLowerCase();
+                const parentTitle = (item.parentTitle || '').toLowerCase();
+                const groupName = (item.groupName || '').toLowerCase();
+                const url = (item.taskUrl || '').toLowerCase();
+                const type = (item.type || '').toLowerCase();
+                const progress = (item.progress || '').toLowerCase();
+                const normUrl = (typeof normalizeGitLabUrl === 'function') ? normalizeGitLabUrl(url) : url;
+                const iidMatch = normUrl.match(/\/(?:issues|work_items|merge_requests)\/(\d+)$/i) || normUrl.match(/\/(\d+)$/);
+                const iid = iidMatch ? iidMatch[1] : '';
+                return title.includes(q) ||
+                       parentTitle.includes(q) ||
+                       groupName.includes(q) ||
+                       url.includes(q) ||
+                       type.includes(q) ||
+                       progress.includes(q) ||
+                       (`#${iid}`).includes(q) ||
+                       (`!${iid}`).includes(q) ||
+                       (iid && iid === q);
+            });
+        }
+
+        // Update URLs for "Mở các task đang lọc"
+        currentFilteredUrls = Array.from(new Set(filteredData.map(it => it.taskUrl).filter(Boolean)));
+        if (openTabsCountBadge) {
+            openTabsCountBadge.textContent = currentFilteredUrls.length;
+        }
+
+        const displayData = filteredData;
+
+        // Check empty states
+        if (baseFiltered.length === 0) {
+            const emptyNotice = document.createElement("div");
+            emptyNotice.className = "report-section";
+            emptyNotice.style.textAlign = "center";
+            emptyNotice.style.padding = "40px";
+            emptyNotice.style.color = "var(--text-muted)";
+            emptyNotice.textContent = "Không có task hoặc Merge Request nào trong khoảng thời gian đã chọn.";
+            container.appendChild(emptyNotice);
+            await renderKpiStats(calculateStats([], filterVal, selectedMonth));
+            return;
+        }
+
+        if (displayData.length === 0) {
+            if (searchResultCount) {
+                if (currentSearchQuery) {
+                    searchResultCount.style.display = 'inline-flex';
+                    searchResultCount.innerHTML = `Tìm thấy <strong>0</strong> task`;
+                } else {
+                    searchResultCount.style.display = 'none';
+                }
             }
-        });
 
-        for (const [groupName, items] of Object.entries(taskGroups)) {
+            const emptyState = document.createElement("div");
+            emptyState.className = "filter-empty-state";
+            emptyState.innerHTML = `
+                <div class="filter-empty-icon">🔍</div>
+                <div class="filter-empty-title">Không tìm thấy công việc phù hợp</div>
+                <div class="filter-empty-subtitle">
+                    Không có công việc nào khớp với bộ lọc "<strong>${getFilterLabel(currentQuickFilter)}</strong>"${currentSearchQuery ? ` hoặc từ khóa "<strong>${currentSearchQuery}</strong>"` : ''} trong kỳ này.
+                </div>
+                <button id="btnResetFilters" class="btn-reset-filters">✕ Đặt lại bộ lọc</button>
+            `;
+            container.appendChild(emptyState);
+
+            const resetBtn = emptyState.querySelector('#btnResetFilters');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', async () => {
+                    setQuickFilter('all');
+                    if (kpiSearchInput) kpiSearchInput.value = '';
+                    if (clearSearchBtn) clearSearchBtn.style.display = 'none';
+                    currentSearchQuery = '';
+                    currentPage = 1;
+                    await applyFilter();
+                });
+            }
+
+            await renderKpiStats(calculateStats([], filterVal, selectedMonth));
+            return;
+        }
+
+        function renderProjectSection(groupName, items, parentEl, weekStart = null) {
             const section = document.createElement("div");
             section.className = "report-section";
 
             const groupTitle = document.createElement('h3');
             const urlLink = document.createElement('a');
             const firstItem = items[0];
-            const newUrl = firstItem.taskUrl.replace(/\/work_items\/\d+/, "/issues");
+            const newUrl = firstItem.taskUrl ? firstItem.taskUrl.replace(/\/work_items\/\d+/, "/issues") : '#';
 
             urlLink.href = newUrl;
             urlLink.target = '_blank';
@@ -527,9 +1521,54 @@
             const table = document.createElement("table");
             const thead = document.createElement("thead");
             const headerRow = document.createElement("tr");
+
+            const taskColumns = [
+                { label: "Tasks", key: "tasks", center: false },
+                { label: "Tên Work Item", key: "title", center: false },
+                { label: "Issue cha", key: "parentTitle", center: false },
+                { label: "Start date", key: "startDate", center: true },
+                { label: "Due date", key: "dueDate", center: true },
+                { label: "Closed date", key: "closeDate", center: true },
+                { label: "Estimate (h)", key: "estimate", center: true },
+                { label: "Spent (h)", key: "spent", center: true },
+                { label: "Số lần bị reopen", key: "reopenTotal", center: true },
+                { label: "Loại task", key: "type", center: true },
+                { label: "Tiến độ", key: "progress", center: true },
+                { label: "Thao tác", key: null, center: true }
+            ];
+
+            const gSort = groupSortStates[groupName] || { column: null, direction: null };
+
             taskColumns.forEach(col => {
                 const th = document.createElement("th");
-                th.textContent = col;
+                if (col.key === null) {
+                    th.className = "col-action text-center";
+                    th.textContent = col.label;
+                } else {
+                    if (col.center) th.className = "text-center";
+                    th.classList.add("sortable-th");
+                    th.title = `Bấm để sắp xếp theo ${col.label}`;
+
+                    const contentSpan = document.createElement("span");
+                    contentSpan.className = "th-content";
+                    contentSpan.appendChild(document.createTextNode(col.label));
+
+                    const iconSpan = document.createElement("span");
+                    iconSpan.className = "sort-icon";
+                    if (gSort.column === col.key) {
+                        iconSpan.classList.add("sort-active");
+                        iconSpan.textContent = gSort.direction === 'asc' ? "▲" : "▼";
+                        th.classList.add("th-sorted");
+                    } else {
+                        iconSpan.textContent = "↕";
+                    }
+                    contentSpan.appendChild(iconSpan);
+                    th.appendChild(contentSpan);
+
+                    th.addEventListener("click", () => {
+                        handleGroupHeaderSort(groupName, col.key);
+                    });
+                }
                 headerRow.appendChild(th);
             });
             thead.appendChild(headerRow);
@@ -540,79 +1579,243 @@
             let groupTotalSpent = 0;
             let groupTotalReopen = 0;
 
-            items.forEach(item => {
+            const sortedItems = (gSort.column && gSort.direction)
+                ? sortItems(items, gSort.column, gSort.direction)
+                : items;
+
+            sortedItems.forEach(item => {
                 groupTotalEstimate += item.estimate || 0;
                 groupTotalSpent += item.spent || 0;
                 groupTotalReopen += item.reopenTotal || 0;
 
                 const row = document.createElement("tr");
-                taskColumns.forEach(col => {
-                    const td = document.createElement("td");
-                    const key = columnFieldMap[col];
-                    const value = item[key];
 
-                    if (key === "taskUrl") {
-                        const link = document.createElement('a');
-                        link.href = value;
-                        link.textContent = value.split('/').pop();
-                        link.title = value;
-                        link.target = '_blank';
-                        td.appendChild(link);
-                    } else if (key === 'reopenTotal') {
-                        td.textContent = value;
-                        if (value > 0) td.classList.add('text-danger');
+                // 1. Tasks
+                const taskTd = document.createElement("td");
+                const isUnclosed = !item.closeDate || (item.state && String(item.state).toLowerCase() !== 'closed');
+                if (isUnclosed) {
+                    const redDot = document.createElement("span");
+                    redDot.className = "badge-dot-red";
+                    redDot.textContent = "🔴";
+                    redDot.title = "Task chưa đóng (Open)";
+                    taskTd.appendChild(redDot);
+                    row.classList.add("row-unclosed");
+                }
+
+                if (isItemCarryOver(item, weekStart)) {
+                    const carryBadge = document.createElement("span");
+                    carryBadge.className = "badge-carryover";
+                    carryBadge.textContent = "🔄 Tiếp diễn";
+                    const originDate = item.addedAt ? formatDate(parseToIsoDate(item.addedAt)) : '';
+                    carryBadge.title = `Công việc chuyển tiếp từ tuần trước${originDate ? ` (Tạo ngày ${originDate})` : ''}`;
+                    taskTd.appendChild(carryBadge);
+                }
+
+                const link = document.createElement('a');
+                link.href = item.taskUrl;
+                link.textContent = '#' + item.taskUrl.split('/').pop();
+                link.title = item.taskUrl;
+                link.target = '_blank';
+                taskTd.appendChild(link);
+                row.appendChild(taskTd);
+
+                // 2. Tên Work Item
+                const titleTd = document.createElement("td");
+                const titleSpan = document.createElement("span");
+                titleSpan.className = "cell-truncate text-truncate-task";
+                const displayTitle = item.title ? item.title.trim() : '—';
+                titleSpan.textContent = displayTitle;
+                if (item.title) titleSpan.title = item.title;
+                titleTd.appendChild(titleSpan);
+                row.appendChild(titleTd);
+
+                // 3. Issue cha
+                const parentTd = document.createElement("td");
+                if (item.parentTitle) {
+                    if (item.parentUrl) {
+                        const parentLink = document.createElement("a");
+                        parentLink.href = item.parentUrl;
+                        parentLink.target = '_blank';
+                        parentLink.className = "cell-truncate link-parent";
+                        parentLink.textContent = `🔗 ${item.parentTitle}`;
+                        parentLink.title = item.parentTitle;
+                        parentTd.appendChild(parentLink);
                     } else {
-                        td.textContent = value !== undefined ? value : '';
+                        const parentSpan = document.createElement("span");
+                        parentSpan.className = "cell-truncate";
+                        parentSpan.textContent = item.parentTitle;
+                        parentSpan.title = item.parentTitle;
+                        parentTd.appendChild(parentSpan);
                     }
+                } else {
+                    const noParent = document.createElement("span");
+                    noParent.textContent = "—";
+                    noParent.style.color = "var(--text-muted)";
+                    parentTd.appendChild(noParent);
+                }
+                row.appendChild(parentTd);
 
-                    if (key === 'type' || key === 'progress') {
-                        if (value === 'Đúng hạn' || value === 'Kế hoạch') {
-                            td.classList.add('text-success');
-                        } else if (value === 'Phát sinh') {
-                            td.classList.add('text-accent');
-                        } else if (value === 'Trễ hạn') {
-                            td.classList.add('text-danger');
-                        }
-                    }
-                    row.appendChild(td);
+                // 4. Start date
+                const startTd = document.createElement("td");
+                startTd.className = "text-center";
+                startTd.textContent = item.startDate || '';
+                row.appendChild(startTd);
+
+                // 5. Due date
+                const dueTd = document.createElement("td");
+                dueTd.className = "text-center";
+                dueTd.textContent = item.dueDate || '';
+                row.appendChild(dueTd);
+
+                // 6. Closed date
+                const closeTd = document.createElement("td");
+                closeTd.className = "text-center";
+                if (!isUnclosed && item.closeDate) {
+                    closeTd.textContent = item.closeDate;
+                } else {
+                    const unclosedBadge = document.createElement("span");
+                    unclosedBadge.className = "badge-unclosed";
+                    unclosedBadge.innerHTML = "🔴 Chưa đóng";
+                    unclosedBadge.title = "Task này hiện chưa được đóng trên GitLab";
+                    closeTd.appendChild(unclosedBadge);
+                }
+                row.appendChild(closeTd);
+
+                // 7. Estimate
+                const estTd = document.createElement("td");
+                estTd.className = "text-center";
+                estTd.textContent = item.estimate !== undefined ? item.estimate : '';
+                row.appendChild(estTd);
+
+                // 8. Spent
+                const spentTd = document.createElement("td");
+                spentTd.className = "text-center";
+                spentTd.textContent = item.spent !== undefined ? item.spent : '';
+                row.appendChild(spentTd);
+
+                // 9. Reopen
+                const reopenTd = document.createElement("td");
+                reopenTd.className = "text-center";
+                reopenTd.textContent = item.reopenTotal || 0;
+                if (item.reopenTotal > 0) reopenTd.classList.add('text-danger');
+                row.appendChild(reopenTd);
+
+                // 10. Loại task
+                const typeTd = document.createElement("td");
+                typeTd.className = "text-center";
+                typeTd.textContent = item.type || '';
+                if (item.type === 'Kế hoạch') typeTd.classList.add('text-success');
+                else if (item.type === 'Phát sinh') typeTd.classList.add('text-accent');
+                row.appendChild(typeTd);
+
+                // 11. Tiến độ
+                const progTd = document.createElement("td");
+                progTd.className = "text-center";
+                progTd.textContent = item.progress || '';
+                if (item.progress === 'Đúng hạn') progTd.classList.add('text-success');
+                else if (item.progress === 'Trễ hạn') progTd.classList.add('text-danger');
+                row.appendChild(progTd);
+
+                // 12. Thao tác (Xóa 🗑️)
+                const actionTd = document.createElement("td");
+                actionTd.className = "col-action text-center";
+                const delBtn = document.createElement("button");
+                delBtn.className = "btn-delete-row";
+                delBtn.innerHTML = "🗑️";
+                delBtn.title = "Xóa task này khỏi danh sách";
+                delBtn.addEventListener("click", async (e) => {
+                    e.stopPropagation();
+                    await deleteKpiItem(item);
                 });
+                actionTd.appendChild(delBtn);
+                row.appendChild(actionTd);
+
                 tbody.appendChild(row);
             });
             table.appendChild(tbody);
 
             const tfoot = document.createElement("tfoot");
             const totalRow = document.createElement("tr");
+
+            // colSpan 6: Tasks, Tên Work Item, Issue cha, Start date, Due date, Closed date
             const totalLabel = document.createElement("td");
-            totalLabel.colSpan = taskColumns.length - 5;
-            totalLabel.textContent = "";
+            totalLabel.colSpan = 6;
+            totalLabel.textContent = "TỔNG CỘNG";
+            totalLabel.style.fontWeight = "600";
+            totalLabel.style.textAlign = "right";
+            totalLabel.style.paddingRight = "16px";
             totalRow.appendChild(totalLabel);
 
             [groupTotalEstimate, groupTotalSpent, groupTotalReopen].forEach(val => {
                 const td = document.createElement("td");
-                td.textContent = val.toFixed(2);
+                td.className = "text-center";
+                td.textContent = typeof val === 'number' ? val.toFixed(2) : val;
+                td.style.fontWeight = "600";
                 totalRow.appendChild(td);
             });
+
+            // colSpan 3: Loại task, Tiến độ, Thao tác
+            const endTd = document.createElement("td");
+            endTd.colSpan = 3;
+            totalRow.appendChild(endTd);
 
             tfoot.appendChild(totalRow);
             table.appendChild(tfoot);
             section.appendChild(table);
-            container.appendChild(section);
+            parentEl.appendChild(section);
         }
 
-        if (mrItems.length > 0) {
+        function renderMRSection(items, parentEl, weekStart = null) {
+            if (!items || items.length === 0) return;
             const section = document.createElement("div");
             section.className = "report-section";
             const groupTitle = document.createElement('h3');
             groupTitle.textContent = "🚀 DANH SÁCH MERGE REQUEST";
             section.appendChild(groupTitle);
 
-            const mrColumns = ["Tasks", "Estimate (h)", "Spent (h)"];
+            const mrColumns = [
+                { label: "Tasks", key: "tasks", center: false, className: "col-mr-task" },
+                { label: "Tên Merge Request", key: "title", center: false, className: "col-mr-title" },
+                { label: "Estimate (h)", key: "estimate", center: true, className: "col-mr-time" },
+                { label: "Spent (h)", key: "spent", center: true, className: "col-mr-time" },
+                { label: "Thao tác", key: null, center: true, className: "col-action" }
+            ];
             const table = document.createElement("table");
+            table.className = "table-mr";
             const thead = document.createElement("thead");
             const headerRow = document.createElement("tr");
+
             mrColumns.forEach(col => {
                 const th = document.createElement("th");
-                th.textContent = col;
+                if (col.className) th.classList.add(col.className);
+                if (col.key === null) {
+                    th.className = "col-action text-center";
+                    th.textContent = col.label;
+                } else {
+                    if (col.center) th.classList.add("text-center");
+                    th.classList.add("sortable-th");
+                    th.title = `Bấm để sắp xếp theo ${col.label}`;
+
+                    const contentSpan = document.createElement("span");
+                    contentSpan.className = "th-content";
+                    contentSpan.appendChild(document.createTextNode(col.label));
+
+                    const iconSpan = document.createElement("span");
+                    iconSpan.className = "sort-icon";
+                    if (currentMRSort.column === col.key) {
+                        iconSpan.classList.add("sort-active");
+                        iconSpan.textContent = currentMRSort.direction === 'asc' ? "▲" : "▼";
+                        th.classList.add("th-sorted");
+                    } else {
+                        iconSpan.textContent = "↕";
+                    }
+                    contentSpan.appendChild(iconSpan);
+                    th.appendChild(contentSpan);
+
+                    th.addEventListener("click", () => {
+                        handleMRHeaderSort(col.key);
+                    });
+                }
                 headerRow.appendChild(th);
             });
             thead.appendChild(headerRow);
@@ -622,52 +1825,507 @@
             let mrTotalEstimate = 0;
             let mrTotalSpent = 0;
 
-            mrItems.forEach(item => {
+            const sortedMRs = (currentMRSort.column && currentMRSort.direction)
+                ? sortItems(items, currentMRSort.column, currentMRSort.direction)
+                : items;
+
+            sortedMRs.forEach(item => {
                 mrTotalEstimate += item.estimate || 0;
                 mrTotalSpent += item.spent || 0;
                 const row = document.createElement("tr");
-                mrColumns.forEach(col => {
-                    const td = document.createElement("td");
-                    const key = columnFieldMap[col];
-                    const value = item[key];
-                    if (key === "taskUrl") {
-                        const link = document.createElement('a');
-                        link.href = value;
-                        link.textContent = value.split('/').pop();
-                        link.title = value;
-                        link.target = '_blank';
-                        td.appendChild(link);
-                    } else {
-                        td.textContent = value !== undefined ? value : '';
-                    }
-                    row.appendChild(td);
+
+                // 1. Tasks
+                const taskTd = document.createElement("td");
+                taskTd.className = "col-mr-task";
+                const isMROpen = !item.closeDate || (item.state && String(item.state).toLowerCase() === 'opened');
+                if (isMROpen) {
+                    const redDot = document.createElement("span");
+                    redDot.className = "badge-dot-red";
+                    redDot.textContent = "🔴";
+                    redDot.title = "Merge Request đang mở (Open)";
+                    taskTd.appendChild(redDot);
+                    row.classList.add("row-unclosed");
+                }
+
+                if (isItemCarryOver(item, weekStart)) {
+                    const carryBadge = document.createElement("span");
+                    carryBadge.className = "badge-carryover";
+                    carryBadge.textContent = "🔄 Tiếp diễn";
+                    const originDate = item.addedAt ? formatDate(parseToIsoDate(item.addedAt)) : '';
+                    carryBadge.title = `Merge Request chuyển tiếp từ tuần trước${originDate ? ` (Tạo ngày ${originDate})` : ''}`;
+                    taskTd.appendChild(carryBadge);
+                }
+
+                const link = document.createElement('a');
+                link.href = item.taskUrl;
+                link.textContent = '!' + item.taskUrl.split('/').pop();
+                link.title = item.taskUrl;
+                link.target = '_blank';
+                taskTd.appendChild(link);
+                row.appendChild(taskTd);
+
+                // 2. Tên Merge Request
+                const titleTd = document.createElement("td");
+                titleTd.className = "col-mr-title";
+                const titleSpan = document.createElement("span");
+                titleSpan.className = "cell-truncate text-truncate-task text-truncate-mr";
+                const displayTitle = item.title ? item.title.trim() : '—';
+                titleSpan.textContent = displayTitle;
+                if (item.title) titleSpan.title = item.title;
+                titleTd.appendChild(titleSpan);
+                row.appendChild(titleTd);
+
+                // 3. Estimate
+                const estTd = document.createElement("td");
+                estTd.className = "col-mr-time text-center";
+                estTd.textContent = item.estimate !== undefined ? item.estimate : '';
+                row.appendChild(estTd);
+
+                // 4. Spent
+                const spentTd = document.createElement("td");
+                spentTd.className = "col-mr-time text-center";
+                spentTd.textContent = item.spent !== undefined ? item.spent : '';
+                row.appendChild(spentTd);
+
+                // 5. Thao tác
+                const actionTd = document.createElement("td");
+                actionTd.className = "col-action text-center";
+                const delBtn = document.createElement("button");
+                delBtn.className = "btn-delete-row";
+                delBtn.innerHTML = "🗑️";
+                delBtn.title = "Xóa MR này khỏi danh sách";
+                delBtn.addEventListener("click", async (e) => {
+                    e.stopPropagation();
+                    await deleteKpiItem(item);
                 });
+                actionTd.appendChild(delBtn);
+                row.appendChild(actionTd);
+
                 tbody.appendChild(row);
             });
             table.appendChild(tbody);
 
             const tfoot = document.createElement("tfoot");
             const totalRow = document.createElement("tr");
+
+            // colSpan 2: Tasks, Tên Merge Request
             const totalLabel = document.createElement("td");
-            totalLabel.colSpan = 1;
+            totalLabel.colSpan = 2;
             totalLabel.textContent = "TỔNG MERGE REQUEST";
+            totalLabel.style.fontWeight = "600";
+            totalLabel.style.textAlign = "right";
+            totalLabel.style.paddingRight = "16px";
             totalRow.appendChild(totalLabel);
 
             [mrTotalEstimate, mrTotalSpent].forEach(val => {
                 const td = document.createElement("td");
-                td.textContent = val.toFixed(2);
+                td.className = "text-center";
+                td.textContent = typeof val === 'number' ? val.toFixed(2) : val;
+                td.style.fontWeight = "600";
                 totalRow.appendChild(td);
             });
+
+            // colSpan 1: Thao tác
+            const endTd = document.createElement("td");
+            endTd.colSpan = 1;
+            totalRow.appendChild(endTd);
 
             tfoot.appendChild(totalRow);
             table.appendChild(tfoot);
             section.appendChild(table);
-            container.appendChild(section);
+            parentEl.appendChild(section);
         }
 
-        // 4. Update Dashboard Stats (based on whatever is displayed)
-        const dashboardStats = calculateStats(displayData);
+        // 3. Render Week Hierarchy:
+        const monthWeeks = getWeeksOfMonth(selYear, selMonth);
+
+        let weekBlocks = [];
+        if (filterVal === 'all_month') {
+            monthWeeks.forEach(w => {
+                const itemsInWeek = displayData.filter(item => isItemActiveInWeek(item, w.start, w.end));
+                if (itemsInWeek.length > 0) {
+                    weekBlocks.push({
+                        title: `📦 ${w.label}`,
+                        start: w.start,
+                        end: w.end,
+                        items: itemsInWeek
+                    });
+                }
+            });
+            const matchedIds = new Set(weekBlocks.flatMap(b => b.items.map(it => it.taskUrl || it.addedAt)));
+            const remaining = displayData.filter(it => !matchedIds.has(it.taskUrl || it.addedAt));
+            if (remaining.length > 0) {
+                weekBlocks.push({
+                    title: '📦 Khác',
+                    start: null,
+                    end: null,
+                    items: remaining
+                });
+            }
+        } else if (filterVal === 'current_week') {
+            const cw = getCurrentWeekRange();
+            weekBlocks.push({
+                title: `📦 ${cw.label}`,
+                start: cw.start,
+                end: cw.end,
+                items: displayData
+            });
+        } else if (filterVal.startsWith('week:')) {
+            const parts = filterVal.split(':');
+            const foundWeek = monthWeeks.find(w => w.start === parts[1] && w.end === parts[2]);
+            const title = foundWeek ? `📦 ${foundWeek.label}` : `📦 Tuần (${formatDate(parts[1])} - ${formatDate(parts[2])})`;
+            weekBlocks.push({
+                title: title,
+                start: parts[1],
+                end: parts[2],
+                items: displayData
+            });
+        } else if (filterVal.startsWith('day:')) {
+            const dayIso = filterVal.replace('day:', '');
+            const dObj = new Date(dayIso);
+            const dayLabel = !isNaN(dObj.getTime())
+                ? dObj.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+                : formatDate(dayIso);
+            weekBlocks.push({
+                title: `📅 ${dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1)}`,
+                start: dayIso,
+                end: dayIso,
+                items: displayData
+            });
+        } else if (filterVal === 'custom_range') {
+            const customWeeks = getWeeksForRange(cStart, cEnd);
+            if (customWeeks.length > 1) {
+                customWeeks.forEach(w => {
+                    const itemsInWeek = displayData.filter(item => isItemActiveInWeek(item, w.start, w.end));
+                    if (itemsInWeek.length > 0) {
+                        weekBlocks.push({
+                            title: `📦 ${w.label}`,
+                            start: w.start,
+                            end: w.end,
+                            items: itemsInWeek
+                        });
+                    }
+                });
+                const matchedIds = new Set(weekBlocks.flatMap(b => b.items.map(it => it.taskUrl || it.addedAt)));
+                const remaining = displayData.filter(it => !matchedIds.has(it.taskUrl || it.addedAt));
+                if (remaining.length > 0) {
+                    weekBlocks.push({
+                        title: '📦 Khác',
+                        start: null,
+                        end: null,
+                        items: remaining
+                    });
+                }
+            } else {
+                const startDisp = cStart ? formatDate(cStart) : '...';
+                const endDisp = cEnd ? formatDate(cEnd) : '...';
+                weekBlocks.push({
+                    title: `🗓️ Khoảng ngày: ${startDisp} - ${endDisp}`,
+                    start: cStart,
+                    end: cEnd,
+                    items: displayData
+                });
+            }
+        }
+
+        // 4. Pagination calculation & slicing:
+        const hasAnyGroupSort = Object.values(groupSortStates).some(s => s && s.column && s.direction);
+        const hasMRSort = currentMRSort.column && currentMRSort.direction;
+
+        if (hasAnyGroupSort || hasMRSort) {
+            weekBlocks.forEach(wb => {
+                const projectMap = {};
+                const mrs = [];
+                wb.items.forEach(it => {
+                    if (it.isMR) {
+                        mrs.push(it);
+                    } else {
+                        const g = it.groupName || 'Khác';
+                        if (!projectMap[g]) projectMap[g] = [];
+                        projectMap[g].push(it);
+                    }
+                });
+
+                const sortedProjectItems = [];
+                Object.keys(projectMap).forEach(g => {
+                    const gSort = groupSortStates[g];
+                    const sortedGroup = (gSort && gSort.column && gSort.direction)
+                        ? sortItems(projectMap[g], gSort.column, gSort.direction)
+                        : projectMap[g];
+                    sortedProjectItems.push(...sortedGroup);
+                });
+
+                const sortedMRs = hasMRSort
+                    ? sortItems(mrs, currentMRSort.column, currentMRSort.direction)
+                    : mrs;
+                wb.items = [...sortedProjectItems, ...sortedMRs];
+            });
+        }
+
+        const allOrderedItems = weekBlocks.flatMap(b => b.items);
+        const totalItems = allOrderedItems.length;
+
+        // Cập nhật nhãn đếm kết quả tìm kiếm chính xác
+        if (searchResultCount) {
+            if (currentSearchQuery) {
+                searchResultCount.style.display = 'inline-flex';
+                const uniqueFound = filteredData.length;
+                const scopeTotal = currentQuickFilter === 'all'
+                    ? baseFiltered.length
+                    : baseFiltered.filter(it => {
+                        if (currentQuickFilter === 'mr') return !!it.isMR;
+                        if (it.isMR) return false;
+                        if (currentQuickFilter === 'late') return it.progress === 'Trễ hạn';
+                        if (currentQuickFilter === 'missing_time') return !it.estimate || Number(it.estimate) === 0 || !it.spent || Number(it.spent) === 0;
+                        if (currentQuickFilter === 'missing_date') return !it.startDate || !it.dueDate;
+                        if (currentQuickFilter === 'reopen') return (it.reopenTotal || 0) > 0;
+                        if (currentQuickFilter === 'unplanned') return it.type === 'Phát sinh';
+                        if (currentQuickFilter === 'open') return isItemOpen(it);
+                        return true;
+                    }).length;
+
+                if (totalItems > uniqueFound) {
+                    searchResultCount.innerHTML = `Tìm thấy <strong>${uniqueFound}</strong> task <span class="search-repeat-count" title="Công việc lặp lại ở nhiều tuần khác nhau do tiếp diễn">(${totalItems} dòng)</span> / <strong>${scopeTotal}</strong>`;
+                } else {
+                    searchResultCount.innerHTML = `Tìm thấy <strong>${uniqueFound}</strong> / <strong>${scopeTotal}</strong> task`;
+                }
+            } else {
+                searchResultCount.style.display = 'none';
+            }
+        }
+
+        const effectivePageSize = pageSize === 'all' ? totalItems : Number(pageSize);
+        const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalItems / effectivePageSize));
+
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+
+        let startIdx = 0;
+        let endIdx = totalItems;
+        let pagedItemSet = null;
+
+        if (pageSize !== 'all') {
+            startIdx = (currentPage - 1) * effectivePageSize;
+            endIdx = Math.min(startIdx + effectivePageSize, totalItems);
+            const pagedSlice = allOrderedItems.slice(startIdx, endIdx);
+            pagedItemSet = new Set(pagedSlice);
+        }
+
+        // Filter week blocks to only show items belonging to current page
+        const displayWeekBlocks = weekBlocks.map(b => {
+            const items = pageSize === 'all' ? b.items : b.items.filter(it => pagedItemSet.has(it));
+            return {
+                title: b.title,
+                start: b.start,
+                end: b.end,
+                items: items
+            };
+        }).filter(b => b.items.length > 0);
+
+        displayWeekBlocks.forEach(wb => {
+            const weekSection = document.createElement("div");
+            weekSection.className = "week-section";
+
+            const weekHeader = document.createElement("div");
+            weekHeader.className = "week-header";
+
+            const h2 = document.createElement("h2");
+            h2.textContent = wb.title;
+            weekHeader.appendChild(h2);
+
+            let weekSpent = 0;
+            wb.items.forEach(it => { weekSpent += (it.spent || 0); });
+
+            const weekActions = document.createElement("div");
+            weekActions.className = "week-actions";
+            weekActions.style.display = "flex";
+            weekActions.style.alignItems = "center";
+            weekActions.style.gap = "10px";
+
+            const carryCount = wb.items.filter(it => isItemCarryOver(it, wb.start)).length;
+            const carryText = carryCount > 0 ? ` (${carryCount} tiếp diễn)` : '';
+
+            const badge = document.createElement("span");
+            badge.className = "week-badge";
+            badge.textContent = `${weekSpent.toFixed(2)}h spent / ${wb.items.length} công việc${carryText}`;
+            weekActions.appendChild(badge);
+
+            const delWeekBtn = document.createElement("button");
+            delWeekBtn.className = "btn-delete-week";
+            delWeekBtn.textContent = "🗑️ Xóa tuần này";
+            delWeekBtn.title = `Xóa toàn bộ Task và Merge Request trong ${wb.title}`;
+            delWeekBtn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                await deleteWeekItems(wb);
+            });
+            weekActions.appendChild(delWeekBtn);
+
+            weekHeader.appendChild(weekActions);
+            weekSection.appendChild(weekHeader);
+
+            const weekTaskGroups = {};
+            const weekMRs = [];
+
+            wb.items.forEach(item => {
+                if (item.isMR) {
+                    weekMRs.push(item);
+                } else {
+                    const group = item.groupName || 'Khác';
+                    if (!weekTaskGroups[group]) weekTaskGroups[group] = [];
+                    weekTaskGroups[group].push(item);
+                }
+            });
+
+            for (const [groupName, items] of Object.entries(weekTaskGroups)) {
+                renderProjectSection(groupName, items, weekSection, wb.start);
+            }
+
+            if (weekMRs.length > 0) {
+                renderMRSection(weekMRs, weekSection, wb.start);
+            }
+
+            container.appendChild(weekSection);
+        });
+
+        // 5. Render Pagination Bar
+        if (totalItems > 0) {
+            renderPaginationBar(container, totalItems, startIdx, endIdx, currentPage, totalPages, pageSize);
+        }
+
+        // 6. Update Dashboard Stats (based on whatever is displayed)
+        const dashboardStats = calculateStats(displayData, filterVal, selectedMonth);
         await renderKpiStats(dashboardStats);
+    }
+
+    function getPaginationPages(current, total) {
+        if (total <= 7) {
+            return Array.from({ length: total }, (_, i) => i + 1);
+        }
+        const pages = [];
+        pages.push(1);
+
+        let start = Math.max(2, current - 1);
+        let end = Math.min(total - 1, current + 1);
+
+        if (current <= 3) {
+            end = 4;
+        } else if (current >= total - 2) {
+            start = total - 3;
+        }
+
+        if (start > 2) {
+            pages.push('...');
+        }
+        for (let i = start; i <= end; i++) {
+            pages.push(i);
+        }
+        if (end < total - 1) {
+            pages.push('...');
+        }
+        pages.push(total);
+        return pages;
+    }
+
+    function renderPaginationBar(container, totalItems, startIdx, endIdx, curPage, numPages, curPageSize) {
+        const bar = document.createElement("div");
+        bar.className = "pagination-bar";
+
+        // Left side: Info & page size dropdown
+        const infoDiv = document.createElement("div");
+        infoDiv.className = "pagination-info";
+
+        const textSpan = document.createElement("span");
+        const displayStart = totalItems === 0 ? 0 : startIdx + 1;
+        textSpan.innerHTML = `Hiển thị <strong>${displayStart}</strong> - <strong>${endIdx}</strong> trong tổng số <strong>${totalItems}</strong> công việc <span style="color:var(--text-muted);margin-left:4px;">(Trang ${curPage}/${numPages})</span>`;
+        infoDiv.appendChild(textSpan);
+
+        const sizeWrapper = document.createElement("label");
+        sizeWrapper.style.display = "inline-flex";
+        sizeWrapper.style.alignItems = "center";
+        sizeWrapper.style.gap = "6px";
+        sizeWrapper.style.marginLeft = "8px";
+
+        const sizeLabel = document.createElement("span");
+        sizeLabel.textContent = "Mỗi trang:";
+        sizeWrapper.appendChild(sizeLabel);
+
+        const sizeSelect = document.createElement("select");
+        sizeSelect.className = "pagination-size-select";
+        const sizes = [
+            { value: "15", label: "15" },
+            { value: "25", label: "25" },
+            { value: "50", label: "50" },
+            { value: "100", label: "100" },
+            { value: "all", label: "Tất cả" }
+        ];
+        sizes.forEach(s => {
+            const opt = document.createElement("option");
+            opt.value = s.value;
+            opt.textContent = s.label;
+            if (String(curPageSize) === s.value) opt.selected = true;
+            sizeSelect.appendChild(opt);
+        });
+
+        sizeSelect.addEventListener("change", async (e) => {
+            pageSize = e.target.value === "all" ? "all" : parseInt(e.target.value, 10);
+            currentPage = 1;
+            await applyFilter();
+            const c = document.getElementById("kpiContainer");
+            if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+
+        sizeWrapper.appendChild(sizeSelect);
+        infoDiv.appendChild(sizeWrapper);
+        bar.appendChild(infoDiv);
+
+        // Right side: Pagination controls
+        const controlsDiv = document.createElement("div");
+        controlsDiv.className = "pagination-controls";
+
+        const createBtn = (label, targetPage, isDisabled, isActive, title) => {
+            const btn = document.createElement("button");
+            btn.className = "pagination-btn" + (isActive ? " active" : "");
+            btn.textContent = label;
+            if (title) btn.title = title;
+            if (isDisabled) {
+                btn.disabled = true;
+            } else {
+                btn.addEventListener("click", async () => {
+                    if (currentPage === targetPage) return;
+                    currentPage = targetPage;
+                    await applyFilter();
+                    const c = document.getElementById("kpiContainer");
+                    if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+            }
+            return btn;
+        };
+
+        // « Đầu
+        controlsDiv.appendChild(createBtn("«", 1, curPage <= 1, false, "Trang đầu"));
+        // ‹ Trước
+        controlsDiv.appendChild(createBtn("‹", curPage - 1, curPage <= 1, false, "Trang trước"));
+
+        // Page buttons
+        const pages = getPaginationPages(curPage, numPages);
+        pages.forEach(p => {
+            if (p === "...") {
+                const ellipsis = document.createElement("span");
+                ellipsis.className = "pagination-ellipsis";
+                ellipsis.textContent = "…";
+                controlsDiv.appendChild(ellipsis);
+            } else {
+                controlsDiv.appendChild(createBtn(String(p), p, false, p === curPage, `Trang ${p}`));
+            }
+        });
+
+        // › Sau
+        controlsDiv.appendChild(createBtn("›", curPage + 1, curPage >= numPages, false, "Trang sau"));
+        // » Cuối
+        controlsDiv.appendChild(createBtn("»", numPages, curPage >= numPages, false, "Trang cuối"));
+
+        bar.appendChild(controlsDiv);
+        container.appendChild(bar);
     }
 
     async function renderKpiStats(kpiStats) {
@@ -682,35 +2340,36 @@
         section.appendChild(groupTitle);
 
         const statsData = [
-            { label: "Tổng số task", value: kpiStats.totalTask },
-            { label: "Kế hoạch / Phát sinh", value: `${kpiStats.totalPlannedTask} / ${kpiStats.totalUnplannedTask}` },
-            { label: "Time Estimate", value: `${kpiStats.totalEstimate}h` },
-            { label: "Time Spent", value: `${kpiStats.totalSpent}h` },
-            { label: "Đúng hạn / Trễ hạn", value: `${kpiStats.totalTaskInTime} / ${kpiStats.totalTaskLate}` },
-            { label: "Task Reopen", value: kpiStats.totalTaskReopen },
-            { label: "Daily Spent", value: `${kpiStats.dailySpentTime}h` }
+            { label: "Tổng số công việc", value: kpiStats.totalTask, icon: "📋" },
+            { label: "Kế hoạch / Phát sinh", value: `${kpiStats.totalPlannedTask} / ${kpiStats.totalUnplannedTask}`, icon: "⚖️" },
+            { label: "Time Estimate", value: `${kpiStats.totalEstimate}h`, icon: "⏱️" },
+            { label: "Time Spent", value: `${kpiStats.totalSpent}h`, icon: "⌛" },
+            { label: "Đúng hạn / Trễ hạn", value: `${kpiStats.totalTaskInTime} / ${kpiStats.totalTaskLate}`, icon: "🎯" },
+            { label: "Task Reopen", value: kpiStats.totalTaskReopen, icon: "🔄" },
+            { label: "Daily Spent", value: `${kpiStats.dailySpentTime}h`, icon: "📅" }
         ];
 
-        const table = document.createElement("table");
-        const tbody = document.createElement("tbody");
+        const grid = document.createElement("div");
+        grid.className = "stats-grid";
 
         statsData.forEach(stat => {
-            const row = document.createElement("tr");
-            const tdLabel = document.createElement("td");
-            tdLabel.textContent = stat.label;
-            tdLabel.style.fontWeight = "600";
-            tdLabel.style.width = "40%";
+            const card = document.createElement("div");
+            card.className = "stat-card";
 
-            const tdValue = document.createElement("td");
-            tdValue.textContent = stat.value;
+            const labelEl = document.createElement("div");
+            labelEl.className = "stat-card-label";
+            labelEl.textContent = `${stat.icon} ${stat.label}`;
 
-            row.appendChild(tdLabel);
-            row.appendChild(tdValue);
-            tbody.appendChild(row);
+            const valueEl = document.createElement("div");
+            valueEl.className = "stat-card-value";
+            valueEl.textContent = stat.value;
+
+            card.appendChild(labelEl);
+            card.appendChild(valueEl);
+            grid.appendChild(card);
         });
 
-        table.appendChild(tbody);
-        section.appendChild(table);
+        section.appendChild(grid);
         container.appendChild(section);
     }
 
@@ -748,51 +2407,648 @@
         }
     }
 
-    function exportAllTablesToCSV() {
-        const date = new Date().toISOString().slice(0, 10);
-        const title = `KPI_Export_${date}`; // Tên file có chứa ngày hiện tại
-        const container = document.getElementById('kpiContainer');
-        const tables = container.querySelectorAll('table');
-        const headers = container.querySelectorAll('h3');
+    function getAttitudeScore(percent) {
+        if (percent >= 80) return 1;
+        if (percent >= 50) return 2;
+        if (percent >= 30) return 3;
+        if (percent >= 10) return 4;
+        return 5;
+    }
 
-        let csv = '';
+    function getVolumeScore(percent) {
+        if (percent < 70) return 1;
+        if (percent < 80) return 2;
+        if (percent < 90) return 3;
+        if (percent < 100) return 4;
+        return 5;
+    }
 
-        tables.forEach((table, index) => {
-            const headerText = headers[index]?.innerText || `Table ${index + 1}`;
-            csv += `${headerText}\n`; // ghi tên bảng trước mỗi bảng
+    function getQualityScore(percent) {
+        if (percent >= 80) return 1;
+        if (percent >= 50) return 2;
+        if (percent >= 30) return 3;
+        if (percent >= 10) return 4;
+        return 5;
+    }
 
-            // Duyệt từng dòng trong bảng: tiêu đề, dữ liệu và cả dòng tổng cộng
-            const rows = table.querySelectorAll('thead tr, tbody tr, tfoot tr');
-            rows.forEach(row => {
-                const rowCells = [];
-                Array.from(row.cells).forEach(cell => {
-                    const link = cell.querySelector('a');
-                    // Nếu có link, ưu tiên lấy title (chứa link đầy đủ) hoặc href
-                    let text = link ? (link.title || link.href || link.innerText) : cell.textContent.trim();
+    const EXCEL_STYLES = {
+        BORDER_THIN: {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+        },
+        FILL_HEADER: {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFD9EAD3' }
+        },
+        FONT_HEADER: {
+            name: 'Times New Roman',
+            size: 12,
+            bold: true
+        },
+        FONT_DATA: {
+            name: 'Times New Roman',
+            size: 11
+        },
+        FONT_LINK: {
+            name: 'Arial',
+            size: 11,
+            color: { argb: 'FF0000FF' },
+            underline: true
+        }
+    };
 
-                    if (text.includes(',') || text.includes('"') || text.includes('\n')) {
-                        text = `"${text.replace(/"/g, '""')}"`; // escape dấu "
-                    }
+    function triggerExcelDownload(buffer, fileName) {
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
+    }
 
-                    rowCells.push(text);
-                    // Nếu cell có colSpan, thêm các ô trống để các cột sau không bị lệch
-                    const colSpan = cell.colSpan || 1;
-                    for (let i = 1; i < colSpan; i++) {
-                        rowCells.push('');
-                    }
+    async function exportWeeklyKPIExcel() {
+        if (typeof ExcelJS === 'undefined') {
+            alert('Thư viện ExcelJS chưa sẵn sàng. Vui lòng tải lại trang!');
+            return;
+        }
+
+        const storedKpi = await getStoredIds('KpiInfo');
+        if (!storedKpi || storedKpi.length === 0) {
+            alert('Chưa có dữ liệu thống kê KPI. Vui lòng bấm "Thống kê" trước khi xuất file!');
+            return;
+        }
+
+        const selectedMonth = monthSelect.value;
+        const filterVal = timeFilterSelect.value;
+        const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+        const monthWeeks = getWeeksOfMonth(selYear, selMonth);
+
+        let targetStart = null;
+        let targetEnd = null;
+        let targetLabel = '';
+
+        if (filterVal === 'current_week') {
+            const cw = getCurrentWeekRange();
+            targetStart = cw.start;
+            targetEnd = cw.end;
+            targetLabel = cw.label;
+        } else if (filterVal.startsWith('week:')) {
+            const parts = filterVal.split(':');
+            targetStart = parts[1];
+            targetEnd = parts[2];
+            const found = monthWeeks.find(w => w.start === targetStart && w.end === targetEnd);
+            targetLabel = found ? found.label : `Tuần ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
+        } else if (filterVal.startsWith('day:')) {
+            const targetDay = filterVal.replace('day:', '');
+            const d = new Date(targetDay);
+            const mon = getMonday(d);
+            const sun = new Date(mon);
+            sun.setDate(sun.getDate() + 6);
+            targetStart = parseToIsoDate(mon);
+            targetEnd = parseToIsoDate(sun);
+            targetLabel = `Tuần (${formatDate(targetStart)} - ${formatDate(targetEnd)})`;
+        } else if (filterVal === 'custom_range') {
+            targetStart = startDateInput?.value;
+            targetEnd = endDateInput?.value;
+            if (!targetStart || !targetEnd) {
+                alert('Vui lòng chọn khoảng ngày bắt đầu và kết thúc.');
+                return;
+            }
+            targetLabel = `Khoảng ngày ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
+        } else if (filterVal === 'all_month') {
+            const monthItems = storedKpi.filter(item => isItemActiveInFilter(item, 'all_month', selectedMonth, '', ''));
+            const activeWeeks = monthWeeks.filter(w => monthItems.some(item => isItemActiveInWeek(item, w.start, w.end)));
+
+            if (activeWeeks.length === 0) {
+                alert(`Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có tuần nào có dữ liệu công việc.`);
+                return;
+            }
+
+            if (activeWeeks.length === 1) {
+                targetStart = activeWeeks[0].start;
+                targetEnd = activeWeeks[0].end;
+                targetLabel = activeWeeks[0].label;
+            } else {
+                let promptText = `Chọn tuần bạn muốn xuất KPI trong tháng ${String(selMonth).padStart(2, '0')}/${selYear}:\n\n`;
+                activeWeeks.forEach((w, idx) => {
+                    promptText += `${idx + 1}. ${w.label}\n`;
                 });
-                csv += rowCells.join(',') + '\n';
-            });
+                promptText += `\nNhập số thứ tự tuần (1 - ${activeWeeks.length}) hoặc nhấn Hủy:`;
+                const choice = prompt(promptText);
+                if (!choice) return;
+                const chosenIdx = parseInt(choice, 10) - 1;
+                if (chosenIdx >= 0 && chosenIdx < activeWeeks.length) {
+                    targetStart = activeWeeks[chosenIdx].start;
+                    targetEnd = activeWeeks[chosenIdx].end;
+                    targetLabel = activeWeeks[chosenIdx].label;
+                } else {
+                    alert('Lựa chọn không hợp lệ.');
+                    return;
+                }
+            }
+        }
 
-            csv += '\n'; // dòng trắng giữa các bảng
+        if (!targetStart || !targetEnd) {
+            alert('Không xác định được tuần cần xuất.');
+            return;
+        }
+
+        // Lấy danh sách task và MR của tuần
+        const weekTasks = storedKpi.filter(item => !item.isMR && isItemActiveInWeek(item, targetStart, targetEnd));
+        const weekMRs = storedKpi.filter(item => item.isMR && isItemActiveInWeek(item, targetStart, targetEnd));
+
+        if (weekTasks.length === 0 && weekMRs.length === 0) {
+            alert(`Không có Task hay Merge Request nào trong "${targetLabel}".`);
+            return;
+        }
+
+        // Tạo workbook mới
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Báo cáo công việc');
+
+        ws.getColumn('A').width = 10;
+        ws.getColumn('B').width = 95;
+        ws.getColumn('C').width = 14;
+        ws.getColumn('D').width = 14;
+        ws.getColumn('E').width = 14;
+        ws.getColumn('F').width = 14;
+        ws.getColumn('G').width = 14;
+        ws.getColumn('H').width = 16;
+        ws.getColumn('I').width = 14;
+        ws.getColumn('J').width = 14;
+
+        let curRow = 1;
+        const b1 = ws.getCell(`B${curRow}`);
+        b1.value = `Tuần ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
+        b1.style = {
+            font: { name: 'Times New Roman', size: 12, bold: true, italic: true }
+        };
+        curRow += 3;
+
+        // Group tasks theo groupName
+        const grouped = {};
+        weekTasks.forEach(item => {
+            const gName = cleanGroupName(item.groupName || 'Khác');
+            if (!grouped[gName]) grouped[gName] = [];
+            grouped[gName].push(item);
         });
 
-        // Tạo và tải file CSV với BOM để tránh lỗi font UTF-8
-        const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `${title}.csv`;
-        link.click();
+        const headers = ['Tasks', 'Start date', 'Due date', 'Closed date', 'Estimate (h)', 'Spent (h)', 'Số lần bị reopen', 'Loại task', 'Tiến độ'];
+        const cols = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+        Object.entries(grouped).forEach(([gName, items]) => {
+            const grpCell = ws.getCell(`B${curRow}`);
+            grpCell.value = gName;
+            grpCell.style = {
+                font: { name: 'Arial', size: 11, bold: true }
+            };
+            curRow++;
+
+            headers.forEach((h, idx) => {
+                const cell = ws.getCell(`${cols[idx]}${curRow}`);
+                cell.value = h;
+                cell.style = {
+                    font: { name: 'Times New Roman', size: 12, bold: true },
+                    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { horizontal: 'center', vertical: 'middle' }
+                };
+            });
+            curRow++;
+
+            items.forEach(it => {
+                const taskCell = ws.getCell(`B${curRow}`);
+                taskCell.value = { text: it.taskUrl, hyperlink: it.taskUrl };
+                taskCell.style = {
+                    font: { name: 'Arial', size: 11, color: { argb: 'FF0000FF' }, underline: true },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { vertical: 'middle' }
+                };
+
+                const rowVals = [
+                    it.startDate ? formatDate(it.startDate) : '',
+                    it.dueDate ? formatDate(it.dueDate) : '',
+                    it.closeDate ? formatDate(it.closeDate) : '',
+                    typeof it.estimate === 'number' ? it.estimate : (it.estimate ? parseFloat(it.estimate) : 0),
+                    typeof it.spent === 'number' ? it.spent : (it.spent ? parseFloat(it.spent) : 0),
+                    it.reopenTotal || 0,
+                    it.type || it.taskType || 'Kế hoạch',
+                    it.progress || 'Đúng hạn'
+                ];
+
+                rowVals.forEach((val, idx) => {
+                    const cell = ws.getCell(`${cols[idx + 1]}${curRow}`);
+                    cell.value = val;
+                    cell.style = {
+                        font: { name: 'Times New Roman', size: 12 },
+                        border: {
+                            top: { style: 'thin' },
+                            left: { style: 'thin' },
+                            bottom: { style: 'thin' },
+                            right: { style: 'thin' }
+                        },
+                        alignment: { horizontal: 'center', vertical: 'middle' }
+                    };
+                });
+                curRow++;
+            });
+            curRow += 2;
+        });
+
+        // Danh sách Merge Request
+        if (weekMRs.length > 0) {
+            const mrTitleCell = ws.getCell(`B${curRow}`);
+            mrTitleCell.value = 'DANH SÁCH MERGE REQUEST';
+            mrTitleCell.style = {
+                font: { name: 'Arial', size: 11, bold: true }
+            };
+            curRow++;
+
+            const mrHeaders = ['Tasks', 'Estimate (h)', 'Spent (h)'];
+            const mrCols = ['B', 'C', 'D'];
+            mrHeaders.forEach((h, idx) => {
+                const cell = ws.getCell(`${mrCols[idx]}${curRow}`);
+                cell.value = h;
+                cell.style = {
+                    font: { name: 'Times New Roman', size: 12, bold: true },
+                    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { horizontal: 'center', vertical: 'middle' }
+                };
+            });
+            curRow++;
+
+            weekMRs.forEach(mr => {
+                const taskCell = ws.getCell(`B${curRow}`);
+                taskCell.value = { text: mr.taskUrl, hyperlink: mr.taskUrl };
+                taskCell.style = {
+                    font: { name: 'Arial', size: 11, color: { argb: 'FF0000FF' }, underline: true },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { vertical: 'middle' }
+                };
+
+                const estCell = ws.getCell(`C${curRow}`);
+                estCell.value = typeof mr.estimate === 'number' ? mr.estimate : (mr.estimate ? parseFloat(mr.estimate) : 0);
+                estCell.style = {
+                    font: { name: 'Times New Roman', size: 12 },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { horizontal: 'center', vertical: 'middle' }
+                };
+
+                const spentCell = ws.getCell(`D${curRow}`);
+                spentCell.value = typeof mr.spent === 'number' ? mr.spent : (mr.spent ? parseFloat(mr.spent) : 0);
+                spentCell.style = {
+                    font: { name: 'Times New Roman', size: 12 },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { horizontal: 'center', vertical: 'middle' }
+                };
+                curRow++;
+            });
+        }
+
+        const buffer = await wb.xlsx.writeBuffer();
+        const startStr = formatDate(targetStart).replace(/\//g, '-');
+        const endStr = formatDate(targetEnd).replace(/\//g, '-');
+        triggerExcelDownload(buffer, `KPI_Tuan_${startStr}_${endStr}.xlsx`);
+    }
+
+    async function exportMonthlyKPIExcel() {
+        if (typeof ExcelJS === 'undefined') {
+            alert('Thư viện ExcelJS chưa sẵn sàng. Vui lòng tải lại trang!');
+            return;
+        }
+
+        const storedKpi = await getStoredIds('KpiInfo');
+        if (!storedKpi || storedKpi.length === 0) {
+            alert('Chưa có dữ liệu thống kê KPI. Vui lòng bấm "Thống kê" trước khi xuất file!');
+            return;
+        }
+
+        const selectedMonth = monthSelect.value;
+        const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+        const monthWeeks = getWeeksOfMonth(selYear, selMonth);
+
+        // Lọc tất cả task/MR của tháng
+        const monthItems = storedKpi.filter(item => isItemActiveInFilter(item, 'all_month', selectedMonth, '', ''));
+        if (monthItems.length === 0) {
+            alert(`Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có dữ liệu công việc.`);
+            return;
+        }
+
+        // Tính toán thống kê KPI cho tháng
+        const stats = calculateStats(monthItems, 'all_month', selectedMonth);
+
+        // Tải template KPI
+        let templateBuffer;
+        try {
+            const resp = await fetch('kpi_template.xlsx');
+            if (!resp.ok) throw new Error('Không thể tải file mẫu kpi_template.xlsx');
+            templateBuffer = await resp.arrayBuffer();
+        } catch (err) {
+            console.error('Lỗi tải template KPI:', err);
+            alert('Lỗi: Không tìm thấy file kpi_template.xlsx trong extension.');
+            return;
+        }
+
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(templateBuffer);
+
+        const ws1 = wb.getWorksheet('Báo cáo công việc');
+        const ws2 = wb.getWorksheet('Chấm điểm KPI');
+
+        // 1. Xóa toàn bộ dữ liệu và định dạng cũ ở cột B đến J trong Sheet 1 (giữ nguyên cột L và M)
+        for (let r = 1; r <= ws1.rowCount; r++) {
+            const row = ws1.getRow(r);
+            for (let c = 2; c <= 10; c++) {
+                const cell = row.getCell(c);
+                cell.value = null;
+                cell.style = {};
+            }
+        }
+        // Xóa sạch toàn bộ các dòng phía dưới dòng 36 (tránh dữ liệu và định dạng rác của tháng cũ)
+        for (let r = 37; r <= ws1.rowCount; r++) {
+            const row = ws1.getRow(r);
+            row.height = undefined;
+            for (let c = 1; c <= 26; c++) {
+                const cell = row.getCell(c);
+                cell.value = null;
+                cell.style = {};
+            }
+        }
+
+        // 2. Điền các tuần trong tháng vào cột B đến J
+        let curRow = 1;
+        const headers = ['Tasks', 'Start date', 'Due date', 'Closed date', 'Estimate (h)', 'Spent (h)', 'Số lần bị reopen', 'Loại task', 'Tiến độ'];
+        const cols = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+        monthWeeks.forEach(w => {
+            const weekTasks = monthItems.filter(item => !item.isMR && isItemActiveInWeek(item, w.start, w.end));
+            if (weekTasks.length === 0) return;
+
+            const weekTitle = ws1.getCell(`B${curRow}`);
+            weekTitle.value = `Tuần ${formatDate(w.start)} - ${formatDate(w.end)}`;
+            weekTitle.style = {
+                font: { name: 'Times New Roman', size: 12, bold: true, italic: true }
+            };
+            curRow += 3;
+
+            // Group tasks theo groupName
+            const grouped = {};
+            weekTasks.forEach(it => {
+                const gName = cleanGroupName(it.groupName || 'Khác');
+                if (!grouped[gName]) grouped[gName] = [];
+                grouped[gName].push(it);
+            });
+
+            Object.entries(grouped).forEach(([gName, items]) => {
+                const grpCell = ws1.getCell(`B${curRow}`);
+                grpCell.value = gName;
+                grpCell.style = {
+                    font: { name: 'Arial', size: 11, bold: true }
+                };
+                curRow++;
+
+                headers.forEach((h, idx) => {
+                    const cell = ws1.getCell(`${cols[idx]}${curRow}`);
+                    cell.value = h;
+                    cell.style = {
+                        font: { name: 'Times New Roman', size: 12, bold: true },
+                        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } },
+                        border: {
+                            top: { style: 'thin' },
+                            left: { style: 'thin' },
+                            bottom: { style: 'thin' },
+                            right: { style: 'thin' }
+                        },
+                        alignment: { horizontal: 'center', vertical: 'middle' }
+                    };
+                });
+                curRow++;
+
+                items.forEach(it => {
+                    const taskCell = ws1.getCell(`B${curRow}`);
+                    taskCell.value = { text: it.taskUrl, hyperlink: it.taskUrl };
+                    taskCell.style = {
+                        font: { name: 'Arial', size: 11, color: { argb: 'FF0000FF' }, underline: true },
+                        border: {
+                            top: { style: 'thin' },
+                            left: { style: 'thin' },
+                            bottom: { style: 'thin' },
+                            right: { style: 'thin' }
+                        },
+                        alignment: { vertical: 'middle' }
+                    };
+
+                    const rowVals = [
+                        it.startDate ? formatDate(it.startDate) : '',
+                        it.dueDate ? formatDate(it.dueDate) : '',
+                        it.closeDate ? formatDate(it.closeDate) : '',
+                        typeof it.estimate === 'number' ? it.estimate : (it.estimate ? parseFloat(it.estimate) : 0),
+                        typeof it.spent === 'number' ? it.spent : (it.spent ? parseFloat(it.spent) : 0),
+                        it.reopenTotal || 0,
+                        it.type || it.taskType || 'Kế hoạch',
+                        it.progress || 'Đúng hạn'
+                    ];
+
+                    rowVals.forEach((val, idx) => {
+                        const cell = ws1.getCell(`${cols[idx + 1]}${curRow}`);
+                        cell.value = val;
+                        cell.style = {
+                            font: { name: 'Times New Roman', size: 12 },
+                            border: {
+                                top: { style: 'thin' },
+                                left: { style: 'thin' },
+                                bottom: { style: 'thin' },
+                                right: { style: 'thin' }
+                            },
+                            alignment: { horizontal: 'center', vertical: 'middle' }
+                        };
+                    });
+                    curRow++;
+                });
+                curRow += 2;
+            });
+            curRow++;
+        });
+
+        // 3. Danh sách Merge Request của cả tháng
+        const monthMRs = monthItems.filter(item => item.isMR);
+        if (monthMRs.length > 0) {
+            const mrTitleCell = ws1.getCell(`B${curRow}`);
+            mrTitleCell.value = 'DANH SÁCH MERGE REQUEST';
+            mrTitleCell.style = {
+                font: { name: 'Arial', size: 11, bold: true }
+            };
+            curRow++;
+
+            const mrHeaders = ['Tasks', 'Estimate (h)', 'Spent (h)'];
+            const mrCols = ['B', 'C', 'D'];
+            mrHeaders.forEach((h, idx) => {
+                const cell = ws1.getCell(`${mrCols[idx]}${curRow}`);
+                cell.value = h;
+                cell.style = {
+                    font: { name: 'Times New Roman', size: 12, bold: true },
+                    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { horizontal: 'center', vertical: 'middle' }
+                };
+            });
+            curRow++;
+
+            monthMRs.forEach(mr => {
+                const taskCell = ws1.getCell(`B${curRow}`);
+                taskCell.value = { text: mr.taskUrl, hyperlink: mr.taskUrl };
+                taskCell.style = {
+                    font: { name: 'Arial', size: 11, color: { argb: 'FF0000FF' }, underline: true },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { vertical: 'middle' }
+                };
+
+                const estCell = ws1.getCell(`C${curRow}`);
+                estCell.value = typeof mr.estimate === 'number' ? mr.estimate : (mr.estimate ? parseFloat(mr.estimate) : 0);
+                estCell.style = {
+                    font: { name: 'Times New Roman', size: 12 },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { horizontal: 'center', vertical: 'middle' }
+                };
+
+                const spentCell = ws1.getCell(`D${curRow}`);
+                spentCell.value = typeof mr.spent === 'number' ? mr.spent : (mr.spent ? parseFloat(mr.spent) : 0);
+                spentCell.style = {
+                    font: { name: 'Times New Roman', size: 12 },
+                    border: {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    },
+                    alignment: { horizontal: 'center', vertical: 'middle' }
+                };
+                curRow++;
+            });
+        }
+
+        // 4. Cập nhật số liệu Thống Kê & Tỉ lệ ở Cột L & M (Sheet 1)
+        ws1.getCell('M4').value = stats.totalTasks;
+        ws1.getCell('M5').value = stats.totalPlannedTasks;
+        ws1.getCell('M6').value = stats.totalUnplannedTasks;
+        ws1.getCell('M7').value = stats.workingHours;
+        ws1.getCell('M8').value = parseFloat(stats.totalEstimateTime);
+        ws1.getCell('M9').value = parseFloat(stats.totalSpentTime);
+        ws1.getCell('M10').value = parseFloat(stats.totalPlannedSpentTime);
+        ws1.getCell('M11').value = parseFloat(stats.totalUnplannedSpentTime);
+        ws1.getCell('M12').value = stats.tasksNoStartDate;
+        ws1.getCell('M13').value = stats.tasksNoDueDate;
+        ws1.getCell('M14').value = stats.tasksNoEstimate;
+        ws1.getCell('M15').value = stats.tasksNoSpent;
+        ws1.getCell('M16').value = stats.tasksOnTime;
+        ws1.getCell('M17').value = stats.tasksLate;
+        ws1.getCell('M18').value = stats.tasksNoReopen;
+        ws1.getCell('M19').value = stats.tasksReopen;
+
+        ws1.getCell('M23').value = { formula: 'M12/M4*100', result: parseFloat(stats.noStartDateRate) };
+        ws1.getCell('M24').value = { formula: 'M13/M4*100', result: parseFloat(stats.noDueDateRate) };
+        ws1.getCell('M25').value = { formula: 'M14/M4*100', result: parseFloat(stats.noEstimateRate) };
+        ws1.getCell('M26').value = { formula: 'M15/M4*100', result: parseFloat(stats.noSpentRate) };
+        ws1.getCell('M27').value = { formula: 'M16/M4*100', result: parseFloat(stats.onTimeRate) };
+        ws1.getCell('M28').value = { formula: 'M17/M4*100', result: parseFloat(stats.lateRate) };
+        ws1.getCell('M29').value = { formula: 'M18/M4*100', result: parseFloat(stats.noReopenRate) };
+        ws1.getCell('M30').value = { formula: 'M19/M4*100', result: parseFloat(stats.reopenRate) };
+        ws1.getCell('M31').value = { formula: 'M6/M4*100', result: parseFloat(stats.unplannedTaskRate) };
+        ws1.getCell('M32').value = { formula: 'M9/M7*100', result: parseFloat(stats.spentTimeVsWorkingHoursRate) };
+        ws1.getCell('M33').value = { formula: 'M9/M8*100', result: parseFloat(stats.spentTimeVsEstimateRate) };
+        ws1.getCell('M34').value = { formula: 'M10/M9*100', result: parseFloat(stats.plannedSpentTimeVsTotalSpentTimeRate) };
+        ws1.getCell('M35').value = { formula: 'M11/M9*100', result: parseFloat(stats.unplannedSpentTimeVsTotalSpentTimeRate) };
+
+        // 5. Cập nhật Sheet 2 ("Chấm điểm KPI")
+        if (ws2) {
+            ws2.getCell('F15').value = parseFloat(stats.noEstimateRate) / 100;
+            ws2.getCell('G15').value = getAttitudeScore(parseFloat(stats.noEstimateRate));
+
+            ws2.getCell('F20').value = parseFloat(stats.noStartDateRate) / 100;
+            ws2.getCell('G20').value = getAttitudeScore(parseFloat(stats.noStartDateRate));
+
+            ws2.getCell('F25').value = parseFloat(stats.noDueDateRate) / 100;
+            ws2.getCell('G25').value = getAttitudeScore(parseFloat(stats.noDueDateRate));
+
+            ws2.getCell('F30').value = parseFloat(stats.noSpentRate) / 100;
+            ws2.getCell('G30').value = getAttitudeScore(parseFloat(stats.noSpentRate));
+
+            ws2.getCell('F35').value = parseFloat(stats.spentTimeVsWorkingHoursRate) / 100;
+            ws2.getCell('G35').value = getVolumeScore(parseFloat(stats.spentTimeVsWorkingHoursRate));
+
+            ws2.getCell('F40').value = parseFloat(stats.lateRate) / 100;
+            ws2.getCell('G40').value = getQualityScore(parseFloat(stats.lateRate));
+
+            ws2.getCell('F45').value = parseFloat(stats.reopenRate) / 100;
+            ws2.getCell('G45').value = getQualityScore(parseFloat(stats.reopenRate));
+
+            const totalScore = (
+                ws2.getCell('G15').value * 0.25 +
+                ws2.getCell('G20').value * 0.25 +
+                ws2.getCell('G25').value * 0.25 +
+                ws2.getCell('G30').value * 0.25 +
+                ws2.getCell('G35').value * 3 +
+                ws2.getCell('G40').value * 3 +
+                ws2.getCell('G45').value * 3
+            ) / 10;
+            ws2.getCell('G50').value = {
+                formula: '(E15*G15+E20*G20+E25*G25+E30*G30+E35*G35+E40*G40+E45*G45)/10',
+                result: parseFloat(totalScore.toFixed(2))
+            };
+        }
+
+        const buffer = await wb.xlsx.writeBuffer();
+        triggerExcelDownload(buffer, `KPI_Thang_${String(selMonth).padStart(2, '0')}-${selYear}.xlsx`);
     }
 
 
@@ -808,7 +3064,7 @@
         await chrome.storage.local.set({ ['KpiStats']: params });
     }
 
-    async function getWorkItemDetailNew(createAt, projectUrl, groupName) {
+    async function getWorkItemDetailNew(createAt, projectUrl, groupName, id = null, isMergeRequest = false, storedData = {}) {
         const parsedUrl = parseGitLabUrl(projectUrl);
         if (!parsedUrl) return null;
 
@@ -816,7 +3072,7 @@
         const token = await getAccessToken();
 
         let detailData;
-        if (itemType === 'merge_request') {
+        if (itemType === 'merge_request' || isMergeRequest) {
             detailData = await getMergeRequestDetail(token, projectPath, iid);
         } else {
             detailData = await getTaskDetail(token, projectPath, iid);
@@ -836,8 +3092,10 @@
             let assigneeId = null;
             let title = issuable.title;
             let webUrl = issuable.webUrl;
+            let parentTitle = '';
+            let parentUrl = '';
 
-            if (itemType === 'merge_request') {
+            if (itemType === 'merge_request' || isMergeRequest) {
                 esimateTimeTotal = issuable.timeEstimate;
                 spentTimeTotal = issuable.totalTimeSpent;
 
@@ -852,23 +3110,23 @@
                 const widgets = issuable.widgets;
 
                 // Start and due date
-                const widgetStartDueDate = widgets.find(widget => widget.type === "START_AND_DUE_DATE");
+                const widgetStartDueDate = widgets?.find(widget => widget.type === "START_AND_DUE_DATE");
                 if (widgetStartDueDate) {
                     startDate = formatDate(widgetStartDueDate.startDate);
                     dueDate = widgetStartDueDate.dueDate;
                 }
 
                 // Time tracking widget
-                const widgetTimeTracking = widgets.find(widget => widget.type === "TIME_TRACKING");
+                const widgetTimeTracking = widgets?.find(widget => widget.type === "TIME_TRACKING");
                 if (widgetTimeTracking) {
                     esimateTimeTotal = widgetTimeTracking.timeEstimate;
                     spentTimeTotal = widgetTimeTracking.totalTimeSpent;
                 }
 
                 // Label widget
-                const widgetLabel = widgets.find(widget => widget.type === "LABELS");
+                const widgetLabel = widgets?.find(widget => widget.type === "LABELS");
                 if (widgetLabel) {
-                    const labelNodes = widgetLabel.labels.nodes;
+                    const labelNodes = widgetLabel.labels?.nodes || [];
                     labelNodes.forEach(label => {
                         if (label.title == "UNPLANNED") {
                             taskType = "Phát sinh";
@@ -877,10 +3135,38 @@
                 }
 
                 // Assignee widget
-                const widgetAssinee = widgets.find(widget => widget.type === "ASSIGNEES");
-                if (widgetAssinee && widgetAssinee.assignees.nodes.length > 0) {
+                const widgetAssinee = widgets?.find(widget => widget.type === "ASSIGNEES");
+                if (widgetAssinee && widgetAssinee.assignees?.nodes?.length > 0) {
                     assigneeId = widgetAssinee.assignees.nodes[0].id;
                 }
+
+                // Hierarchy widget (Parent Issue)
+                const widgetHierarchy = widgets?.find(widget => 
+                    widget.parent !== undefined || 
+                    widget.__typename === "WorkItemWidgetHierarchy" || 
+                    (widget.type && String(widget.type).toUpperCase() === "HIERARCHY")
+                );
+
+                if (widgetHierarchy && widgetHierarchy.parent) {
+                    parentTitle = widgetHierarchy.parent.title || '';
+                    if (widgetHierarchy.parent.iid) {
+                        parentUrl = `https://gitlab.widosoft.com/${projectPath}/-/issues/${widgetHierarchy.parent.iid}`;
+                    } else if (widgetHierarchy.parent.webUrl) {
+                        parentUrl = widgetHierarchy.parent.webUrl;
+                    }
+                }
+
+                // Fallback to stored parent info if available
+                if (!parentTitle && storedData.parentTitle) {
+                    parentTitle = storedData.parentTitle;
+                }
+                if (!parentUrl && storedData.parentUrl) {
+                    parentUrl = storedData.parentUrl;
+                }
+            }
+
+            if (!title && storedData.taskTitle) {
+                title = storedData.taskTitle;
             }
 
             let progressStatus = "Đúng hạn";
@@ -890,26 +3176,27 @@
 
             // Activity log (mainly for reopens, which we'll skip for MRs for now as it's complex)
             let reopenTotal = 0;
-            if (itemType !== 'merge_request') {
+            if (itemType !== 'merge_request' && !isMergeRequest) {
                 const taskNoteLogs = await getTaskActivityLog(token, projectPath, iid);
                 if (taskNoteLogs && taskNoteLogs.workItem) {
-                    const taskNoteLogWidget = taskNoteLogs.workItem.widgets.find(widget => widget.type === "NOTES")
+                    const taskNoteLogWidget = taskNoteLogs.workItem.widgets?.find(widget => widget.type === "NOTES");
                     if (taskNoteLogWidget) {
-                        const taskNoteLogsList = taskNoteLogWidget.discussions.nodes;
+                        const taskNoteLogsList = taskNoteLogWidget.discussions?.nodes || [];
                         taskNoteLogsList.forEach(noteLog => {
-                            const noteDetails = noteLog.notes.nodes;
+                            const noteDetails = noteLog.notes?.nodes || [];
                             noteDetails.forEach(noteDetail => {
                                 const noteAuthor = noteDetail.author;
-                                if (noteDetail.body == 'reopened' && noteAuthor.id != assigneeId) {
+                                if (noteDetail.body == 'reopened' && noteAuthor?.id != assigneeId) {
                                     reopenTotal += 1;
                                 }
-                            })
-                        })
+                            });
+                        });
                     }
                 }
             }
 
             const returnData = {
+                id: id,
                 taskUrl: webUrl || projectUrl,
                 startDate: startDate,
                 dueDate: formatDate(dueDate),
@@ -921,8 +3208,11 @@
                 progress: progressStatus,
                 groupName: groupName,
                 addedAt: createAt,
-                title: title,
-                isMR: itemType === 'merge_request'
+                title: title || '',
+                parentTitle: parentTitle,
+                parentUrl: parentUrl,
+                state: issuable.state || (closeDateFormat ? 'closed' : 'opened'),
+                isMR: itemType === 'merge_request' || isMergeRequest
             };
 
             return returnData;
@@ -994,6 +3284,15 @@ fragment WorkItem on WorkItem {
 
 fragment WorkItemWidgets on WorkItemWidget {
   type
+  ... on WorkItemWidgetHierarchy {
+    parent {
+      id
+      iid
+      title
+      __typename
+    }
+    __typename
+  }
   ... on WorkItemWidgetDescription {
     description
     descriptionHtml
@@ -1120,7 +3419,10 @@ fragment Author on User {
         });
 
         const res = await response.json();
-        return res.data.workspace;
+        if (res.errors && res.errors.length > 0) {
+            console.warn('GitLab GraphQL errors in getTaskDetail for iid ' + iid + ':', res.errors);
+        }
+        return res.data ? res.data.workspace : null;
     }
 
     async function getTaskActivityLog(token, fullPath, iid) {
@@ -1247,53 +3549,6 @@ fragment User on User {
     }
 
 
-    function renderEmptyTable() {
-        const container = document.getElementById('allTaskContainer');
-        container.innerHTML = '';
-
-        const table = document.createElement('table');
-        table.innerHTML = `
-                <thead>
-                    <tr>
-                        <th>URL</th>
-                        <th>Ngày tạo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td colspan="2" style="text-align:center; padding: 24px; color: var(--text-muted);">
-                            Chưa có task nào
-                        </td>
-                    </tr>
-                </tbody>
-            `;
-        container.appendChild(table);
-    }
-
-    function renderEmptyMergeRequestTable() {
-        const container = document.getElementById('allMergeRequestContainer');
-        container.innerHTML = '';
-
-        const table = document.createElement('table');
-        table.innerHTML = `
-                <thead>
-                    <tr>
-                        <th>URL</th>
-                        <th>Ngày tạo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td colspan="2" style="text-align:center; padding: 24px; color: var(--text-muted);">
-                            Chưa có MR nào
-                        </td>
-                    </tr>
-                </tbody>
-            `;
-
-        container.appendChild(table);
-    }
-
     async function getMergeRequestDetail(token, fullPath, iid) {
         const queryData = {
             operationName: "mergeRequestTimeTracking",
@@ -1308,6 +3563,7 @@ query mergeRequestTimeTracking($fullPath: ID!, $iid: String!) {
     issuable: mergeRequest(iid: $iid) {
       ...MergeRequestTimeTrackingFragment
       title
+      description
       state
       mergedAt
       closedAt
@@ -1373,31 +3629,80 @@ fragment TimelogFragment on Timelog {
         });
 
         const res = await response.json();
-        return res.data.workspace;
+        if (res.errors && res.errors.length > 0) {
+            console.warn('GitLab GraphQL errors in getMergeRequestDetail for iid ' + iid + ':', res.errors);
+        }
+        return res.data ? res.data.workspace : null;
     }
 
-    function checkAndDisableGetDetailBtn() {
-        const taskTbody = document.querySelector('#allTaskContainer tbody');
-        const mrTbody = document.querySelector('#allMergeRequestContainer tbody');
+    async function updatePendingStatsBadge() {
+        const badge = document.getElementById('pendingCountBadge');
+        if (!badge) return;
 
-        const isTasksEmpty = !taskTbody || taskTbody.innerText.includes('Chưa có task nào');
-        const isMRsEmpty = !mrTbody || mrTbody.innerText.includes('Chưa có MR nào');
+        const storedTasks = (await getStoredIds(WORK_ITEM_KEY)) || [];
+        const storedMRs = (await getStoredIds(MERGE_ITEM_KEY)) || [];
+        const storedKpi = (await getStoredIds('KpiInfo')) || [];
+
+        const isCalculated = (raw) => storedKpi.some(k => isSameItem(raw, k));
+
+        const pendingTasks = storedTasks.filter(t => !isCalculated(t));
+        const pendingMRs = storedMRs.filter(m => !isCalculated(m));
+        const totalPending = pendingTasks.length + pendingMRs.length;
+
+        if (totalPending > 0) {
+            badge.textContent = totalPending > 99 ? '99+' : String(totalPending);
+            badge.style.display = 'inline-flex';
+            const detailTexts = [];
+            if (pendingTasks.length > 0) detailTexts.push(`${pendingTasks.length} task`);
+            if (pendingMRs.length > 0) detailTexts.push(`${pendingMRs.length} MR`);
+            badge.title = `Có ${totalPending} công việc (${detailTexts.join(', ')}) mới thêm chưa được thống kê`;
+        } else {
+            badge.style.display = 'none';
+            badge.textContent = '0';
+        }
+    }
+
+    async function checkAndDisableGetDetailBtn() {
+        const storedTasks = await getStoredIds(WORK_ITEM_KEY);
+        const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
+        const btn = document.getElementById('getDetailBtn');
+        if (!btn) return;
+
+        const isTasksEmpty = !storedTasks || storedTasks.length === 0;
+        const isMRsEmpty = !storedMRs || storedMRs.length === 0;
 
         if (isTasksEmpty && isMRsEmpty) {
-            const btn = document.getElementById('getDetailBtn');
             btn.disabled = true;
             btn.classList.add('disabled-btn');
+        } else {
+            btn.disabled = false;
+            btn.classList.remove('disabled-btn');
         }
+
+        await updatePendingStatsBadge();
+    }
+
+    if (chrome?.storage?.onChanged) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'local' && (changes[WORK_ITEM_KEY] || changes[MERGE_ITEM_KEY] || changes['KpiInfo'])) {
+                checkAndDisableGetDetailBtn();
+            }
+        });
     }
 
     function enableGetDetailBtn() {
         const btn = document.getElementById('getDetailBtn');
-        btn.disabled = false;
-        btn.classList.remove('disabled-btn');
+        if (btn) {
+            btn.disabled = false;
+            btn.classList.remove('disabled-btn');
+        }
     }
 
     function parseGitLabUrl(url) {
-        const workItemMatch = url.match(/^https?:\/\/[^/]+\/(.+)\/-\/work_items\/(\d+)$/);
+        if (!url) return null;
+        const cleanUrl = url.split(/[?#]/)[0].replace(/\/+$/, '');
+
+        const workItemMatch = cleanUrl.match(/^https?:\/\/[^/]+\/(.+?)\/(?:-\/)?work_items\/(\d+)$/);
         if (workItemMatch) {
             return {
                 type: 'work_item',
@@ -1406,7 +3711,7 @@ fragment TimelogFragment on Timelog {
             };
         }
 
-        const mrMatch = url.match(/^https?:\/\/[^/]+\/(.+)\/-\/merge_requests\/(\d+)$/);
+        const mrMatch = cleanUrl.match(/^https?:\/\/[^/]+\/(.+?)\/(?:-\/)?merge_requests\/(\d+)$/);
         if (mrMatch) {
             return {
                 type: 'merge_request',
@@ -1415,7 +3720,7 @@ fragment TimelogFragment on Timelog {
             };
         }
 
-        const issueMatch = url.match(/^https?:\/\/[^/]+\/(.+)\/-\/issues\/(\d+)$/);
+        const issueMatch = cleanUrl.match(/^https?:\/\/[^/]+\/(.+?)\/(?:-\/)?issues\/(\d+)$/);
         if (issueMatch) {
             return {
                 type: 'issue',
