@@ -930,6 +930,7 @@ if (typeof window !== 'undefined') {
     window.calculateKpiScore = calculateKpiScore;
     window.calculateStats = calculateStats;
     window.getTodayStartIso = getTodayStartIso;
+    window.isTaskAlreadyAdded = isTaskAlreadyAdded;
     window.filterUnaddedTasks = filterUnaddedTasks;
     window.evaluateKpiReminderState = evaluateKpiReminderState;
     window.fetchTodayCreatedIssues = fetchTodayCreatedIssues;
@@ -968,6 +969,7 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateKpiScore,
         calculateStats,
         getTodayStartIso,
+        isTaskAlreadyAdded,
         filterUnaddedTasks,
         evaluateKpiReminderState,
         fetchTodayCreatedIssues

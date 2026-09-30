@@ -238,13 +238,16 @@ async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null
     const currentState = data.kpiReminderState || {};
     const evalResult = _evaluateKpiReminderState(now, settings, currentState);
 
-    if (evalResult.nextState && (
-        evalResult.nextState.lastDate !== currentState.lastDate ||
-        evalResult.nextState.count !== currentState.count ||
-        evalResult.nextState.done !== currentState.done ||
-        evalResult.nextState.lastNotified !== currentState.lastNotified
-    )) {
-        await chrome.storage.local.set({ kpiReminderState: evalResult.nextState });
+    // Always persist day rollover reset if date changed
+    if (evalResult.nextState && evalResult.nextState.lastDate !== currentState.lastDate) {
+        await chrome.storage.local.set({
+            kpiReminderState: {
+                lastDate: evalResult.nextState.lastDate,
+                count: 0,
+                done: false,
+                lastNotified: null
+            }
+        });
     }
 
     if (!evalResult.shouldScan) {
@@ -279,6 +282,8 @@ async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null
                 priority: 2,
                 requireInteraction: true
             });
+            // Only persist incremented notification count when notification is actually dispatched
+            await chrome.storage.local.set({ kpiReminderState: evalResult.nextState });
         }
     } else {
         await chrome.storage.local.set({ UnaddedTodayTasks: [] });

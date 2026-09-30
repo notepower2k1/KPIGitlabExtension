@@ -41,30 +41,41 @@ function batchAddTasksToWorkItemIds(tasksToAdd, currentWorkItemIds = []) {
     const result = [...existingList];
     if (!Array.isArray(tasksToAdd)) return result;
 
+    const checkIsAdded = (typeof isTaskAlreadyAdded === 'function')
+        ? isTaskAlreadyAdded
+        : (typeof window !== 'undefined' && typeof window.isTaskAlreadyAdded === 'function')
+            ? window.isTaskAlreadyAdded
+            : null;
+
     for (const task of tasksToAdd) {
         if (!task) continue;
-        const taskId = String(task.id || task.iid || '');
-        const taskIid = task.iid ? String(task.iid) : '';
+        const taskId = String(task.id || task.iid || '').trim();
+        const taskIid = task.iid ? String(task.iid).trim() : taskId;
         const taskHref = (task.href || task.web_url || '').trim();
 
-        const alreadyExists = result.some(item => {
-            if (!item) return false;
-            const itemId = String(item.id || item.iid || '');
-            const itemIid = item.iid ? String(item.iid) : '';
-            const itemHref = (item.href || item.taskUrl || item.web_url || '').trim();
+        let alreadyExists = false;
+        if (checkIsAdded) {
+            alreadyExists = checkIsAdded(task, result);
+        } else {
+            alreadyExists = result.some(item => {
+                if (!item) return false;
+                const itemId = String(item.id || item.iid || '').trim();
+                const itemIid = item.iid ? String(item.iid).trim() : '';
+                const itemHref = (item.href || item.taskUrl || item.web_url || '').trim();
 
-            if (taskHref && itemHref) {
-                const normP1 = itemHref.replace(/\/work_items\//, '/issues/').split('?')[0].replace(/\/+$/, '');
-                const normP2 = taskHref.replace(/\/work_items\//, '/issues/').split('?')[0].replace(/\/+$/, '');
-                if (normP1 === normP2) return true;
+                if (taskHref && itemHref) {
+                    const normP1 = itemHref.replace(/\/work_items\//, '/issues/').split('?')[0].replace(/\/+$/, '');
+                    const normP2 = taskHref.replace(/\/work_items\//, '/issues/').split('?')[0].replace(/\/+$/, '');
+                    if (normP1 === normP2) return true;
+                    return false;
+                }
+
+                if (taskId && (itemId === taskId || (taskIid && itemId === taskIid))) return true;
+                if (taskIid && (itemIid === taskIid || itemIid === taskId)) return true;
+
                 return false;
-            }
-
-            if (taskId && (itemId === taskId || (taskIid && itemId === taskIid))) return true;
-            if (taskIid && (itemIid === taskIid || itemIid === taskId)) return true;
-
-            return false;
-        });
+            });
+        }
 
         if (!alreadyExists) {
             const createdAt = task.createAt || task.createdAt || task.created_at || new Date().toISOString();
@@ -455,11 +466,30 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
                 });
             }
 
-            // Lắng nghe thay đổi storage từ background service worker
+            // Lắng nghe thay đổi storage từ background service worker hoặc page content script
             if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
-                chrome.storage.onChanged.addListener((changes, area) => {
-                    if (area === 'local' && changes.UnaddedTodayTasks) {
-                        renderUnaddedKpiBanner(changes.UnaddedTodayTasks.newValue || [], document);
+                chrome.storage.onChanged.addListener(async (changes, area) => {
+                    if (area === 'local') {
+                        if (changes.UnaddedTodayTasks) {
+                            renderUnaddedKpiBanner(changes.UnaddedTodayTasks.newValue || [], document);
+                        } else if (changes.WorkItemIds) {
+                            const cur = await chrome.storage.local.get(['UnaddedTodayTasks']);
+                            const tasks = Array.isArray(cur.UnaddedTodayTasks) ? cur.UnaddedTodayTasks : [];
+                            const updatedWorkItems = Array.isArray(changes.WorkItemIds.newValue) ? changes.WorkItemIds.newValue : [];
+                            const checkFn = (typeof isTaskAlreadyAdded === 'function')
+                                ? isTaskAlreadyAdded
+                                : (typeof window !== 'undefined' && typeof window.isTaskAlreadyAdded === 'function')
+                                    ? window.isTaskAlreadyAdded
+                                    : (t, list) => list.some(item => (item.id && String(item.id) === String(t.id)) || (item.href && item.href === t.href));
+                            const stillUnadded = tasks.filter(t => !checkFn(t, updatedWorkItems));
+                            if (stillUnadded.length !== tasks.length) {
+                                await chrome.storage.local.set({ UnaddedTodayTasks: stillUnadded });
+                                if (stillUnadded.length === 0 && chrome.action && typeof chrome.action.setBadgeText === 'function') {
+                                    chrome.action.setBadgeText({ text: '' });
+                                }
+                                renderUnaddedKpiBanner(stillUnadded, document);
+                            }
+                        }
                     }
                 });
             }
