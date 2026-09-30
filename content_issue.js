@@ -830,6 +830,8 @@ function closeSummaryModal(doc = (typeof document !== 'undefined' ? document : n
     }
 }
 
+let cachedChildTasks = null;
+
 async function refreshSummaryModal(doc = (typeof document !== 'undefined' ? document : null), parentInfo = {}, options = {}) {
     if (!doc || !doc.body) return null;
     const safeParentInfo = parentInfo || {};
@@ -894,6 +896,13 @@ async function refreshSummaryModal(doc = (typeof document !== 'undefined' ? docu
                 return t;
             });
             refreshedTasks = await Promise.all(livePromises);
+        }
+    }
+
+    if (refreshedTasks && refreshedTasks.length > 0) {
+        cachedChildTasks = refreshedTasks;
+        if (typeof window !== 'undefined') {
+            window._cachedChildTasks = refreshedTasks;
         }
     }
 
@@ -1092,12 +1101,25 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             const storedKpi = (typeof getStoredIds === 'function') ? await getStoredIds('KpiInfo') : [];
             const profile = (typeof getUserProfile === 'function') ? await getUserProfile() : userProfile;
             const token = (typeof getAccessToken === 'function') ? await getAccessToken() : null;
-            openSummaryModal(parentInfo, null, document, {
-                userProfile: profile,
-                storedKpi,
-                token,
-                autoRefresh: true
-            });
+
+            const existingCache = cachedChildTasks || (typeof window !== 'undefined' ? window._cachedChildTasks : null);
+            if (existingCache && existingCache.length > 0) {
+                // Đã có dữ liệu từ lần lấy trước -> hiển thị ngay lập tức, không gọi lại API
+                openSummaryModal(parentInfo, existingCache, document, {
+                    userProfile: profile,
+                    storedKpi,
+                    token,
+                    autoRefresh: false
+                });
+            } else {
+                // Lần đầu tiên mở modal -> gọi API 1 lần để lấy số liệu mới nhất
+                openSummaryModal(parentInfo, null, document, {
+                    userProfile: profile,
+                    storedKpi,
+                    token,
+                    autoRefresh: true
+                });
+            }
         }
 
         window._onChildTasksAddedAll = (tasks) => {
