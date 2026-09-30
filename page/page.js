@@ -102,6 +102,8 @@ if (typeof document !== 'undefined') {
     });
 
     monthSelect.value = currentMonthIso;
+    initTabs();
+    updateAnalyticsMonthBadge(currentMonthIso);
 
     function updateTimeFilterOptions() {
         timeFilterSelect.innerHTML = '';
@@ -596,7 +598,12 @@ if (typeof document !== 'undefined') {
     monthSelect.addEventListener('change', async () => {
         currentPage = 1;
         updateTimeFilterOptions();
+        updateAnalyticsMonthBadge(monthSelect.value);
         await applyFilter();
+        const tabAnalyticsBtn = document.getElementById('tabAnalyticsBtn');
+        if (tabAnalyticsBtn && tabAnalyticsBtn.classList.contains('active')) {
+            await refreshMonthlyAnalytics(monthSelect.value);
+        }
     });
 
     timeFilterSelect.addEventListener('change', async () => {
@@ -639,6 +646,7 @@ if (typeof document !== 'undefined') {
         } else {
             document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">Chưa có task hoặc Merge Request nào được lưu trữ.</div>';
         }
+        await refreshMonthlyAnalytics(monthSelect ? monthSelect.value : currentMonthIso, []);
     }
 
     async function deleteKpiItems(itemsToDelete, confirmMsg = null) {
@@ -2199,6 +2207,9 @@ if (typeof document !== 'undefined') {
         // 6. Update Dashboard Stats (based on whatever is displayed)
         const dashboardStats = calculateStats(displayData, filterVal, selectedMonth);
         await renderKpiStats(dashboardStats);
+
+        // 7. Synchronize Tab 2 Monthly Analytics
+        await refreshMonthlyAnalytics(selectedMonth, kpiData);
     }
 
     function getPaginationPages(current, total) {
@@ -3775,8 +3786,18 @@ function normalizeDateToIso(dateVal) {
 }
 
 function calculateMonthlyTimesheet(items = [], selYear, selMonth, refDate = new Date()) {
-    const year = Number(selYear);
-    const month = Number(selMonth);
+    let year, month;
+    if (typeof selYear === 'string' && selYear.includes('-')) {
+        const parts = selYear.split('-');
+        year = Number(parts[0]);
+        month = Number(parts[1]);
+        if (selMonth instanceof Date || (typeof selMonth === 'string' && !refDate)) {
+            refDate = selMonth;
+        }
+    } else {
+        year = Number(selYear);
+        month = Number(selMonth);
+    }
     const daysInMonth = new Date(year, month, 0).getDate();
     const refIso = normalizeDateToIso(refDate || new Date());
 
@@ -4490,7 +4511,334 @@ function renderMonthlyCharts(chartData) {
     }
 }
 
+function updateAnalyticsMonthBadge(selectedMonth) {
+    const badge = document.getElementById('tabAnalyticsMonthBadge');
+    if (!badge) return;
+    const monthSelectEl = document.getElementById('monthSelect');
+    let monthVal = selectedMonth || (monthSelectEl ? monthSelectEl.value : '');
+    if (!monthVal) {
+        const d = new Date();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        monthVal = `${d.getFullYear()}-${m}`;
+    }
+    const parts = monthVal.split('-');
+    if (parts.length >= 2) {
+        badge.textContent = `Tháng ${parts[1].padStart(2, '0')}/${parts[0]}`;
+    }
+}
+
+function initTabs() {
+    const tabWorkItemsBtn = document.getElementById('tabWorkItemsBtn');
+    const tabAnalyticsBtn = document.getElementById('tabAnalyticsBtn');
+    const workItemsContent = document.getElementById('workItemsTabContent');
+    const analyticsContent = document.getElementById('analyticsTabContent');
+
+    if (!tabWorkItemsBtn || !tabAnalyticsBtn) return;
+    if (tabWorkItemsBtn._tabsInitialized) return;
+    tabWorkItemsBtn._tabsInitialized = true;
+
+    tabWorkItemsBtn.addEventListener('click', () => {
+        tabWorkItemsBtn.classList.add('active');
+        tabAnalyticsBtn.classList.remove('active');
+        if (workItemsContent) workItemsContent.style.display = '';
+        if (analyticsContent) analyticsContent.style.display = 'none';
+    });
+
+    tabAnalyticsBtn.addEventListener('click', async () => {
+        tabAnalyticsBtn.classList.add('active');
+        tabWorkItemsBtn.classList.remove('active');
+        if (workItemsContent) workItemsContent.style.display = 'none';
+        if (analyticsContent) analyticsContent.style.display = 'flex';
+
+        await refreshMonthlyAnalytics();
+    });
+}
+
+function renderMonthlyKpiSummaryCards(monthItems = [], selYear, selMonth) {
+    const container = document.getElementById('monthlyKpiSummaryCards');
+    if (!container) return;
+
+    let year = Number(selYear);
+    let month = Number(selMonth);
+    if (typeof selYear === 'string' && selYear.includes('-')) {
+        const parts = selYear.split('-');
+        year = Number(parts[0]);
+        month = Number(parts[1]);
+    } else if (!year || !month) {
+        const monthSelectEl = document.getElementById('monthSelect');
+        const monthVal = monthSelectEl ? monthSelectEl.value : new Date().toISOString().slice(0, 7);
+        const parts = monthVal.split('-');
+        year = Number(parts[0]);
+        month = Number(parts[1]);
+    }
+
+    const items = Array.isArray(monthItems) ? monthItems : [];
+    const workItems = items.filter(it => !it.isMR);
+    const mrItems = items.filter(it => !!it.isMR);
+
+    const totalWorkItems = workItems.length;
+    const totalMRs = mrItems.length;
+
+    let totalSpent = 0;
+    let totalEstimate = 0;
+    let plannedCount = 0;
+    let unplannedCount = 0;
+    let inTimeCount = 0;
+    let lateCount = 0;
+    let reopenCount = 0;
+    let noStartDateCount = 0;
+    let noDueDateCount = 0;
+    let noEstimateCount = 0;
+    let noSpentCount = 0;
+
+    workItems.forEach(item => {
+        const spent = typeof item.spent === 'number'
+            ? item.spent
+            : (typeof item.spentTime === 'number'
+                ? item.spentTime
+                : (parseFloat(item.spent || item.spentTime || item.totalSpentTime) || 0));
+        const est = typeof item.estimate === 'number'
+            ? item.estimate
+            : (typeof item.estimateHour === 'number'
+                ? item.estimateHour
+                : (typeof item.timeEstimateHour === 'number'
+                    ? item.timeEstimateHour
+                    : (parseFloat(item.estimate || item.timeEstimate) || 0)));
+
+        totalSpent += spent;
+        totalEstimate += est;
+
+        const isUnplanned = item.isUnplanned === true || item.type === 'Phát sinh' || item.taskType === 'Phát sinh';
+        if (isUnplanned) {
+            unplannedCount++;
+        } else {
+            plannedCount++;
+        }
+
+        const isLate = item.isLate === true || item.progress === 'Trễ hạn';
+        if (isLate) {
+            lateCount++;
+        } else {
+            inTimeCount++;
+        }
+
+        if (item.reopenTotal > 0 || item.isReopen === true || item.reopened === true) {
+            reopenCount++;
+        }
+
+        if (!item.startDate) noStartDateCount++;
+        if (!item.dueDate) noDueDateCount++;
+        if (est === 0) noEstimateCount++;
+        if (spent === 0) noSpentCount++;
+    });
+
+    let mrClosedCount = 0;
+    mrItems.forEach(mr => {
+        const spent = typeof mr.spent === 'number'
+            ? mr.spent
+            : (typeof mr.spentTime === 'number'
+                ? mr.spentTime
+                : (parseFloat(mr.spent || mr.spentTime || mr.totalSpentTime) || 0));
+        totalSpent += spent;
+        const state = (mr.state || '').toLowerCase();
+        if (state === 'closed' || state === 'merged') {
+            mrClosedCount++;
+        }
+    });
+
+    const daysInMonth = (year && month) ? new Date(year, month, 0).getDate() : 30;
+    let workingDays = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dayOfWeek = new Date(year, month - 1, d).getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            workingDays++;
+        }
+    }
+    const targetHours = workingDays * 8.0;
+    const achievementRate = targetHours > 0 ? Math.round((totalSpent / targetHours) * 1000) / 10 : 0;
+
+    const onTimeRate = totalWorkItems > 0 ? Math.round((inTimeCount / totalWorkItems) * 1000) / 10 : (totalWorkItems === 0 ? 100 : 0);
+    const plannedRate = totalWorkItems > 0 ? Math.round((plannedCount / totalWorkItems) * 1000) / 10 : 0;
+    const unplannedRate = totalWorkItems > 0 ? Math.round((unplannedCount / totalWorkItems) * 1000) / 10 : 0;
+
+    let totalScore = 0;
+    let badge = { text: 'Chưa có dữ liệu', class: 'badge-neutral', icon: '⚪' };
+
+    if (totalWorkItems > 0) {
+        const getAttitudeScoreHelper = pct => {
+            if (pct >= 80) return 1;
+            if (pct >= 50) return 2;
+            if (pct >= 30) return 3;
+            if (pct >= 10) return 4;
+            return 5;
+        };
+        const getVolumeScoreHelper = pct => {
+            if (pct < 70) return 1;
+            if (pct < 80) return 2;
+            if (pct < 90) return 3;
+            if (pct < 100) return 4;
+            return 5;
+        };
+        const getQualityScoreHelper = pct => {
+            if (pct >= 80) return 1;
+            if (pct >= 50) return 2;
+            if (pct >= 30) return 3;
+            if (pct >= 10) return 4;
+            return 5;
+        };
+
+        const noEstPct = (noEstimateCount / totalWorkItems) * 100;
+        const noStartPct = (noStartDateCount / totalWorkItems) * 100;
+        const noDuePct = (noDueDateCount / totalWorkItems) * 100;
+        const noSpentPct = (noSpentCount / totalWorkItems) * 100;
+        const volPct = (totalSpent / (targetHours || 176)) * 100;
+        const latePct = (lateCount / totalWorkItems) * 100;
+        const reopenPct = (reopenCount / totalWorkItems) * 100;
+
+        const s15 = getAttitudeScoreHelper(noEstPct);
+        const s20 = getAttitudeScoreHelper(noStartPct);
+        const s25 = getAttitudeScoreHelper(noDuePct);
+        const s30 = getAttitudeScoreHelper(noSpentPct);
+        const s35 = getVolumeScoreHelper(volPct);
+        const s40 = getQualityScoreHelper(latePct);
+        const s45 = getQualityScoreHelper(reopenPct);
+
+        const total = (
+            s15 * 0.25 +
+            s20 * 0.25 +
+            s25 * 0.25 +
+            s30 * 0.25 +
+            s35 * 3 +
+            s40 * 3 +
+            s45 * 3
+        ) / 10;
+        totalScore = Math.round(total * 100) / 100;
+
+        if (totalScore >= 4.5) {
+            badge = { text: 'Xuất sắc', class: 'badge-success', icon: '🌟' };
+        } else if (totalScore >= 3.8) {
+            badge = { text: 'Tốt', class: 'badge-info', icon: '🟢' };
+        } else if (totalScore >= 3.0) {
+            badge = { text: 'Khá', class: 'badge-warning', icon: '🟡' };
+        } else {
+            badge = { text: 'Cần chú ý', class: 'badge-danger', icon: '⚠️' };
+        }
+    }
+
+    const roundSpent = Math.round(totalSpent * 10) / 10;
+
+    container.innerHTML = `
+        <div class="analytics-stat-card stat-card-kpi">
+            <div class="analytics-stat-icon">🎯</div>
+            <div class="analytics-stat-info">
+                <span class="analytics-stat-label">Dự báo Điểm KPI Tháng</span>
+                <span class="analytics-stat-value">${totalWorkItems > 0 ? totalScore.toFixed(2) : '0.00'} <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-muted);">/ 5.0</span></span>
+                <span class="analytics-stat-sub">${badge.icon} ${badge.text} (${Math.round(totalScore * 20)}/100)</span>
+            </div>
+        </div>
+
+        <div class="analytics-stat-card stat-card-hours">
+            <div class="analytics-stat-icon">⏱️</div>
+            <div class="analytics-stat-info">
+                <span class="analytics-stat-label">Tổng Giờ Đã Log / Chỉ Tiêu</span>
+                <span class="analytics-stat-value">${roundSpent}h <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-muted);">/ ${targetHours}h</span></span>
+                <span class="analytics-stat-sub">Đạt <strong>${achievementRate}%</strong> chỉ tiêu (${workingDays} ngày làm việc)</span>
+            </div>
+        </div>
+
+        <div class="analytics-stat-card stat-card-intime">
+            <div class="analytics-stat-icon">✅</div>
+            <div class="analytics-stat-info">
+                <span class="analytics-stat-label">Tỷ lệ đúng hạn</span>
+                <span class="analytics-stat-value">${totalWorkItems > 0 ? onTimeRate + '%' : '—'}</span>
+                <span class="analytics-stat-sub">${inTimeCount}/${totalWorkItems} công việc đúng hạn</span>
+            </div>
+        </div>
+
+        <div class="analytics-stat-card stat-card-mrs">
+            <div class="analytics-stat-icon">🚀</div>
+            <div class="analytics-stat-info">
+                <span class="analytics-stat-label">Tổng Merge Requests</span>
+                <span class="analytics-stat-value">${totalMRs} <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-muted);">MRs</span></span>
+                <span class="analytics-stat-sub">${mrClosedCount > 0 ? `${mrClosedCount}/${totalMRs} đã merge/đóng` : `${totalMRs} MRs trong tháng`}</span>
+            </div>
+        </div>
+
+        <div class="analytics-stat-card stat-card-plan">
+            <div class="analytics-stat-icon">⚖️</div>
+            <div class="analytics-stat-info">
+                <span class="analytics-stat-label">Kế hoạch / Phát sinh</span>
+                <span class="analytics-stat-value">${totalWorkItems > 0 ? `${plannedRate}% / ${unplannedRate}%` : '—'}</span>
+                <span class="analytics-stat-sub">${plannedCount} kế hoạch • ${unplannedCount} phát sinh</span>
+            </div>
+        </div>
+    `;
+}
+
+async function refreshMonthlyAnalytics(selectedMonth = null, kpiData = null) {
+    const monthSelectEl = document.getElementById('monthSelect');
+    let monthVal = selectedMonth;
+    if (!monthVal) {
+        monthVal = monthSelectEl ? monthSelectEl.value : '';
+    }
+    if (!monthVal) {
+        const d = new Date();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        monthVal = `${d.getFullYear()}-${m}`;
+    }
+
+    const parts = monthVal.split('-');
+    const selYear = Number(parts[0]);
+    const selMonth = Number(parts[1]);
+
+    updateAnalyticsMonthBadge(monthVal);
+
+    // Retrieve items for the month
+    let allItems = kpiData;
+    if (!allItems) {
+        if (typeof getStoredIds === 'function') {
+            try {
+                allItems = await getStoredIds('KpiInfo');
+            } catch (e) {
+                console.warn('Could not load KpiInfo for analytics:', e);
+            }
+        } else if (typeof window !== 'undefined' && window._lastKpiInfo) {
+            allItems = window._lastKpiInfo;
+        }
+    }
+    if (!Array.isArray(allItems)) allItems = [];
+
+    // Filter items for the selected month
+    const monthItems = allItems.filter(item => {
+        if (!item) return false;
+        if (typeof isItemActiveInFilter === 'function') {
+            return isItemActiveInFilter(item, 'all_month', monthVal, '', '');
+        }
+        const addedIso = (item.addedAt || item.createAt || item.dateIso || '').slice(0, 10);
+        return addedIso.startsWith(monthVal);
+    });
+
+    // 1. Render Monthly KPI Summary Cards
+    renderMonthlyKpiSummaryCards(monthItems, selYear, selMonth);
+
+    // 2. Timesheet calculation and rendering
+    if (typeof calculateMonthlyTimesheet === 'function' && typeof renderDailyTimesheet === 'function') {
+        const timesheetData = calculateMonthlyTimesheet(monthItems, selYear, selMonth);
+        renderDailyTimesheet(timesheetData);
+    }
+
+    // 3. Chart data calculation and rendering
+    if (typeof calculateMonthlyChartData === 'function' && typeof renderMonthlyCharts === 'function') {
+        const chartData = calculateMonthlyChartData(monthItems, selYear, selMonth);
+        renderMonthlyCharts(chartData);
+    }
+}
+
 if (typeof window !== 'undefined') {
+    window.initTabs = initTabs;
+    window.updateAnalyticsMonthBadge = updateAnalyticsMonthBadge;
+    window.renderMonthlyKpiSummaryCards = renderMonthlyKpiSummaryCards;
+    window.refreshMonthlyAnalytics = refreshMonthlyAnalytics;
     window.calculateMonthlyTimesheet = calculateMonthlyTimesheet;
     window.renderDailyTimesheet = renderDailyTimesheet;
     window.calculateMonthlyChartData = calculateMonthlyChartData;
@@ -4500,6 +4848,10 @@ if (typeof window !== 'undefined') {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        initTabs,
+        updateAnalyticsMonthBadge,
+        renderMonthlyKpiSummaryCards,
+        refreshMonthlyAnalytics,
         calculateMonthlyTimesheet,
         renderDailyTimesheet,
         calculateMonthlyChartData,

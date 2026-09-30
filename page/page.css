@@ -1649,6 +1649,11 @@ tfoot tr td {
     color: #d97706;
 }
 
+.stat-card-plan .analytics-stat-icon {
+    background: #f3e8ff;
+    color: #7c3aed;
+}
+
 .analytics-stat-info {
     display: flex;
     flex-direction: column;
