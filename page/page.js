@@ -70,19 +70,14 @@ if (typeof document !== 'undefined') {
         }
     }
 
-    function setControlsCollapsed(collapsed) {
+    function updateControlsCollapsed(collapsed) {
         isControlsCollapsed = collapsed;
-        if (controlsBody) {
-            controlsBody.style.display = collapsed ? 'none' : 'flex';
-        }
-        if (controlsCollapseArrow) {
-            controlsCollapseArrow.textContent = collapsed ? '▼' : '▲';
-        }
+        setControlsCollapsed(collapsed, { controlsBody, controlsCollapseArrow });
     }
 
     if (toggleControlsBtn) {
         toggleControlsBtn.addEventListener('click', () => {
-            setControlsCollapsed(!isControlsCollapsed);
+            updateControlsCollapsed(!isControlsCollapsed);
         });
     }
 
@@ -286,7 +281,7 @@ if (typeof document !== 'undefined') {
             });
         }
         updateControlsSummary();
-        setControlsCollapsed(false); // Mở rộng thanh điều khiển để người dùng thấy rõ filter đang active
+        updateControlsCollapsed(false); // Mở rộng thanh điều khiển để người dùng thấy rõ filter đang active
     }
 
     function updateChipCounts(items) {
@@ -590,8 +585,10 @@ if (typeof document !== 'undefined') {
             }
 
             await renderKpi(oldKpiInfo);
+            return true;
         } else {
             if (healthContainer) healthContainer.innerHTML = '';
+            return false;
         }
     }
 
@@ -599,10 +596,12 @@ if (typeof document !== 'undefined') {
         currentPage = 1;
         updateTimeFilterOptions();
         updateAnalyticsMonthBadge(monthSelect.value);
-        await applyFilter();
+        const hasData = await applyFilter();
         const tabAnalyticsBtn = document.getElementById('tabAnalyticsBtn');
-        if (tabAnalyticsBtn && tabAnalyticsBtn.classList.contains('active')) {
-            await refreshMonthlyAnalytics(monthSelect.value);
+        // renderKpi called inside applyFilter already synchronizes Tab 2 via refreshMonthlyAnalytics.
+        // Only trigger an empty-state refresh if there was no stored KPI data to process.
+        if (!hasData && tabAnalyticsBtn && tabAnalyticsBtn.classList.contains('active')) {
+            await refreshMonthlyAnalytics(monthSelect.value, []);
         }
     });
 
@@ -3750,6 +3749,19 @@ fragment TimelogFragment on Timelog {
 })();
 }
 
+// Collapsible Section Controls
+function setControlsCollapsed(collapsed, customElements = null) {
+    const body = customElements?.controlsBody || (typeof document !== 'undefined' ? document.getElementById('controlsBody') : null);
+    const arrow = customElements?.controlsCollapseArrow || (typeof document !== 'undefined' ? document.getElementById('controlsCollapseArrow') : null);
+    if (body) {
+        body.style.display = collapsed ? 'none' : 'flex';
+    }
+    if (arrow) {
+        arrow.textContent = collapsed ? '▼' : '▲';
+    }
+    return collapsed;
+}
+
 // Daily Timesheet Audit Calculation & Rendering functions
 function normalizeDateToIso(dateVal) {
     if (!dateVal) return '';
@@ -4835,6 +4847,7 @@ async function refreshMonthlyAnalytics(selectedMonth = null, kpiData = null) {
 }
 
 if (typeof window !== 'undefined') {
+    window.setControlsCollapsed = setControlsCollapsed;
     window.initTabs = initTabs;
     window.updateAnalyticsMonthBadge = updateAnalyticsMonthBadge;
     window.renderMonthlyKpiSummaryCards = renderMonthlyKpiSummaryCards;
@@ -4848,6 +4861,7 @@ if (typeof window !== 'undefined') {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        setControlsCollapsed,
         initTabs,
         updateAnalyticsMonthBadge,
         renderMonthlyKpiSummaryCards,
