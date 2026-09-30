@@ -54,6 +54,40 @@ function deleteTodoItem(todos, id) {
     return todos.filter(item => item.id !== id);
 }
 
+function resolveTargetStatusFromColumn(targetElement) {
+    if (!targetElement) return null;
+    if (typeof targetElement === 'string') {
+        const lower = targetElement.toLowerCase();
+        if (lower.includes('done')) return 'done';
+        if (lower.includes('processing')) return 'processing';
+        if (lower.includes('todo')) return 'todo';
+        return null;
+    }
+
+    let el = targetElement;
+    if (typeof el.closest === 'function') {
+        const colOrList = el.closest('.kanban-column, .task-list');
+        if (colOrList) el = colOrList;
+    }
+
+    const id = (el.id || '').toLowerCase();
+    if (id.includes('done')) return 'done';
+    if (id.includes('processing')) return 'processing';
+    if (id.includes('todo')) return 'todo';
+
+    if (el.dataset && el.dataset.status) {
+        const ds = el.dataset.status.toLowerCase();
+        if (['todo', 'processing', 'done'].includes(ds)) return ds;
+    }
+
+    const className = typeof el.className === 'string' ? el.className.toLowerCase() : '';
+    if (className.includes('done')) return 'done';
+    if (className.includes('processing')) return 'processing';
+    if (className.includes('todo')) return 'todo';
+
+    return null;
+}
+
 // ==========================================
 // Client-side Application Controller
 // ==========================================
@@ -226,6 +260,45 @@ if (typeof document !== 'undefined') {
 
         if (saveEditBtn) saveEditBtn.addEventListener('click', handleSaveEdit);
 
+        // Setup Drag & Drop for Kanban Columns
+        const kanbanColumns = document.querySelectorAll('.kanban-column');
+        kanbanColumns.forEach(column => {
+            column.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (e.dataTransfer) {
+                    e.dataTransfer.dropEffect = 'move';
+                }
+                column.classList.add('drag-over');
+            });
+
+            column.addEventListener('dragleave', (e) => {
+                if (e.relatedTarget && column.contains(e.relatedTarget)) {
+                    return;
+                }
+                column.classList.remove('drag-over');
+            });
+
+            column.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                column.classList.remove('drag-over');
+                document.querySelectorAll('.kanban-column, .task-list').forEach(col => col.classList.remove('drag-over'));
+
+                const taskId = e.dataTransfer ? e.dataTransfer.getData('text/plain') : null;
+                if (!taskId) return;
+
+                const targetStatus = resolveTargetStatusFromColumn(column) || resolveTargetStatusFromColumn(e.target);
+                if (!targetStatus) return;
+
+                const todos = await getStoredTodos();
+                const currentTask = todos.find(t => t.id === taskId);
+                if (currentTask && currentTask.status !== targetStatus) {
+                    const updated = changeTodoStatus(todos, taskId, targetStatus);
+                    await chrome.storage.local.set({ [STORAGE_KEY]: updated });
+                    renderKanban();
+                }
+            });
+        });
+
         // Helper to retrieve todos
         async function getStoredTodos() {
             if (typeof getStoredIds === 'function') {
@@ -291,6 +364,22 @@ if (typeof document !== 'undefined') {
                 const card = document.createElement('div');
                 card.className = 'task-card';
                 card.dataset.id = todo.id;
+                card.draggable = true;
+                card.setAttribute('draggable', 'true');
+
+                // HTML5 Drag & Drop event handlers for task card
+                card.addEventListener('dragstart', (e) => {
+                    if (e.dataTransfer) {
+                        e.dataTransfer.setData('text/plain', todo.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                    }
+                    setTimeout(() => card.classList.add('is-dragging'), 0);
+                });
+
+                card.addEventListener('dragend', () => {
+                    document.querySelectorAll('.task-card').forEach(c => c.classList.remove('is-dragging'));
+                    document.querySelectorAll('.kanban-column, .task-list').forEach(col => col.classList.remove('drag-over'));
+                });
 
                 // Check deadline status
                 if (status !== 'done' && todo.deadline) {
@@ -378,6 +467,7 @@ if (typeof window !== 'undefined') {
     window.updateTodoItem = updateTodoItem;
     window.changeTodoStatus = changeTodoStatus;
     window.deleteTodoItem = deleteTodoItem;
+    window.resolveTargetStatusFromColumn = resolveTargetStatusFromColumn;
 }
 
 // Export for Node unit tests
@@ -386,6 +476,7 @@ if (typeof module !== 'undefined' && module.exports) {
         addTodoItem,
         updateTodoItem,
         changeTodoStatus,
-        deleteTodoItem
+        deleteTodoItem,
+        resolveTargetStatusFromColumn
     };
 }

@@ -172,6 +172,15 @@ h1 {
     min-height: 600px;
     display: flex;
     flex-direction: column;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.kanban-column.drag-over,
+.task-list.drag-over {
+    background-color: rgba(99, 102, 241, 0.08);
+    border-color: var(--primary);
+    transition: all 0.15s ease;
 }
 
 .column-header {
@@ -241,6 +250,17 @@ h1 {
 }
 
 .task-card:active {
+    cursor: grabbing;
+}
+
+.task-card[draggable="true"] {
+    cursor: grab;
+}
+
+.task-card.is-dragging {
+    opacity: 0.4;
+    border: 2px dashed var(--primary);
+    transform: scale(0.98);
     cursor: grabbing;
 }
 

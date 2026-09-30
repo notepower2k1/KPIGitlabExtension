@@ -42,9 +42,10 @@ check('Module exports pure helper functions', () => {
     assert.strictEqual(typeof todoModule.updateTodoItem, 'function', 'updateTodoItem must be exported as a function');
     assert.strictEqual(typeof todoModule.changeTodoStatus, 'function', 'changeTodoStatus must be exported as a function');
     assert.strictEqual(typeof todoModule.deleteTodoItem, 'function', 'deleteTodoItem must be exported as a function');
+    assert.strictEqual(typeof todoModule.resolveTargetStatusFromColumn, 'function', 'resolveTargetStatusFromColumn must be exported as a function');
 });
 
-const { addTodoItem, updateTodoItem, changeTodoStatus, deleteTodoItem } = todoModule || {};
+const { addTodoItem, updateTodoItem, changeTodoStatus, deleteTodoItem, resolveTargetStatusFromColumn } = todoModule || {};
 
 check('addTodoItem: creates task with status todo, id, title, and deadline', () => {
     const initial = [];
@@ -137,6 +138,44 @@ check('deleteTodoItem: removes task by id immutably', () => {
     assert.strictEqual(updated[1].id, '3');
 });
 
+check('resolveTargetStatusFromColumn: resolves column IDs to target status strings', () => {
+    assert.strictEqual(resolveTargetStatusFromColumn('col-todo'), 'todo');
+    assert.strictEqual(resolveTargetStatusFromColumn('col-processing'), 'processing');
+    assert.strictEqual(resolveTargetStatusFromColumn('col-done'), 'done');
+    assert.strictEqual(resolveTargetStatusFromColumn('list-todo'), 'todo');
+    assert.strictEqual(resolveTargetStatusFromColumn('list-processing'), 'processing');
+    assert.strictEqual(resolveTargetStatusFromColumn('list-done'), 'done');
+    assert.strictEqual(resolveTargetStatusFromColumn('todo'), 'todo');
+    assert.strictEqual(resolveTargetStatusFromColumn('processing'), 'processing');
+    assert.strictEqual(resolveTargetStatusFromColumn('done'), 'done');
+});
+
+check('resolveTargetStatusFromColumn: resolves mock DOM elements and nested elements with .closest()', () => {
+    const todoEl = { id: 'col-todo' };
+    const processingEl = { id: 'list-processing' };
+    const doneEl = { id: 'col-done' };
+    assert.strictEqual(resolveTargetStatusFromColumn(todoEl), 'todo');
+    assert.strictEqual(resolveTargetStatusFromColumn(processingEl), 'processing');
+    assert.strictEqual(resolveTargetStatusFromColumn(doneEl), 'done');
+
+    const nestedInProcessing = {
+        closest: (sel) => ({ id: 'col-processing' })
+    };
+    assert.strictEqual(resolveTargetStatusFromColumn(nestedInProcessing), 'processing');
+
+    const nestedInDone = {
+        closest: (sel) => ({ id: 'list-done' })
+    };
+    assert.strictEqual(resolveTargetStatusFromColumn(nestedInDone), 'done');
+});
+
+check('resolveTargetStatusFromColumn: returns null for invalid or null inputs', () => {
+    assert.strictEqual(resolveTargetStatusFromColumn(null), null);
+    assert.strictEqual(resolveTargetStatusFromColumn(undefined), null);
+    assert.strictEqual(resolveTargetStatusFromColumn(''), null);
+    assert.strictEqual(resolveTargetStatusFromColumn({ id: 'unknown-col' }), null);
+});
+
 // ---------------------------------------------------------
 // 2. DOM STRUCTURE & MANIFEST V3 CSP COMPLIANCE IN todo/todo.html
 // ---------------------------------------------------------
@@ -189,6 +228,39 @@ check('CSS: Styles modal dialog and elements', () => {
 
 check('CSS: Styles edit task button (.btn-edit-task)', () => {
     assert(todoCss.includes('.btn-edit-task'), 'Must include .btn-edit-task styling');
+});
+
+check('CSS: Styles drag and drop feedback (.is-dragging, .drag-over)', () => {
+    assert(todoCss.includes('.is-dragging'), 'Must include .is-dragging styling');
+    assert(todoCss.includes('opacity: 0.4'), 'Must set opacity: 0.4 on .is-dragging');
+    assert(todoCss.includes('.drag-over'), 'Must include .drag-over styling');
+});
+
+// ---------------------------------------------------------
+// 4. HTML5 DRAG & DROP IMPLEMENTATION IN todo/todo.js
+// ---------------------------------------------------------
+console.log('\n▶ Section 4: HTML5 Drag & Drop Implementation in todo/todo.js');
+
+const todoJsPath = path.resolve(ROOT_DIR, 'todo/todo.js');
+assert(fs.existsSync(todoJsPath), 'todo/todo.js must exist');
+const todoJs = fs.readFileSync(todoJsPath, 'utf8');
+
+check('JS: Task cards are configured with draggable="true"', () => {
+    assert(
+        todoJs.includes("card.draggable = true") ||
+        todoJs.includes("card.setAttribute('draggable', 'true')") ||
+        todoJs.includes('card.setAttribute("draggable", "true")'),
+        'Must set draggable on task cards'
+    );
+});
+
+check('JS: Implements dragstart, dragend, dragover, dragleave, and drop event handlers', () => {
+    assert(todoJs.includes('dragstart'), 'Must handle dragstart event');
+    assert(todoJs.includes('dataTransfer.setData'), 'Must set dataTransfer in dragstart');
+    assert(todoJs.includes('dragend'), 'Must handle dragend event');
+    assert(todoJs.includes('dragover'), 'Must handle dragover event');
+    assert(todoJs.includes('dragleave'), 'Must handle dragleave event');
+    assert(todoJs.includes('drop'), 'Must handle drop event');
 });
 
 // ---------------------------------------------------------
