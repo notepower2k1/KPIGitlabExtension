@@ -459,6 +459,136 @@ const mockFetch = async (url, opts) => {
         console.log('✔ Passed: handleNotificationClick correctly routes kpi-unadded-alert and falls back to tab');
     }
 
-    console.log('\n🎉 ALL TASK 1 & TASK 2 TESTS PASSED SUCCESSFULLY!');
+    // --- Task 3: Popup Extension Warning Banner, Task List & 1-Click Batch Add Tests ---
+    console.log('\n--- Testing Task 3: Popup Warning Banner, Task List & Batch Add ---');
+
+    const fs = require('fs');
+    const path = require('path');
+
+    // 3.1 Verify popup.html DOM elements
+    const popupHtml = fs.readFileSync(path.resolve(__dirname, '../popup/popup.html'), 'utf8');
+    const requiredHtmlElements = [
+        'unaddedKpiBanner',
+        'unaddedKpiTitle',
+        'toggleUnaddedListBtn',
+        'addAllUnaddedKpiBtn',
+        'unaddedKpiItemsList',
+        'kpiReminderEnabled',
+        'kpiReminderMinutesBefore'
+    ];
+    requiredHtmlElements.forEach(id => {
+        assert(popupHtml.includes(`id="${id}"`), `popup.html must contain id="${id}"`);
+    });
+    console.log('✔ Passed: All required Task 3 DOM elements exist in popup.html');
+
+    // 3.2 Verify popup.css CSS classes
+    const popupCss = fs.readFileSync(path.resolve(__dirname, '../popup/popup.css'), 'utf8');
+    const requiredCssClasses = [
+        '.unadded-kpi-banner',
+        '.unadded-kpi-header',
+        '.unadded-kpi-actions',
+        '.btn-warning-sm',
+        '.unadded-kpi-items-list',
+        '.unadded-kpi-item',
+        '.unadded-kpi-item-title',
+        '.unadded-kpi-add-btn'
+    ];
+    requiredCssClasses.forEach(cls => {
+        assert(popupCss.includes(cls), `popup.css must contain CSS class ${cls}`);
+    });
+    console.log('✔ Passed: All required Task 3 CSS styles exist in popup.css');
+
+    // 3.3 Verify popup.js exports
+    const popupModule = require('../popup/popup.js');
+    assert.strictEqual(
+        typeof popupModule.renderUnaddedKpiBanner,
+        'function',
+        'renderUnaddedKpiBanner should be exported by popup.js'
+    );
+    assert.strictEqual(
+        typeof popupModule.batchAddTasksToWorkItemIds,
+        'function',
+        'batchAddTasksToWorkItemIds should be exported by popup.js'
+    );
+    console.log('✔ Passed: popup.js exports required helper functions');
+
+    // 3.4 Test batchAddTasksToWorkItemIds
+    const currentItems = [
+        { id: '11', href: 'https://gitlab.example.com/team/repo/-/issues/11', title: 'Task 11' }
+    ];
+    const incomingTasks = [
+        { id: '11', iid: '11', href: 'https://gitlab.example.com/team/repo/-/work_items/11', title: 'Task 11 Duplicate' },
+        { id: '102', iid: '12', href: 'https://gitlab.example.com/team/repo/-/issues/12', title: 'Task 12' },
+        { id: '103', iid: '13', href: 'https://gitlab.example.com/team/repo/-/issues/13', title: 'Task 13' }
+    ];
+    const merged = popupModule.batchAddTasksToWorkItemIds(incomingTasks, currentItems);
+    assert.strictEqual(merged.length, 3, 'Should add 2 new tasks and skip duplicate');
+    assert.strictEqual(merged[0].id, '11');
+    assert.strictEqual(merged[1].id, '102');
+    assert.strictEqual(merged[2].id, '103');
+    console.log('✔ Passed: batchAddTasksToWorkItemIds deduplicates and merges correctly');
+
+    // 3.5 Test renderUnaddedKpiBanner with mock DOM
+    function createMockElement(tagName = 'div') {
+        const children = [];
+        const attributes = {};
+        return {
+            tagName,
+            style: {},
+            children,
+            textContent: '',
+            innerHTML: '',
+            setAttribute(k, v) { attributes[k] = String(v); },
+            getAttribute(k) { return attributes[k]; },
+            appendChild(child) { children.push(child); }
+        };
+    }
+
+    const mockBanner = createMockElement('div');
+    const mockTitle = createMockElement('span');
+    const mockList = createMockElement('div');
+
+    const mockDoc = {
+        getElementById(id) {
+            if (id === 'unaddedKpiBanner') return mockBanner;
+            if (id === 'unaddedKpiTitle') return mockTitle;
+            if (id === 'unaddedKpiItemsList') return mockList;
+            return null;
+        },
+        createElement(tag) {
+            return createMockElement(tag);
+        }
+    };
+
+    // Render with 2 tasks
+    const testTasks = [
+        { id: '101', iid: '1', title: 'Feature Alpha', href: 'https://gitlab.example.com/prj/-/issues/1' },
+        { id: '102', iid: '2', title: 'Bug Beta', href: 'https://gitlab.example.com/prj/-/issues/2' }
+    ];
+    popupModule.renderUnaddedKpiBanner(testTasks, mockDoc);
+    assert.strictEqual(mockBanner.style.display, 'block', 'Banner should be displayed when tasks exist');
+    assert.ok(mockTitle.textContent.includes('2 task'), 'Title should state 2 tasks');
+    assert.strictEqual(mockList.children.length, 2, 'Should create 2 item elements');
+    assert.strictEqual(mockList.children[0].children[0].getAttribute('href'), 'https://gitlab.example.com/prj/-/issues/1');
+    assert.strictEqual(mockList.children[0].children[1].getAttribute('data-task-id'), '101');
+    assert.strictEqual(mockList.children[1].children[1].getAttribute('data-task-id'), '102');
+
+    // Render with 0 tasks (empty array)
+    actionBadge = { text: '!' };
+    popupModule.renderUnaddedKpiBanner([], mockDoc);
+    assert.strictEqual(mockBanner.style.display, 'none', 'Banner should be hidden when empty');
+    assert.strictEqual(actionBadge.text, '', 'Badge should be cleared when empty');
+    console.log('✔ Passed: renderUnaddedKpiBanner properly updates DOM and badge');
+
+    // 3.6 Test popup.js contains required event listeners and settings logic
+    const popupJsContent = fs.readFileSync(path.resolve(__dirname, '../popup/popup.js'), 'utf8');
+    assert(popupJsContent.includes('addAllUnaddedKpiBtn'), 'popup.js must handle addAllUnaddedKpiBtn');
+    assert(popupJsContent.includes('toggleUnaddedListBtn'), 'popup.js must handle toggleUnaddedListBtn');
+    assert(popupJsContent.includes('kpiReminderEnabled'), 'popup.js must reference kpiReminderEnabled');
+    assert(popupJsContent.includes('kpiReminderMinutesBefore'), 'popup.js must reference kpiReminderMinutesBefore');
+    assert(popupJsContent.includes('UnaddedTodayTasks'), 'popup.js must handle UnaddedTodayTasks');
+    console.log('✔ Passed: popup.js contains all required handlers and settings logic');
+
+    console.log('\n🎉 ALL TASK 1, TASK 2 & TASK 3 TESTS PASSED SUCCESSFULLY!');
 })();
 

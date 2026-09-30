@@ -45,6 +45,19 @@
             </div>
         </header>
 
+        <!-- Cảnh báo task chưa thêm vào KPI cuối ngày -->
+        <div id="unaddedKpiBanner" class="unadded-kpi-banner" style="display: none;">
+            <div class="unadded-kpi-header">
+                <span class="unadded-kpi-icon">⚠️</span>
+                <span id="unaddedKpiTitle" class="unadded-kpi-title">Bạn có task tạo hôm nay chưa thêm vào KPI!</span>
+                <button id="toggleUnaddedListBtn" class="btn-text-sm" type="button" title="Xem danh sách">Chi tiết ▼</button>
+            </div>
+            <div class="unadded-kpi-actions">
+                <button id="addAllUnaddedKpiBtn" class="btn-warning-sm" type="button">➕ Thêm tất cả vào KPI</button>
+            </div>
+            <div id="unaddedKpiItemsList" class="unadded-kpi-items-list" style="display: none;"></div>
+        </div>
+
         <!-- Thanh tab -->
         <nav class="tab-nav">
             <button class="tab-btn active" data-tab="week-tab">📅 Tuần</button>
@@ -181,6 +194,21 @@
                         <span class="checkin-label">Check-out</span>
                     </div>
                     <input type="time" id="checkOutTime" class="time-input" value="18:00" />
+                </div>
+
+                <div class="checkin-row">
+                    <div class="checkin-toggle-group">
+                        <label class="switch">
+                            <input type="checkbox" id="kpiReminderEnabled" checked>
+                            <span class="slider round"></span>
+                        </label>
+                        <span class="checkin-label" title="Tự động quét và cảnh báo các task tạo hôm nay chưa thêm vào KPI trước giờ check-out">Nhắc KPI cuối ngày</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <span style="font-size: 11px; color: var(--text-secondary, #666);">Trước:</span>
+                        <input type="number" id="kpiReminderMinutesBefore" class="time-input" style="width: 50px; text-align: center;" value="15" min="5" max="120" />
+                        <span style="font-size: 11px; color: var(--text-secondary, #666);">phút</span>
+                    </div>
                 </div>
 
                 <div class="checkin-setting-row">

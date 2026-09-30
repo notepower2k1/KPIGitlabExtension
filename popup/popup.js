@@ -36,6 +36,94 @@ function openTodoTab() {
     }
 }
 
+function batchAddTasksToWorkItemIds(tasksToAdd, currentWorkItemIds = []) {
+    const existingList = Array.isArray(currentWorkItemIds) ? [...currentWorkItemIds] : [];
+    const result = [...existingList];
+    if (!Array.isArray(tasksToAdd)) return result;
+
+    for (const task of tasksToAdd) {
+        if (!task) continue;
+        const taskId = String(task.id || task.iid || '');
+        const taskIid = task.iid ? String(task.iid) : '';
+        const taskHref = (task.href || task.web_url || '').trim();
+
+        const alreadyExists = result.some(item => {
+            if (!item) return false;
+            const itemId = String(item.id || item.iid || '');
+            const itemIid = item.iid ? String(item.iid) : '';
+            const itemHref = (item.href || item.taskUrl || item.web_url || '').trim();
+
+            if (taskHref && itemHref) {
+                const normP1 = itemHref.replace(/\/work_items\//, '/issues/').split('?')[0].replace(/\/+$/, '');
+                const normP2 = taskHref.replace(/\/work_items\//, '/issues/').split('?')[0].replace(/\/+$/, '');
+                if (normP1 === normP2) return true;
+                return false;
+            }
+
+            if (taskId && (itemId === taskId || (taskIid && itemId === taskIid))) return true;
+            if (taskIid && (itemIid === taskIid || itemIid === taskId)) return true;
+
+            return false;
+        });
+
+        if (!alreadyExists) {
+            result.push({
+                id: taskId,
+                iid: taskIid || taskId,
+                href: taskHref,
+                title: task.title || ''
+            });
+        }
+    }
+    return result;
+}
+
+function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc) return;
+    const banner = doc.getElementById('unaddedKpiBanner');
+    const titleEl = doc.getElementById('unaddedKpiTitle');
+    const listEl = doc.getElementById('unaddedKpiItemsList');
+
+    if (!banner) return;
+
+    if (Array.isArray(tasks) && tasks.length > 0) {
+        banner.style.display = 'block';
+        if (titleEl) {
+            titleEl.textContent = `Bạn có ${tasks.length} task tạo hôm nay chưa thêm vào KPI!`;
+        }
+        if (listEl) {
+            listEl.innerHTML = '';
+            tasks.forEach(task => {
+                const itemDiv = doc.createElement('div');
+                itemDiv.className = 'unadded-kpi-item';
+
+                const link = doc.createElement('a');
+                link.className = 'unadded-kpi-item-title';
+                link.href = task.href || '#';
+                link.setAttribute('href', task.href || '#');
+                link.target = '_blank';
+                link.title = task.title || '';
+                link.textContent = `#${task.iid || task.id} ${task.title || ''}`;
+
+                const addBtn = doc.createElement('button');
+                addBtn.className = 'unadded-kpi-add-btn';
+                addBtn.type = 'button';
+                addBtn.setAttribute('data-task-id', String(task.id));
+                addBtn.textContent = '+ Thêm';
+
+                itemDiv.appendChild(link);
+                itemDiv.appendChild(addBtn);
+                listEl.appendChild(itemDiv);
+            });
+        }
+    } else {
+        banner.style.display = 'none';
+        if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
+            chrome.action.setBadgeText({ text: '' });
+        }
+    }
+}
+
 (async () => {
     if (typeof getUserProfile !== 'function' || typeof document === 'undefined') {
         return;
@@ -203,6 +291,8 @@ function openTodoTab() {
             const checkInTimeEl = document.getElementById("checkInTime");
             const checkOutEnabledEl = document.getElementById("checkOutEnabled");
             const checkOutTimeEl = document.getElementById("checkOutTime");
+            const kpiReminderEnabledEl = document.getElementById("kpiReminderEnabled");
+            const kpiReminderMinutesBeforeEl = document.getElementById("kpiReminderMinutesBefore");
             const checkInOutSnoozeEl = document.getElementById("checkInOutSnooze");
             const checkInOutUrlEl = document.getElementById("checkInOutUrl");
             const saveBtn = document.getElementById("saveCheckInOutBtn");
@@ -218,7 +308,9 @@ function openTodoTab() {
                 'checkOutEnabled',
                 'checkOutTime',
                 'checkInOutSnoozeMinutes',
-                'checkInOutUrl'
+                'checkInOutUrl',
+                'kpiReminderEnabled',
+                'kpiReminderMinutesBefore'
             ]);
 
             if (settings.checkInEnabled !== undefined) checkInEnabledEl.checked = settings.checkInEnabled;
@@ -227,6 +319,8 @@ function openTodoTab() {
             if (settings.checkOutTime) checkOutTimeEl.value = settings.checkOutTime;
             if (settings.checkInOutSnoozeMinutes !== undefined) checkInOutSnoozeEl.value = String(settings.checkInOutSnoozeMinutes);
             if (settings.checkInOutUrl) checkInOutUrlEl.value = settings.checkInOutUrl;
+            if (settings.kpiReminderEnabled !== undefined && kpiReminderEnabledEl) kpiReminderEnabledEl.checked = settings.kpiReminderEnabled;
+            if (settings.kpiReminderMinutesBefore !== undefined && kpiReminderMinutesBeforeEl) kpiReminderMinutesBeforeEl.value = String(settings.kpiReminderMinutesBefore);
 
             // Xử lý lưu cài đặt
             saveBtn.addEventListener("click", async () => {
@@ -236,7 +330,9 @@ function openTodoTab() {
                     checkOutEnabled: checkOutEnabledEl.checked,
                     checkOutTime: checkOutTimeEl.value || '18:00',
                     checkInOutSnoozeMinutes: parseInt(checkInOutSnoozeEl.value, 10) || 0,
-                    checkInOutUrl: checkInOutUrlEl.value.trim()
+                    checkInOutUrl: checkInOutUrlEl.value.trim(),
+                    kpiReminderEnabled: kpiReminderEnabledEl ? kpiReminderEnabledEl.checked : true,
+                    kpiReminderMinutesBefore: kpiReminderMinutesBeforeEl ? (parseInt(kpiReminderMinutesBeforeEl.value, 10) || 15) : 15
                 };
 
                 await chrome.storage.local.set(newSettings);
@@ -269,6 +365,94 @@ function openTodoTab() {
         }
 
         await initCheckInOutSettings();
+
+        // Khởi tạo UI cảnh báo task chưa thêm vào KPI
+        async function initUnaddedKpiBannerUI() {
+            const banner = document.getElementById("unaddedKpiBanner");
+            if (!banner) return;
+
+            const toggleBtn = document.getElementById("toggleUnaddedListBtn");
+            const addAllBtn = document.getElementById("addAllUnaddedKpiBtn");
+            const itemsList = document.getElementById("unaddedKpiItemsList");
+
+            // Toggle chi tiết danh sách
+            if (toggleBtn && itemsList) {
+                toggleBtn.addEventListener("click", () => {
+                    const isHidden = itemsList.style.display === "none" || !itemsList.style.display;
+                    itemsList.style.display = isHidden ? "block" : "none";
+                    toggleBtn.textContent = isHidden ? "Thu gọn ▲" : "Chi tiết ▼";
+                });
+            }
+
+            // Nút Thêm tất cả vào KPI
+            if (addAllBtn) {
+                addAllBtn.addEventListener("click", async () => {
+                    const data = await chrome.storage.local.get(['UnaddedTodayTasks', 'WorkItemIds']);
+                    const unadded = Array.isArray(data.UnaddedTodayTasks) ? data.UnaddedTodayTasks : [];
+                    if (unadded.length === 0) return;
+
+                    const currentWorkItems = Array.isArray(data.WorkItemIds) ? data.WorkItemIds : [];
+                    const updatedWorkItems = batchAddTasksToWorkItemIds(unadded, currentWorkItems);
+
+                    await chrome.storage.local.set({
+                        WorkItemIds: updatedWorkItems,
+                        UnaddedTodayTasks: []
+                    });
+
+                    if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
+                        chrome.action.setBadgeText({ text: '' });
+                    }
+                    renderUnaddedKpiBanner([], document);
+                });
+            }
+
+            // Nút Thêm từng task (event delegation)
+            if (itemsList) {
+                itemsList.addEventListener("click", async (e) => {
+                    const addBtn = e.target.closest(".unadded-kpi-add-btn");
+                    if (!addBtn) return;
+                    const taskId = addBtn.getAttribute("data-task-id");
+                    if (!taskId) return;
+
+                    const data = await chrome.storage.local.get(['UnaddedTodayTasks', 'WorkItemIds']);
+                    const unadded = Array.isArray(data.UnaddedTodayTasks) ? data.UnaddedTodayTasks : [];
+                    const taskToAdd = unadded.find(t => String(t.id) === String(taskId));
+                    if (!taskToAdd) return;
+
+                    const currentWorkItems = Array.isArray(data.WorkItemIds) ? data.WorkItemIds : [];
+                    const updatedWorkItems = batchAddTasksToWorkItemIds([taskToAdd], currentWorkItems);
+                    const remainingTasks = unadded.filter(t => String(t.id) !== String(taskId));
+
+                    await chrome.storage.local.set({
+                        WorkItemIds: updatedWorkItems,
+                        UnaddedTodayTasks: remainingTasks
+                    });
+
+                    if (remainingTasks.length === 0) {
+                        if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
+                            chrome.action.setBadgeText({ text: '' });
+                        }
+                    }
+                    renderUnaddedKpiBanner(remainingTasks, document);
+                });
+            }
+
+            // Lắng nghe thay đổi storage từ background service worker
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+                chrome.storage.onChanged.addListener((changes, area) => {
+                    if (area === 'local' && changes.UnaddedTodayTasks) {
+                        renderUnaddedKpiBanner(changes.UnaddedTodayTasks.newValue || [], document);
+                    }
+                });
+            }
+
+            // Tải trạng thái ban đầu từ storage
+            const data = await chrome.storage.local.get(['UnaddedTodayTasks']);
+            const unaddedTasks = Array.isArray(data.UnaddedTodayTasks) ? data.UnaddedTodayTasks : [];
+            renderUnaddedKpiBanner(unaddedTasks, document);
+        }
+
+        await initUnaddedKpiBannerUI();
 
         const storedKpi = await getStoredIds('KpiInfo');
         const kpiStats = await getStoredIds('KpiStats');
@@ -388,12 +572,19 @@ function openTodoTab() {
     });
 })();
 
+if (typeof window !== 'undefined') {
+    window.batchAddTasksToWorkItemIds = batchAddTasksToWorkItemIds;
+    window.renderUnaddedKpiBanner = renderUnaddedKpiBanner;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         openNoteWindow,
         openNoteTab,
         openTodoWindow,
-        openTodoTab
+        openTodoTab,
+        batchAddTasksToWorkItemIds,
+        renderUnaddedKpiBanner
     };
 }
 
