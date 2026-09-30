@@ -42,6 +42,14 @@ assert.strictEqual(defaultParsed.getMonth(), nowCheck.getMonth());
 assert.strictEqual(defaultParsed.getDate(), nowCheck.getDate());
 assert.strictEqual(defaultParsed.getHours(), 0);
 
+// Invalid date parameter fallback
+const invalidDateIso = getTodayStartIso(new Date('invalid'));
+const invalidParsed = new Date(invalidDateIso);
+assert.strictEqual(invalidParsed.getFullYear(), nowCheck.getFullYear());
+assert.strictEqual(invalidParsed.getMonth(), nowCheck.getMonth());
+assert.strictEqual(invalidParsed.getDate(), nowCheck.getDate());
+assert.strictEqual(invalidParsed.getHours(), 0);
+
 // 3. filterUnaddedTasks
 const mockApiIssues = [
     { id: 101, iid: 11, title: 'Task 1', web_url: 'https://gitlab.com/grp/prj/-/issues/11', created_at: '2026-10-01T08:00:00Z' },
@@ -67,6 +75,24 @@ assert.deepStrictEqual(filterUnaddedTasks(undefined, undefined), []);
 // Edge case: empty stored list returns all issues normalized
 const allUnadded = filterUnaddedTasks(mockApiIssues, []);
 assert.strictEqual(allUnadded.length, 3);
+
+// Cross-project IID isolation test: IID 12 in Prj A must not match IID 12 in Prj B
+const crossProjectApiIssues = [
+    { id: 201, iid: 12, title: 'Task in Prj A', web_url: 'https://gitlab.com/grp/prj-a/-/issues/12', created_at: '2026-10-01T09:00:00Z' }
+];
+const storedPrjB = [
+    { id: '12', href: 'https://gitlab.com/grp/prj-b/-/issues/12' }
+];
+const unaddedCrossPrj = filterUnaddedTasks(crossProjectApiIssues, storedPrjB);
+assert.strictEqual(unaddedCrossPrj.length, 1, 'Task in prj-a must not match task in prj-b even with same IID 12');
+assert.strictEqual(unaddedCrossPrj[0].id, '201');
+
+// When project matches, it should be filtered out
+const storedPrjA = [
+    { id: '12', href: 'https://gitlab.com/grp/prj-a/-/work_items/12' }
+];
+const unaddedSamePrj = filterUnaddedTasks(crossProjectApiIssues, storedPrjA);
+assert.strictEqual(unaddedSamePrj.length, 0, 'Task in prj-a should match stored work_item in prj-a');
 
 // 4. evaluateKpiReminderState
 // A. Weekend (Saturday): should not scan or notify
@@ -118,6 +144,34 @@ assert.strictEqual(rolloverResult.shouldScan, true);
 assert.strictEqual(rolloverResult.shouldNotify, true);
 assert.strictEqual(rolloverResult.nextState.count, 1);
 assert.strictEqual(rolloverResult.nextState.done, false);
+
+// H. Snooze cooldown with omitted snoozeMinutes (default 10 mins)
+const firstAlertTime = new Date('2026-10-01T17:45:00');
+const stateAfterFirstAlert = {
+    lastDate: '2026-10-01',
+    count: 1,
+    done: false,
+    lastNotified: firstAlertTime.toISOString()
+};
+
+// 1 minute later (17:46): within 10 min default snooze -> should NOT notify
+const oneMinLater = new Date('2026-10-01T17:46:00');
+const snoozeResult1 = evaluateKpiReminderState(oneMinLater, { enabled: true, checkOutTime: '18:00', minutesBefore: 15 }, stateAfterFirstAlert);
+assert.strictEqual(snoozeResult1.shouldScan, true);
+assert.strictEqual(snoozeResult1.shouldNotify, false, 'Should not notify during default 10-minute snooze cooldown');
+
+// 9 minutes later (17:54): within 10 min default snooze -> should NOT notify
+const nineMinsLater = new Date('2026-10-01T17:54:00');
+const snoozeResult9 = evaluateKpiReminderState(nineMinsLater, { enabled: true, checkOutTime: '18:00', minutesBefore: 15 }, stateAfterFirstAlert);
+assert.strictEqual(snoozeResult9.shouldScan, true);
+assert.strictEqual(snoozeResult9.shouldNotify, false, 'Should not notify at 9 minutes during default snooze');
+
+// 10 minutes later (17:55): snooze elapsed -> SHOULD notify (alert 2)
+const tenMinsLater = new Date('2026-10-01T17:55:00');
+const snoozeResult10 = evaluateKpiReminderState(tenMinsLater, { enabled: true, checkOutTime: '18:00', minutesBefore: 15 }, stateAfterFirstAlert);
+assert.strictEqual(snoozeResult10.shouldScan, true);
+assert.strictEqual(snoozeResult10.shouldNotify, true, 'Should notify after default 10-minute snooze elapsed');
+assert.strictEqual(snoozeResult10.nextState.count, 2);
 
 // 5. fetchTodayCreatedIssues network mock
 const mockFetch = async (url, opts) => {

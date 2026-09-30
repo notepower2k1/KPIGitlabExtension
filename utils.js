@@ -697,7 +697,15 @@ function calculateStats(data, customFilterVal = null, customMonth = null) {
 }
 
 function getTodayStartIso(now = new Date()) {
-    const d = (now instanceof Date && !isNaN(now.getTime())) ? now : new Date(now || Date.now());
+    let d;
+    if (now instanceof Date) {
+        d = !isNaN(now.getTime()) ? now : new Date();
+    } else if (typeof now === 'number' || typeof now === 'string') {
+        const parsed = new Date(now);
+        d = !isNaN(parsed.getTime()) ? parsed : new Date();
+    } else {
+        d = new Date();
+    }
     const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
     return midnight.toISOString();
 }
@@ -708,7 +716,8 @@ function isTaskAlreadyAdded(issue, storedItems) {
     const issueIid = String(issue.iid || issue.id || '').trim();
     const issueHref = String(issue.web_url || issue.href || '').trim();
     const normIssueHref = normalizeGitLabUrl(issueHref).toLowerCase();
-    const issueMatch = normIssueHref.match(/^(?:https?:\/\/[^\/]+)?\/(.+?)\/(?:issues|work_items|merge_requests)\/(\d+)$/i);
+    const urlPattern = /^(?:https?:\/\/[^\/]+)?\/(.+?)\/(?:issues|work_items|merge_requests)\/(\d+)$/i;
+    const issueMatch = normIssueHref ? normIssueHref.match(urlPattern) : null;
 
     for (const stored of storedItems) {
         if (!stored) continue;
@@ -716,8 +725,29 @@ function isTaskAlreadyAdded(issue, storedItems) {
         const storedIid = String(stored.iid || '').trim();
         const storedHref = String(stored.href || stored.taskUrl || stored.web_url || '').trim();
         const normStoredHref = normalizeGitLabUrl(storedHref).toLowerCase();
+        const storedMatch = normStoredHref ? normStoredHref.match(urlPattern) : null;
 
-        // 1. Direct ID or IID match
+        // When both have URLs, enforce cross-project URL/path isolation
+        if (normIssueHref && normStoredHref) {
+            // 1. Direct normalized URL match
+            if (normIssueHref === normStoredHref) {
+                return true;
+            }
+
+            // 2. Project path and IID match across different URL schemas (/issues/ vs /work_items/)
+            if (issueMatch && storedMatch) {
+                if (issueMatch[1] === storedMatch[1] && issueMatch[2] === storedMatch[2]) {
+                    return true;
+                }
+                // Different project URLs with both present -> do not match on IID
+                continue;
+            }
+
+            // Both have URLs but differ -> do not match
+            continue;
+        }
+
+        // When at least one URL is absent, fall back to direct ID / IID matching
         if (storedId && (storedId === issueId || (issueIid && storedId === issueIid))) {
             return true;
         }
@@ -725,22 +755,9 @@ function isTaskAlreadyAdded(issue, storedItems) {
             return true;
         }
 
-        // 2. Direct normalized URL match
-        if (normIssueHref && normStoredHref && normIssueHref === normStoredHref) {
-            return true;
-        }
-
-        // 3. Match via isSameItem helper
+        // Match via isSameItem helper as fallback when URL is absent
         if (isSameItem({ id: issue.id, href: issueHref, taskUrl: issueHref }, stored)) {
             return true;
-        }
-
-        // 4. Project path and IID match across different URL schemas (/issues/ vs /work_items/)
-        if (issueMatch && normStoredHref) {
-            const storedMatch = normStoredHref.match(/^(?:https?:\/\/[^\/]+)?\/(.+?)\/(?:issues|work_items|merge_requests)\/(\d+)$/i);
-            if (storedMatch && issueMatch[1] === storedMatch[1] && issueMatch[2] === storedMatch[2]) {
-                return true;
-            }
         }
     }
     return false;
@@ -767,7 +784,16 @@ function filterUnaddedTasks(apiIssues, storedWorkItems) {
 }
 
 function evaluateKpiReminderState(now, settings = {}, state = {}) {
-    const d = (now instanceof Date && !isNaN(now.getTime())) ? now : new Date(now || Date.now());
+    let d;
+    if (now instanceof Date) {
+        d = !isNaN(now.getTime()) ? now : new Date();
+    } else if (typeof now === 'number' || typeof now === 'string') {
+        const parsed = new Date(now);
+        d = !isNaN(parsed.getTime()) ? parsed : new Date();
+    } else {
+        d = new Date();
+    }
+
     const todayDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     let curState = { ...state };
@@ -814,10 +840,13 @@ function evaluateKpiReminderState(now, settings = {}, state = {}) {
     // If current time >= target: scan is enabled to update UI/cache
     const timeDiff = currentTotalMins - targetTotalMins;
 
-    // Optional snooze interval check if provided in settings
-    if (settings && typeof settings.snoozeMinutes === 'number' && settings.snoozeMinutes > 0 && curState.lastNotified) {
+    // Snooze cooldown when already notified at least once (default: 10 mins if omitted)
+    if (curState.count > 0 && curState.lastNotified) {
+        const snoozeMinutes = (settings && typeof settings.snoozeMinutes === 'number' && settings.snoozeMinutes > 0)
+            ? settings.snoozeMinutes
+            : 10;
         const minsSinceLast = (d.getTime() - new Date(curState.lastNotified).getTime()) / (60 * 1000);
-        if (minsSinceLast < settings.snoozeMinutes) {
+        if (minsSinceLast < snoozeMinutes) {
             return { shouldScan: true, shouldNotify: false, nextState: curState };
         }
     }
