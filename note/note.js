@@ -181,7 +181,7 @@ function createDebouncedSaver(saveFn, delayMs = 300) {
                 saveFn(d);
             }, delayMs);
         },
-        flush() {
+        async flush() {
             if (timer) {
                 clearTimeout(timer);
                 timer = null;
@@ -189,8 +189,9 @@ function createDebouncedSaver(saveFn, delayMs = 300) {
             if (pendingData !== null) {
                 const d = pendingData;
                 pendingData = null;
-                saveFn(d);
+                return await saveFn(d);
             }
+            return Promise.resolve();
         },
         cancel() {
             if (timer) {
@@ -247,6 +248,7 @@ function togglePrivacyMask(editorEl, isMasked) {
 
 if (typeof document !== 'undefined') {
     (function () {
+        const instanceId = 'win-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
         let currentState = null;
         let currentTheme = 'light';
         let isPrivacyMaskActive = false;
@@ -293,7 +295,8 @@ if (typeof document !== 'undefined') {
             const payload = {
                 ...stateToSave,
                 theme: currentTheme,
-                privacyMask: isPrivacyMaskActive
+                privacyMask: isPrivacyMaskActive,
+                _lastSavedBy: instanceId
             };
             return new Promise((resolve) => {
                 chrome.storage.local.set({ NotepadTabs: payload }, () => resolve());
@@ -364,38 +367,38 @@ if (typeof document !== 'undefined') {
             }
         }
 
-        function switchTab(newTabId) {
+        async function switchTab(newTabId) {
             if (debouncedSaver.isPending()) {
-                debouncedSaver.flush();
+                await debouncedSaver.flush();
             } else if (noteTextarea) {
                 currentState = updateTabContent(currentState, currentState.activeTabId, noteTextarea.value);
-                persistState(currentState);
             }
             currentState = selectTab(currentState, newTabId);
+            await persistState(currentState);
             renderTabs();
             syncActiveTabToEditor();
             if (noteTextarea) noteTextarea.focus();
         }
 
-        function addNewTab() {
+        async function addNewTab() {
             if (debouncedSaver.isPending()) {
-                debouncedSaver.flush();
+                await debouncedSaver.flush();
             } else if (noteTextarea) {
                 currentState = updateTabContent(currentState, currentState.activeTabId, noteTextarea.value);
             }
             currentState = addTab(currentState);
-            persistState(currentState);
+            await persistState(currentState);
             renderTabs();
             syncActiveTabToEditor();
             if (noteTextarea) noteTextarea.focus();
         }
 
-        function closeTab(tabId) {
+        async function closeTab(tabId) {
             if (debouncedSaver.isPending()) {
-                debouncedSaver.flush();
+                await debouncedSaver.flush();
             }
             currentState = removeTab(currentState, tabId);
-            persistState(currentState);
+            await persistState(currentState);
             renderTabs();
             syncActiveTabToEditor();
             if (noteTextarea) noteTextarea.focus();
@@ -409,12 +412,15 @@ if (typeof document !== 'undefined') {
             input.className = 'tab-rename-input';
             input.value = currentTitle;
 
-            function finishRename() {
+            async function finishRename() {
                 if (!isEditingTabTitle) return;
                 isEditingTabTitle = false;
+                if (debouncedSaver.isPending()) {
+                    await debouncedSaver.flush();
+                }
                 const newTitle = input.value.trim() || 'Ghi chú';
                 currentState = renameTab(currentState, tabId, newTitle);
-                persistState(currentState);
+                await persistState(currentState);
                 renderTabs();
             }
 
@@ -466,7 +472,7 @@ if (typeof document !== 'undefined') {
 
         async function onModeSwitchClick() {
             if (debouncedSaver.isPending()) {
-                debouncedSaver.flush();
+                await debouncedSaver.flush();
             } else if (noteTextarea) {
                 currentState = updateTabContent(currentState, currentState.activeTabId, noteTextarea.value);
                 await persistState(currentState);
@@ -648,18 +654,30 @@ if (typeof document !== 'undefined') {
                         const newTabsData = changes.NotepadTabs.newValue;
                         if (!newTabsData || !Array.isArray(newTabsData.tabs)) return;
 
+                        // Local save event guard: skip if this window initiated the save
+                        if (newTabsData._lastSavedBy === instanceId) return;
+
+                        // Immediately sync theme and privacy mask across windows even if textarea is focused
+                        if (newTabsData.theme && newTabsData.theme !== currentTheme) {
+                            currentTheme = newTabsData.theme;
+                            applyTheme(currentTheme, document);
+                            if (themeToggleBtn) {
+                                themeToggleBtn.title = currentTheme === 'dark' ? 'Chuyển sang giao diện Sáng' : 'Chuyển sang giao diện Tối';
+                            }
+                        }
+                        if (newTabsData.privacyMask !== undefined && newTabsData.privacyMask !== isPrivacyMaskActive) {
+                            isPrivacyMaskActive = newTabsData.privacyMask;
+                            if (noteTextarea) togglePrivacyMask(noteTextarea, isPrivacyMaskActive);
+                            if (privacyBtn) {
+                                privacyBtn.classList.toggle('active', isPrivacyMaskActive);
+                                privacyBtn.title = isPrivacyMaskActive ? 'Tắt che mờ riêng tư' : 'Bật/Tắt che mờ riêng tư';
+                            }
+                        }
+
+                        // Tab content & active tab sync based on focus
                         const isFocused = (document.activeElement === noteTextarea);
                         if (!isFocused) {
                             currentState = newTabsData;
-                            if (newTabsData.theme && newTabsData.theme !== currentTheme) {
-                                currentTheme = newTabsData.theme;
-                                applyTheme(currentTheme, document);
-                            }
-                            if (newTabsData.privacyMask !== undefined && newTabsData.privacyMask !== isPrivacyMaskActive) {
-                                isPrivacyMaskActive = newTabsData.privacyMask;
-                                togglePrivacyMask(noteTextarea, isPrivacyMaskActive);
-                                if (privacyBtn) privacyBtn.classList.toggle('active', isPrivacyMaskActive);
-                            }
                             renderTabs();
                             syncActiveTabToEditor();
                         } else {

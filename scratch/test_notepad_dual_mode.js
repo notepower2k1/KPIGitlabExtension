@@ -261,6 +261,25 @@ assert.strictEqual(saveCallCount, 1, 'Flush should execute save immediately');
 assert.deepStrictEqual(lastSavedState, { text: 'Draft 3' });
 assert.strictEqual(debouncedSaver.isPending(), false);
 
+// Test async flush() returning promise
+let asyncSaved = false;
+const asyncSaver = notepad.createDebouncedSaver(async (data) => {
+    asyncSaved = true;
+    return 'saved-ok';
+}, 50);
+
+asyncSaver.trigger({ text: 'Async data' });
+const flushPromise = asyncSaver.flush();
+assert.ok(flushPromise && typeof flushPromise.then === 'function', 'flush() should return a Promise');
+flushPromise.then(res => {
+    assert.strictEqual(asyncSaved, true, 'Async flush should execute saveFn');
+    assert.strictEqual(res, 'saved-ok', 'flush() should resolve with saveFn result');
+});
+
+// Test flush() when idle returns resolved promise
+const idlePromise = asyncSaver.flush();
+assert.ok(idlePromise && typeof idlePromise.then === 'function', 'flush() when idle should return a Promise');
+
 // 14. Theme Application Helper
 console.log('Testing applyTheme()...');
 const mockDocument = {
