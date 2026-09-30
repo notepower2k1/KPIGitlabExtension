@@ -13,12 +13,14 @@ try {
 
 let pageModule;
 let calculateMonthlyChartData;
+let calculateWeeklyKpiScore;
 let renderMonthlyCharts;
 let analyticsCharts;
 
 try {
     pageModule = require('../page/page.js');
     calculateMonthlyChartData = pageModule.calculateMonthlyChartData;
+    calculateWeeklyKpiScore = pageModule.calculateWeeklyKpiScore;
     renderMonthlyCharts = pageModule.renderMonthlyCharts;
     analyticsCharts = pageModule.analyticsCharts;
 } catch (err) {
@@ -27,6 +29,7 @@ try {
 
 // 1. Function existence
 assert.strictEqual(typeof calculateMonthlyChartData, 'function', 'calculateMonthlyChartData should be exported');
+assert.strictEqual(typeof calculateWeeklyKpiScore, 'function', 'calculateWeeklyKpiScore should be exported');
 assert.strictEqual(typeof renderMonthlyCharts, 'function', 'renderMonthlyCharts should be exported');
 assert(analyticsCharts !== undefined, 'analyticsCharts should be exported');
 
@@ -158,7 +161,7 @@ assert(analyticsCharts !== undefined, 'analyticsCharts should be exported');
 
     assert.strictEqual(kpiScores.length, 5, 'Should have 5 weekly KPI scores');
     kpiScores.forEach(score => {
-        assert(score >= 0 && score <= 100, `KPI score ${score} must be between 0 and 100`);
+        assert(score === null || (score >= 0 && score <= 100), `KPI score ${score} must be between 0 and 100 or null`);
     });
 
     // Week 1 score should be higher than Week 2 score (Week 2 had late tasks)
@@ -167,7 +170,43 @@ assert(analyticsCharts !== undefined, 'analyticsCharts should be exported');
     console.log('✔ Passed: Weekly KPI score trend test');
 }
 
-// 8. renderMonthlyCharts & Lifecycle Management Test
+// 8. Future Empty Weeks KPI Omission Test
+{
+    // When refDate is mid-month: 2026-09-15 (in Week 3: 2026-09-14 to 2026-09-20)
+    // Week 1 (08/31 - 09/06): start <= refDate -> 100
+    // Week 2 (09/07 - 09/13): start <= refDate -> 100
+    // Week 3 (09/14 - 09/20): start <= refDate -> 100
+    // Week 4 (09/21 - 09/27): start > refDate -> null
+    // Week 5 (09/28 - 10/04): start > refDate -> null
+    const refDate = '2026-09-15';
+    const chartData = calculateMonthlyChartData([], 2026, 9, refDate);
+    assert.deepStrictEqual(chartData.weeklyData.kpiScores, [100, 100, 100, null, null],
+        'Future empty weeks must have null KPI scores');
+
+    // If future week has items, score must be calculated (not null)
+    const itemsWithFutureTask = [
+        { addedAt: '2026-09-22', isLate: false, state: 'closed', timeEstimate: 5, spent: 5 }
+    ];
+    const dataWithFuture = calculateMonthlyChartData(itemsWithFutureTask, 2026, 9, refDate);
+    assert.strictEqual(typeof dataWithFuture.weeklyData.kpiScores[3], 'number',
+        'Future week with items should compute numeric KPI score');
+    assert.strictEqual(dataWithFuture.weeklyData.kpiScores[4], null,
+        'Future week without items should remain null');
+
+    // Direct unit test of calculateWeeklyKpiScore
+    if (typeof calculateWeeklyKpiScore === 'function') {
+        assert.strictEqual(calculateWeeklyKpiScore([], { start: '2026-09-21' }, '2026-09-15'), null,
+            'Empty future week returns null');
+        assert.strictEqual(calculateWeeklyKpiScore([], { start: '2026-09-01' }, '2026-09-15'), 100,
+            'Empty past week returns 100');
+        assert.strictEqual(calculateWeeklyKpiScore([]), 100,
+            'Empty week without week info defaults to 100');
+    }
+
+    console.log('✔ Passed: Future empty weeks KPI omission test');
+}
+
+// 9. renderMonthlyCharts & Lifecycle Management Test
 {
     // Test graceful handling when Chart is undefined
     const globalChartBackup = global.Chart;
