@@ -421,7 +421,7 @@ if (typeof document !== 'undefined') {
             let counts = { todo: 0, processing: 0, done: 0 };
 
             todos.forEach(todo => {
-                const status = todo.status || 'todo';
+                const status = ['todo', 'processing', 'done'].includes(todo && todo.status) ? todo.status : 'todo';
                 counts[status]++;
 
                 const card = document.createElement('div');
