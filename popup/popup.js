@@ -150,6 +150,79 @@
             }
         });
 
+        // Cài đặt Nhắc Check-in & Check-out
+        async function initCheckInOutSettings() {
+            const checkInEnabledEl = document.getElementById("checkInEnabled");
+            const checkInTimeEl = document.getElementById("checkInTime");
+            const checkOutEnabledEl = document.getElementById("checkOutEnabled");
+            const checkOutTimeEl = document.getElementById("checkOutTime");
+            const checkInOutSnoozeEl = document.getElementById("checkInOutSnooze");
+            const checkInOutUrlEl = document.getElementById("checkInOutUrl");
+            const saveBtn = document.getElementById("saveCheckInOutBtn");
+            const testBtn = document.getElementById("testCheckInOutBtn");
+            const saveMsg = document.getElementById("checkInOutSaveMsg");
+
+            if (!checkInEnabledEl || !saveBtn) return;
+
+            // Đọc cài đặt đã lưu
+            const settings = await chrome.storage.local.get([
+                'checkInEnabled',
+                'checkInTime',
+                'checkOutEnabled',
+                'checkOutTime',
+                'checkInOutSnoozeMinutes',
+                'checkInOutUrl'
+            ]);
+
+            if (settings.checkInEnabled !== undefined) checkInEnabledEl.checked = settings.checkInEnabled;
+            if (settings.checkInTime) checkInTimeEl.value = settings.checkInTime;
+            if (settings.checkOutEnabled !== undefined) checkOutEnabledEl.checked = settings.checkOutEnabled;
+            if (settings.checkOutTime) checkOutTimeEl.value = settings.checkOutTime;
+            if (settings.checkInOutSnoozeMinutes !== undefined) checkInOutSnoozeEl.value = String(settings.checkInOutSnoozeMinutes);
+            if (settings.checkInOutUrl) checkInOutUrlEl.value = settings.checkInOutUrl;
+
+            // Xử lý lưu cài đặt
+            saveBtn.addEventListener("click", async () => {
+                const newSettings = {
+                    checkInEnabled: checkInEnabledEl.checked,
+                    checkInTime: checkInTimeEl.value || '08:30',
+                    checkOutEnabled: checkOutEnabledEl.checked,
+                    checkOutTime: checkOutTimeEl.value || '18:00',
+                    checkInOutSnoozeMinutes: parseInt(checkInOutSnoozeEl.value, 10) || 0,
+                    checkInOutUrl: checkInOutUrlEl.value.trim()
+                };
+
+                await chrome.storage.local.set(newSettings);
+
+                if (saveMsg) {
+                    saveMsg.style.display = "block";
+                    setTimeout(() => {
+                        saveMsg.style.display = "none";
+                    }, 2500);
+                }
+            });
+
+            // Xử lý thử chuông thông báo
+            if (testBtn) {
+                testBtn.addEventListener("click", () => {
+                    const notifId = 'test-checkin-alert-' + Date.now();
+                    const url = checkInOutUrlEl.value.trim();
+                    chrome.notifications.create(notifId, {
+                        type: "basic",
+                        iconUrl: "icon48.png",
+                        title: "🔔 Kiểm tra chuông nhắc việc",
+                        message: url
+                            ? "Thông báo hoạt động tốt! Nhấn vào đây để thử mở link chấm công."
+                            : "Thông báo hoạt động tốt! Bạn có thể lưu lại cài đặt.",
+                        priority: 2,
+                        requireInteraction: true
+                    });
+                });
+            }
+        }
+
+        await initCheckInOutSettings();
+
         const storedKpi = await getStoredIds('KpiInfo');
         const kpiStats = await getStoredIds('KpiStats');
 

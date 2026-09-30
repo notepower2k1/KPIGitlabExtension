@@ -407,3 +407,168 @@ button {
 .popup-footer {
     margin-top: 14px;
 }
+
+/* Check-in & Check-out Alert Card */
+.checkin-card {
+    padding: 14px;
+}
+
+.checkin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.checkin-header h4 {
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+.badge-workday {
+    background: #e0e7ff;
+    color: var(--primary);
+    font-size: 0.6875rem;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    font-weight: 600;
+}
+
+.checkin-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.checkin-toggle-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkin-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+/* Compact Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #cbd5e1;
+    transition: .2s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .2s;
+}
+
+input:checked + .slider {
+    background-color: var(--primary);
+}
+
+input:checked + .slider:before {
+    transform: translateX(14px);
+}
+
+.slider.round {
+    border-radius: 18px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+.time-input {
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    color: var(--text-main);
+    background: white;
+    outline: none;
+    font-family: inherit;
+}
+
+.time-input:focus {
+    border-color: var(--primary);
+}
+
+.checkin-setting-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+}
+
+.checkin-setting-row label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.snooze-select, .url-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    color: var(--text-main);
+    background: white;
+    outline: none;
+    font-family: inherit;
+}
+
+.snooze-select:focus, .url-input:focus {
+    border-color: var(--primary);
+}
+
+.checkin-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.checkin-actions button {
+    flex: 1;
+}
+
+.btn-sm {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    border-radius: 6px;
+}
+
+.save-msg {
+    margin-top: 6px;
+    font-size: 0.75rem;
+    color: var(--success);
+    font-weight: 600;
+    text-align: center;
+}
