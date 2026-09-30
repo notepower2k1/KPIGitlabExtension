@@ -526,7 +526,10 @@ const mockFetch = async (url, opts) => {
     assert.strictEqual(merged[0].id, '11');
     assert.strictEqual(merged[1].id, '102');
     assert.strictEqual(merged[2].id, '103');
-    console.log('✔ Passed: batchAddTasksToWorkItemIds deduplicates and merges correctly');
+    assert.ok(merged[1].createAt, 'Should include createAt for page.js KPI filtering');
+    assert.ok(merged[1].addedAt, 'Should include addedAt for page.js KPI filtering');
+    assert.strictEqual(merged[1].taskTitle, 'Task 12', 'Should include taskTitle for page.js KPI view');
+    console.log('✔ Passed: batchAddTasksToWorkItemIds deduplicates and merges correctly with metadata');
 
     // 3.5 Test renderUnaddedKpiBanner with mock DOM
     function createMockElement(tagName = 'div') {
@@ -547,12 +550,15 @@ const mockFetch = async (url, opts) => {
     const mockBanner = createMockElement('div');
     const mockTitle = createMockElement('span');
     const mockList = createMockElement('div');
+    const mockToggleBtn = createMockElement('button');
+    mockToggleBtn.textContent = 'Thu gọn ▲';
 
     const mockDoc = {
         getElementById(id) {
             if (id === 'unaddedKpiBanner') return mockBanner;
             if (id === 'unaddedKpiTitle') return mockTitle;
             if (id === 'unaddedKpiItemsList') return mockList;
+            if (id === 'toggleUnaddedListBtn') return mockToggleBtn;
             return null;
         },
         createElement(tag) {
@@ -577,8 +583,10 @@ const mockFetch = async (url, opts) => {
     actionBadge = { text: '!' };
     popupModule.renderUnaddedKpiBanner([], mockDoc);
     assert.strictEqual(mockBanner.style.display, 'none', 'Banner should be hidden when empty');
+    assert.strictEqual(mockToggleBtn.textContent, 'Chi tiết ▼', 'Toggle button text should reset when empty');
+    assert.strictEqual(mockList.style.display, 'none', 'List display should reset to none when empty');
     assert.strictEqual(actionBadge.text, '', 'Badge should be cleared when empty');
-    console.log('✔ Passed: renderUnaddedKpiBanner properly updates DOM and badge');
+    console.log('✔ Passed: renderUnaddedKpiBanner properly updates DOM, reset states, and badge');
 
     // 3.6 Test popup.js contains required event listeners and settings logic
     const popupJsContent = fs.readFileSync(path.resolve(__dirname, '../popup/popup.js'), 'utf8');

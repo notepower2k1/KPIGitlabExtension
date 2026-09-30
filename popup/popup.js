@@ -67,11 +67,15 @@ function batchAddTasksToWorkItemIds(tasksToAdd, currentWorkItemIds = []) {
         });
 
         if (!alreadyExists) {
+            const createdAt = task.createAt || task.createdAt || task.created_at || new Date().toISOString();
             result.push({
                 id: taskId,
                 iid: taskIid || taskId,
                 href: taskHref,
-                title: task.title || ''
+                title: task.title || '',
+                taskTitle: task.title || '',
+                createAt: createdAt,
+                addedAt: createdAt
             });
         }
     }
@@ -118,6 +122,9 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
         }
     } else {
         banner.style.display = 'none';
+        const toggleBtn = doc.getElementById('toggleUnaddedListBtn');
+        if (toggleBtn) toggleBtn.textContent = 'Chi tiết ▼';
+        if (listEl) listEl.style.display = 'none';
         if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
             chrome.action.setBadgeText({ text: '' });
         }
@@ -387,22 +394,28 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
             // Nút Thêm tất cả vào KPI
             if (addAllBtn) {
                 addAllBtn.addEventListener("click", async () => {
-                    const data = await chrome.storage.local.get(['UnaddedTodayTasks', 'WorkItemIds']);
-                    const unadded = Array.isArray(data.UnaddedTodayTasks) ? data.UnaddedTodayTasks : [];
-                    if (unadded.length === 0) return;
+                    if (addAllBtn.disabled) return;
+                    addAllBtn.disabled = true;
+                    try {
+                        const data = await chrome.storage.local.get(['UnaddedTodayTasks', 'WorkItemIds']);
+                        const unadded = Array.isArray(data.UnaddedTodayTasks) ? data.UnaddedTodayTasks : [];
+                        if (unadded.length === 0) return;
 
-                    const currentWorkItems = Array.isArray(data.WorkItemIds) ? data.WorkItemIds : [];
-                    const updatedWorkItems = batchAddTasksToWorkItemIds(unadded, currentWorkItems);
+                        const currentWorkItems = Array.isArray(data.WorkItemIds) ? data.WorkItemIds : [];
+                        const updatedWorkItems = batchAddTasksToWorkItemIds(unadded, currentWorkItems);
 
-                    await chrome.storage.local.set({
-                        WorkItemIds: updatedWorkItems,
-                        UnaddedTodayTasks: []
-                    });
+                        await chrome.storage.local.set({
+                            WorkItemIds: updatedWorkItems,
+                            UnaddedTodayTasks: []
+                        });
 
-                    if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
-                        chrome.action.setBadgeText({ text: '' });
+                        if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
+                            chrome.action.setBadgeText({ text: '' });
+                        }
+                        renderUnaddedKpiBanner([], document);
+                    } finally {
+                        addAllBtn.disabled = false;
                     }
-                    renderUnaddedKpiBanner([], document);
                 });
             }
 
@@ -410,30 +423,35 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
             if (itemsList) {
                 itemsList.addEventListener("click", async (e) => {
                     const addBtn = e.target.closest(".unadded-kpi-add-btn");
-                    if (!addBtn) return;
-                    const taskId = addBtn.getAttribute("data-task-id");
-                    if (!taskId) return;
+                    if (!addBtn || addBtn.disabled) return;
+                    addBtn.disabled = true;
+                    try {
+                        const taskId = addBtn.getAttribute("data-task-id");
+                        if (!taskId) return;
 
-                    const data = await chrome.storage.local.get(['UnaddedTodayTasks', 'WorkItemIds']);
-                    const unadded = Array.isArray(data.UnaddedTodayTasks) ? data.UnaddedTodayTasks : [];
-                    const taskToAdd = unadded.find(t => String(t.id) === String(taskId));
-                    if (!taskToAdd) return;
+                        const data = await chrome.storage.local.get(['UnaddedTodayTasks', 'WorkItemIds']);
+                        const unadded = Array.isArray(data.UnaddedTodayTasks) ? data.UnaddedTodayTasks : [];
+                        const taskToAdd = unadded.find(t => String(t.id) === String(taskId));
+                        if (!taskToAdd) return;
 
-                    const currentWorkItems = Array.isArray(data.WorkItemIds) ? data.WorkItemIds : [];
-                    const updatedWorkItems = batchAddTasksToWorkItemIds([taskToAdd], currentWorkItems);
-                    const remainingTasks = unadded.filter(t => String(t.id) !== String(taskId));
+                        const currentWorkItems = Array.isArray(data.WorkItemIds) ? data.WorkItemIds : [];
+                        const updatedWorkItems = batchAddTasksToWorkItemIds([taskToAdd], currentWorkItems);
+                        const remainingTasks = unadded.filter(t => String(t.id) !== String(taskId));
 
-                    await chrome.storage.local.set({
-                        WorkItemIds: updatedWorkItems,
-                        UnaddedTodayTasks: remainingTasks
-                    });
+                        await chrome.storage.local.set({
+                            WorkItemIds: updatedWorkItems,
+                            UnaddedTodayTasks: remainingTasks
+                        });
 
-                    if (remainingTasks.length === 0) {
-                        if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
-                            chrome.action.setBadgeText({ text: '' });
+                        if (remainingTasks.length === 0) {
+                            if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
+                                chrome.action.setBadgeText({ text: '' });
+                            }
                         }
+                        renderUnaddedKpiBanner(remainingTasks, document);
+                    } finally {
+                        addBtn.disabled = false;
                     }
-                    renderUnaddedKpiBanner(remainingTasks, document);
                 });
             }
 
