@@ -12,6 +12,8 @@ try {
 const {
     calculateChildTaskMetrics,
     filterMyChildTasks,
+    resolveTaskIid,
+    shouldBackfillParent,
     renderSummaryModalHtml,
     getModalStyles,
     createSummaryButton,
@@ -19,6 +21,7 @@ const {
     extractChildTasksFromDom,
     enrichChildTasks,
     batchAddTasksToStorage,
+    fetchTaskDetail,
     openSummaryModal,
     closeSummaryModal,
     injectSummaryButton
@@ -27,6 +30,8 @@ const {
 // 1. Function existence tests
 assert.strictEqual(typeof calculateChildTaskMetrics, 'function', 'calculateChildTaskMetrics should be exported as a function');
 assert.strictEqual(typeof filterMyChildTasks, 'function', 'filterMyChildTasks should be exported as a function');
+assert.strictEqual(typeof resolveTaskIid, 'function', 'resolveTaskIid should be exported as a function');
+assert.strictEqual(typeof shouldBackfillParent, 'function', 'shouldBackfillParent should be exported as a function');
 assert.strictEqual(typeof renderSummaryModalHtml, 'function', 'renderSummaryModalHtml should be exported as a function');
 assert.strictEqual(typeof getModalStyles, 'function', 'getModalStyles should be exported as a function');
 assert.strictEqual(typeof createSummaryButton, 'function', 'createSummaryButton should be exported as a function');
@@ -34,6 +39,7 @@ assert.strictEqual(typeof findEditButtonPlacement, 'function', 'findEditButtonPl
 assert.strictEqual(typeof extractChildTasksFromDom, 'function', 'extractChildTasksFromDom should be exported as a function');
 assert.strictEqual(typeof enrichChildTasks, 'function', 'enrichChildTasks should be exported as a function');
 assert.strictEqual(typeof batchAddTasksToStorage, 'function', 'batchAddTasksToStorage should be exported as a function');
+assert.strictEqual(typeof fetchTaskDetail, 'function', 'fetchTaskDetail should be exported as a function');
 assert.strictEqual(typeof openSummaryModal, 'function', 'openSummaryModal should be exported as a function');
 assert.strictEqual(typeof closeSummaryModal, 'function', 'closeSummaryModal should be exported as a function');
 assert.strictEqual(typeof injectSummaryButton, 'function', 'injectSummaryButton should be exported as a function');
@@ -659,5 +665,151 @@ class MockDocument {
     console.log('✔ Passed: Modal open, close, and Escape key lifecycle');
 }
 
-console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');
+// 15. Robust IID Resolution Tests
+{
+    // Extract IID from work_items href
+    const taskWithWorkItem = { id: 'gid://gitlab/WorkItem/9999', href: 'https://gitlab.example.com/team/app/-/work_items/456' };
+    assert.strictEqual(resolveTaskIid(taskWithWorkItem), '456', 'Should extract IID 456 from work_items href');
+
+    // Extract IID from issues href
+    const taskWithIssue = { id: 'gid://gitlab/WorkItem/8888', href: '/team/app/-/issues/789' };
+    assert.strictEqual(resolveTaskIid(taskWithIssue), '789', 'Should extract IID 789 from issues href');
+
+    // Fall back to task.id when href is absent or lacks work_items/issues
+    const taskFallback = { id: '101', href: 'https://gitlab.example.com/team/app' };
+    assert.strictEqual(resolveTaskIid(taskFallback), '101', 'Should fall back to task.id when href has no issue/work_item segment');
+
+    const taskNoHref = { id: '202' };
+    assert.strictEqual(resolveTaskIid(taskNoHref), '202', 'Should fall back to task.id when href is undefined');
+
+    // Primitive number / string inputs
+    assert.strictEqual(resolveTaskIid(303), '303', 'Should handle numeric input');
+    assert.strictEqual(resolveTaskIid('/issues/505'), '505', 'Should extract IID from raw issue path');
+    assert.strictEqual(resolveTaskIid('work_items/606'), '606', 'Should extract IID from raw work_items path');
+
+    // Null / empty edge cases
+    assert.strictEqual(resolveTaskIid(null), '', 'Should return empty string for null');
+    assert.strictEqual(resolveTaskIid(undefined), '', 'Should return empty string for undefined');
+
+    console.log('✔ Passed: Robust IID resolution (href regex priority over task.id)');
+}
+
+// 16. Parent Backfill Cache Guard Tests
+{
+    const tasksMap = new Map([
+        ['10', { href: '/tasks/10', title: 'Task 10' }],
+        ['20', { href: '/tasks/20', title: 'Task 20' }]
+    ]);
+    const backfilledSet = new Set(['10', '20']);
+
+    // Case 1: All tasks already backfilled and same parent title -> should NOT backfill
+    assert.strictEqual(
+        shouldBackfillParent(tasksMap, backfilledSet, 'Parent Issue A', 'Parent Issue A'),
+        false,
+        'Should skip backfill when all tasks are cached and title matches'
+    );
+
+    // Case 2: New task ID not yet backfilled -> SHOULD backfill
+    const newTasksMap = new Map([
+        ['10', { href: '/tasks/10', title: 'Task 10' }],
+        ['30', { href: '/tasks/30', title: 'Task 30' }]
+    ]);
+    assert.strictEqual(
+        shouldBackfillParent(newTasksMap, backfilledSet, 'Parent Issue A', 'Parent Issue A'),
+        true,
+        'Should trigger backfill when a new task ID is present'
+    );
+
+    // Case 3: Parent title changed -> SHOULD backfill
+    assert.strictEqual(
+        shouldBackfillParent(tasksMap, backfilledSet, 'Parent Issue A', 'Parent Issue B (Renamed)'),
+        true,
+        'Should trigger backfill when parent title changed'
+    );
+
+    // Case 4: Empty current tasks or empty title -> should NOT backfill
+    assert.strictEqual(shouldBackfillParent(new Map(), backfilledSet, 'A', 'A'), false);
+    assert.strictEqual(shouldBackfillParent(tasksMap, backfilledSet, 'A', ''), false);
+
+    console.log('✔ Passed: Parent backfill cache guard (prevents repeated storage queries on continuous mutations)');
+}
+
+// 17. GraphQL Dynamic Origin & Custom Endpoint Tests
+(async () => {
+    let fetchCalls = [];
+    const originalFetch = global.fetch;
+    const originalWindow = global.window;
+
+    global.fetch = async (url, options) => {
+        fetchCalls.push({ url, options });
+        return {
+            json: async () => ({
+                data: {
+                    workspace: {
+                        workItem: {
+                            id: 'gid://gitlab/WorkItem/999',
+                            iid: '999',
+                            title: 'Live Task',
+                            state: 'opened'
+                        }
+                    }
+                }
+            })
+        };
+    };
+
+    try {
+        // Test 1: Dynamic origin from window.location.origin
+        global.window = {
+            location: {
+                origin: 'https://gitlab.custom-domain.org'
+            }
+        };
+
+        const resDynamic = await fetchTaskDetail('my-group/my-project', { href: '/my-group/my-project/-/work_items/555' }, 'dummy-token-123');
+
+        assert.strictEqual(fetchCalls.length, 1);
+        assert.strictEqual(fetchCalls[0].url, 'https://gitlab.custom-domain.org/api/graphql', 'Should use dynamic origin + /api/graphql');
+        const body1 = JSON.parse(fetchCalls[0].options.body);
+        assert.strictEqual(body1.variables.iid, '555', 'Should extract IID from href in GraphQL query variables');
+        assert.strictEqual(body1.variables.fullPath, 'my-group/my-project');
+        assert.strictEqual(resDynamic.iid, '999');
+
+        // Test 2: Fallback when window is undefined
+        fetchCalls = [];
+        delete global.window;
+
+        await fetchTaskDetail('my-group/my-project', '777', 'dummy-token-456');
+        assert.strictEqual(fetchCalls.length, 1);
+        assert.strictEqual(fetchCalls[0].url, 'https://gitlab.widosoft.com/api/graphql', 'Should fall back to default origin');
+        const body2 = JSON.parse(fetchCalls[0].options.body);
+        assert.strictEqual(body2.variables.iid, '777');
+
+        // Test 3: Custom endpoint override
+        fetchCalls = [];
+        await fetchTaskDetail('my-group/my-project', '888', 'dummy-token-789', 'https://test-gitlab.internal/api/graphql');
+        assert.strictEqual(fetchCalls.length, 1);
+        assert.strictEqual(fetchCalls[0].url, 'https://test-gitlab.internal/api/graphql', 'Should support custom endpoint parameter');
+
+        // Test 4: Network error resilience
+        global.fetch = async () => {
+            throw new Error('Network timeout');
+        };
+        const originalWarn = console.warn;
+        console.warn = () => {};
+        const errorResult = await fetchTaskDetail('my-group/my-project', '999', 'token');
+        console.warn = originalWarn;
+        assert.strictEqual(errorResult, null, 'Should catch network errors and return null safely');
+
+    } finally {
+        global.fetch = originalFetch;
+        global.window = originalWindow;
+    }
+
+    console.log('✔ Passed: GraphQL dynamic endpoint origin, custom endpoints, and error handling');
+    console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');
+})().catch(err => {
+    console.error('Test suite failed:', err);
+    process.exit(1);
+});
 

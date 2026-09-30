@@ -111,6 +111,31 @@ function filterMyChildTasks(items, userProfileUrl) {
     return items.filter(item => item && item.assigneeUrl === userProfileUrl);
 }
 
+function resolveTaskIid(task) {
+    if (!task) return '';
+    if (typeof task === 'string' || typeof task === 'number') {
+        const str = String(task);
+        const match = str.match(/(?:work_items|issues)\/(\d+)/);
+        return match ? match[1] : str;
+    }
+    if (task.href) {
+        const match = String(task.href).match(/(?:work_items|issues)\/(\d+)/);
+        if (match) return match[1];
+    }
+    return String(task.id || '');
+}
+
+function shouldBackfillParent(currentTasks, backfilledSet, lastTitle, currentTitle) {
+    if (!currentTasks || currentTasks.size === 0 || !currentTitle) return false;
+    if (lastTitle !== currentTitle) return true;
+    for (const taskId of currentTasks.keys()) {
+        if (!backfilledSet || !backfilledSet.has(taskId)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '') {
     const safeParentTitle = escapeHtml(parentTitle);
     const safeMetrics = metrics || calculateChildTaskMetrics([]);
@@ -712,8 +737,11 @@ function batchAddTasksToStorage(tasks, parentInfo = {}, currentStored = []) {
     return { updatedList: list, addedCount };
 }
 
-async function fetchTaskDetail(projectPath, iid, token) {
-    if (!projectPath || !iid || !token) return null;
+async function fetchTaskDetail(projectPath, iidOrTask, token, customEndpoint = null) {
+    if (!projectPath || !iidOrTask || !token) return null;
+    const iid = resolveTaskIid(iidOrTask);
+    if (!iid) return null;
+
     const queryData = {
         operationName: "namespaceWorkItem",
         variables: {
@@ -754,8 +782,14 @@ async function fetchTaskDetail(projectPath, iid, token) {
         `
     };
 
+    const endpoint = customEndpoint || (
+        (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null')
+            ? `${window.location.origin}/api/graphql`
+            : 'https://gitlab.widosoft.com/api/graphql'
+    );
+
     try {
-        const response = await fetch('https://gitlab.widosoft.com/api/graphql', {
+        const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -899,7 +933,8 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                     if (matchProject) {
                         const livePromises = refreshedTasks.map(async (t) => {
                             try {
-                                const detail = await fetchTaskDetail(matchProject, t.id, token);
+                                const childIid = resolveTaskIid(t);
+                                const detail = await fetchTaskDetail(matchProject, childIid, token);
                                 if (detail) {
                                     const timeTracking = detail.widgets?.find(w => w.type === 'TIME_TRACKING');
                                     const labels = detail.widgets?.find(w => w.type === 'LABELS');
@@ -948,6 +983,8 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.calculateChildTaskMetrics = calculateChildTaskMetrics;
     window.filterMyChildTasks = filterMyChildTasks;
+    window.resolveTaskIid = resolveTaskIid;
+    window.shouldBackfillParent = shouldBackfillParent;
     window.renderSummaryModalHtml = renderSummaryModalHtml;
     window.getModalStyles = getModalStyles;
     window.ensureModalStyles = ensureModalStyles;
@@ -1113,6 +1150,19 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             }
         }
 
+        let processTasksTimer = null;
+        function debouncedProcessTasks(delay = 250) {
+            if (processTasksTimer) {
+                clearTimeout(processTasksTimer);
+            }
+            processTasksTimer = setTimeout(() => {
+                processTasks();
+            }, delay);
+        }
+
+        const backfilledTaskIds = new Set();
+        let lastBackfilledParentTitle = '';
+
         function processTasks() {
             // Handle for issue
             const taskSection = document.querySelector('#tasks > .crud-body');
@@ -1137,6 +1187,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
                 currentTasks.set(workItemId, { href: anchor.href, title: taskTitle });
 
                 const position = li.querySelector('div[data-testid="child-contents-container"] > div[data-testid="links-child"]');
+                if (!position) return;
 
                 // Kiểm tra nếu đã có nút thì bỏ qua
                 if (position.querySelector('.custom-add-button')) return;
@@ -1148,7 +1199,11 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             });
 
             // Tự động bổ sung thông tin Issue cha cho các task đang mở trên trang này nếu trước đó chưa có
-            if (currentTasks.size > 0 && parentInfo.parentTitle) {
+            if (shouldBackfillParent(currentTasks, backfilledTaskIds, lastBackfilledParentTitle, parentInfo.parentTitle)) {
+                for (const taskId of currentTasks.keys()) {
+                    backfilledTaskIds.add(taskId);
+                }
+                lastBackfilledParentTitle = parentInfo.parentTitle;
                 backfillParentInfo(currentTasks, parentInfo);
             }
         }
@@ -1162,7 +1217,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
             const targetElement = document.querySelector("ul[data-testid='child-items-container']");
             if (targetElement) {
-                processTasks();
+                debouncedProcessTasks(250);
                 createRefreshButton();
             }
         });
@@ -1218,6 +1273,8 @@ if (typeof module !== 'undefined' && module.exports) {
         roundToOneDecimal,
         calculateChildTaskMetrics,
         filterMyChildTasks,
+        resolveTaskIid,
+        shouldBackfillParent,
         renderSummaryModalHtml,
         getModalStyles,
         ensureModalStyles,

@@ -76,6 +76,7 @@ runSubSuite('Leave Days (1-day & 0.5-day) Subsystem', 'scratch/test_leave_days.j
 runSubSuite('Check-in & Check-out Alert Subsystem', 'scratch/test_checkin_checkout.js');
 runSubSuite('Notepad Multi-Tab Dual-Mode Subsystem', 'scratch/test_notepad_dual_mode.js');
 runSubSuite('Kanban To-Do Enhancements Subsystem', 'scratch/test_todo_enhancements.js');
+runSubSuite('GitLab Issue Summary Modal Subsystem', 'scratch/test_content_issue_summary.js');
 
 // --- 2. EXTENSION-WIDE JS SYNTAX VALIDATION ---
 printHeader('EXTENSION-WIDE JAVASCRIPT SYNTAX VALIDATION');
