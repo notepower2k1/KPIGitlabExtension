@@ -4029,15 +4029,483 @@ function renderDailyTimesheet(timesheetData) {
     }
 }
 
+// --- Monthly Chart.js Data Aggregation & Rendering ---
+
+const analyticsCharts = {
+    weeklyEstSpent: null,
+    taskType: null,
+    taskStatus: null,
+    kpiTrend: null
+};
+
+function getWeeksForMonth(selYear, selMonth) {
+    if (typeof getWeeksOfMonth === 'function') {
+        return getWeeksOfMonth(selYear, selMonth);
+    }
+    const weeks = [];
+    const firstDay = new Date(selYear, selMonth - 1, 1);
+    const lastDay = new Date(selYear, selMonth, 0);
+
+    const getMon = (d) => {
+        const date = new Date(d);
+        const day = date.getDay();
+        const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+        return new Date(date.setDate(diff));
+    };
+    const toIso = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dt = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dt}`;
+    };
+
+    let currentMonday = getMon(firstDay);
+    let weekNum = 1;
+    while (currentMonday <= lastDay) {
+        const sunday = new Date(currentMonday);
+        sunday.setDate(sunday.getDate() + 6);
+
+        const start = toIso(currentMonday);
+        const end = toIso(sunday);
+        const startDisplay = `${String(currentMonday.getDate()).padStart(2, '0')}/${String(currentMonday.getMonth() + 1).padStart(2, '0')}`;
+        const endDisplay = `${String(sunday.getDate()).padStart(2, '0')}/${String(sunday.getMonth() + 1).padStart(2, '0')}`;
+        const label = `Tuần ${weekNum} (${startDisplay} - ${endDisplay})`;
+
+        weeks.push({ weekNum, start, end, startDisplay, endDisplay, label });
+        currentMonday.setDate(currentMonday.getDate() + 7);
+        weekNum++;
+    }
+    return weeks;
+}
+
+function getItemEstimateHours(item) {
+    if (!item) return 0;
+    const val = item.estimateHour !== undefined ? item.estimateHour :
+                item.timeEstimateHour !== undefined ? item.timeEstimateHour :
+                item.timeEstimate !== undefined ? item.timeEstimate :
+                item.estimate !== undefined ? item.estimate : 0;
+    const num = parseFloat(val);
+    return isNaN(num) ? 0 : num;
+}
+
+function getItemSpentHours(item) {
+    if (!item) return 0;
+    const val = item.spent !== undefined ? item.spent :
+                item.spentTime !== undefined ? item.spentTime :
+                item.totalSpentTime !== undefined ? item.totalSpentTime :
+                item.spentHour !== undefined ? item.spentHour : 0;
+    const num = parseFloat(val);
+    return isNaN(num) ? 0 : num;
+}
+
+function calculateWeeklyKpiScore(weekItems) {
+    if (!weekItems || weekItems.length === 0) {
+        return 100;
+    }
+
+    const itemsWithScore = weekItems.filter(it => typeof it.kpiScore === 'number');
+    if (itemsWithScore.length === weekItems.length) {
+        const sum = itemsWithScore.reduce((acc, it) => acc + it.kpiScore, 0);
+        return Math.round(sum / itemsWithScore.length);
+    }
+
+    if (typeof calculateStats === 'function' && typeof calculateKpiScore === 'function') {
+        try {
+            const stats = calculateStats(weekItems);
+            if (stats && stats.totalTask > 0) {
+                const info = calculateKpiScore(stats);
+                if (info && typeof info.totalScore === 'number') {
+                    return Math.max(0, Math.min(100, Math.round(info.totalScore * 20)));
+                }
+            }
+        } catch (e) {
+            // fallback
+        }
+    }
+
+    // Base 100 minus late/reopen/deficit penalties
+    let lateCount = 0;
+    let reopenCount = 0;
+    let deficitCount = 0;
+
+    weekItems.forEach(item => {
+        if (item.isLate === true || item.progress === 'Trễ hạn') {
+            lateCount++;
+        }
+        if (item.isReopen === true || item.reopened === true || (item.reopenTotal && item.reopenTotal > 0)) {
+            reopenCount++;
+        }
+        const est = getItemEstimateHours(item);
+        const sp = getItemSpentHours(item);
+        if ((est > 0 && sp > est * 1.2) || (sp === 0 && (item.state === 'closed' || item.progress === 'Đúng hạn'))) {
+            deficitCount++;
+        }
+    });
+
+    const total = weekItems.length;
+    let score = 100;
+    score -= Math.round((lateCount / total) * 35);
+    score -= Math.round((reopenCount / total) * 35);
+    score -= Math.round((deficitCount / total) * 20);
+
+    return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function calculateMonthlyChartData(items = [], selYear, selMonth) {
+    let year, month;
+    if (typeof selYear === 'string' && selYear.includes('-')) {
+        const parts = selYear.split('-');
+        year = parseInt(parts[0], 10);
+        month = parseInt(parts[1], 10);
+    } else if (selYear && selMonth !== undefined) {
+        year = parseInt(selYear, 10);
+        month = parseInt(selMonth, 10);
+    } else if (selYear && !selMonth) {
+        year = parseInt(selYear, 10);
+        month = new Date().getMonth() + 1;
+    } else {
+        const now = new Date();
+        year = now.getFullYear();
+        month = now.getMonth() + 1;
+    }
+
+    const weeks = getWeeksForMonth(year, month);
+    const labels = weeks.map(w => w.label ? w.label.replace(' (Tuần này)', '') : `Tuần ${w.weekNum}`);
+    const estimateHours = new Array(weeks.length).fill(0);
+    const spentHours = new Array(weeks.length).fill(0);
+    const weekItemsMap = weeks.map(() => []);
+
+    let plannedCount = 0;
+    let unplannedCount = 0;
+    let inTimeCount = 0;
+    let lateCount = 0;
+    let openCount = 0;
+
+    const safeItems = Array.isArray(items) ? items : [];
+
+    safeItems.forEach(item => {
+        if (!item) return;
+
+        // Determine if item belongs to the selected month
+        const rawDate = item.dateIso || item.addedAt || item.createAt || item.spentAt || item.startDate;
+        const itemIso = normalizeDateToIso(rawDate);
+        const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+
+        // If item has a date, verify it's within the month or month weeks
+        if (itemIso) {
+            const firstWeekStart = weeks.length > 0 ? weeks[0].start : '';
+            const lastWeekEnd = weeks.length > 0 ? weeks[weeks.length - 1].end : '';
+            const inMonthRange = itemIso.startsWith(monthPrefix) || (firstWeekStart && lastWeekEnd && itemIso >= firstWeekStart && itemIso <= lastWeekEnd);
+            if (!inMonthRange) return;
+        }
+
+        // Planned vs Unplanned counts
+        const isUnplanned = Boolean(item.isUnplanned || (item.type && item.type.toLowerCase().includes('phát sinh')));
+        if (isUnplanned) {
+            unplannedCount++;
+        } else {
+            plannedCount++;
+        }
+
+        // Status counts:
+        // inTimeCount: completed on time (item.isLate === false && item.state !== 'opened')
+        // lateCount: late items (item.isLate === true)
+        // openCount: open items (item.state === 'opened' || item.isOpen)
+        const isLate = (item.isLate === true) || (item.progress === 'Trễ hạn');
+        const isOpen = (item.state === 'opened') || (item.isOpen === true) || (item.progress === 'Đang thực hiện');
+
+        if (isLate) {
+            lateCount++;
+        } else if (isOpen) {
+            openCount++;
+        } else {
+            inTimeCount++;
+        }
+
+        // Assign to week for weeklyData
+        const est = getItemEstimateHours(item);
+        const sp = getItemSpentHours(item);
+
+        weeks.forEach((w, idx) => {
+            const matchByWeekNum = (item.weekNum !== undefined && item.weekNum === w.weekNum);
+            const matchByDate = Boolean(itemIso && itemIso >= w.start && itemIso <= w.end);
+            if (matchByWeekNum || matchByDate) {
+                estimateHours[idx] += est;
+                spentHours[idx] += sp;
+                weekItemsMap[idx].push(item);
+            }
+        });
+    });
+
+    // Format numbers
+    for (let i = 0; i < weeks.length; i++) {
+        estimateHours[i] = parseFloat(estimateHours[i].toFixed(2));
+        spentHours[i] = parseFloat(spentHours[i].toFixed(2));
+    }
+
+    const kpiScores = weeks.map((w, idx) => calculateWeeklyKpiScore(weekItemsMap[idx]));
+
+    return {
+        weeklyData: {
+            labels,
+            estimateHours,
+            spentHours,
+            kpiScores
+        },
+        taskTypeData: {
+            plannedCount,
+            unplannedCount
+        },
+        taskStatusData: {
+            inTimeCount,
+            lateCount,
+            openCount
+        }
+    };
+}
+
+function renderMonthlyCharts(chartData) {
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js is not loaded. Skipping monthly charts rendering.');
+        return;
+    }
+
+    if (!chartData || !chartData.weeklyData || !chartData.taskTypeData || !chartData.taskStatusData) {
+        console.warn('Invalid chartData provided to renderMonthlyCharts.');
+        return;
+    }
+
+    // Safely destroy existing chart instances before re-creating
+    ['weeklyEstSpent', 'taskType', 'taskStatus', 'kpiTrend'].forEach(key => {
+        if (analyticsCharts[key]) {
+            try {
+                analyticsCharts[key].destroy();
+            } catch (err) {
+                console.warn(`Failed to destroy chart instance ${key}:`, err);
+            }
+            analyticsCharts[key] = null;
+        }
+    });
+
+    if (typeof document === 'undefined') return;
+
+    // Helper to safely get canvas and destroy any attached Chart instance
+    const getCanvas = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        if (typeof Chart.getChart === 'function') {
+            const existing = Chart.getChart(el);
+            if (existing) {
+                try { existing.destroy(); } catch (e) {}
+            }
+        }
+        return el;
+    };
+
+    // 1. Grouped Bar Chart: Estimate vs Spent by Week
+    const canvasEstSpent = getCanvas('chartWeeklyEstSpent');
+    if (canvasEstSpent) {
+        analyticsCharts.weeklyEstSpent = new Chart(canvasEstSpent, {
+            type: 'bar',
+            data: {
+                labels: chartData.weeklyData.labels,
+                datasets: [
+                    {
+                        label: 'Ước tính (Estimate)',
+                        data: chartData.weeklyData.estimateHours,
+                        backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                        borderColor: 'rgb(59, 130, 246)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Thực tế (Spent)',
+                        data: chartData.weeklyData.spentHours,
+                        backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                        borderColor: 'rgb(16, 185, 129)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { boxWidth: 12, font: { size: 12 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` ${context.dataset.label}: ${context.raw}h`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Số giờ (h)' }
+                    }
+                }
+            }
+        });
+    }
+
+    // 2. Doughnut Chart: Planned vs Unplanned
+    const canvasType = getCanvas('chartTaskType');
+    if (canvasType) {
+        analyticsCharts.taskType = new Chart(canvasType, {
+            type: 'doughnut',
+            data: {
+                labels: ['Kế hoạch (Planned)', 'Phát sinh (Unplanned)'],
+                datasets: [{
+                    data: [
+                        chartData.taskTypeData.plannedCount,
+                        chartData.taskTypeData.unplannedCount
+                    ],
+                    backgroundColor: [
+                        'rgba(59, 130, 246, 0.85)',
+                        'rgba(245, 158, 11, 0.85)'
+                    ],
+                    borderColor: ['#3b82f6', '#f59e0b'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 12, font: { size: 12 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const val = context.raw || 0;
+                                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                                return ` ${context.label}: ${val} công việc (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 3. Doughnut Chart: Task Status (In-time vs Late vs Open)
+    const canvasStatus = getCanvas('chartTaskStatus');
+    if (canvasStatus) {
+        analyticsCharts.taskStatus = new Chart(canvasStatus, {
+            type: 'doughnut',
+            data: {
+                labels: ['Đúng hạn (In-time)', 'Trễ hạn (Late)', 'Đang mở (Open)'],
+                datasets: [{
+                    data: [
+                        chartData.taskStatusData.inTimeCount,
+                        chartData.taskStatusData.lateCount,
+                        chartData.taskStatusData.openCount
+                    ],
+                    backgroundColor: [
+                        'rgba(16, 185, 129, 0.85)',
+                        'rgba(239, 68, 68, 0.85)',
+                        'rgba(99, 102, 241, 0.85)'
+                    ],
+                    borderColor: ['#10b981', '#ef4444', '#6366f1'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 12, font: { size: 12 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const val = context.raw || 0;
+                                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                                return ` ${context.label}: ${val} công việc (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 4. Line Chart: KPI Score Trend Across Weeks
+    const canvasKpi = getCanvas('chartKpiTrend');
+    if (canvasKpi) {
+        analyticsCharts.kpiTrend = new Chart(canvasKpi, {
+            type: 'line',
+            data: {
+                labels: chartData.weeklyData.labels,
+                datasets: [{
+                    label: 'Điểm KPI',
+                    data: chartData.weeklyData.kpiScores,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                    fill: true,
+                    tension: 0.3,
+                    pointBackgroundColor: '#8b5cf6',
+                    pointRadius: 5,
+                    pointHoverRadius: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { boxWidth: 12, font: { size: 12 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` Điểm KPI: ${context.raw} / 100`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        min: 0,
+                        max: 100,
+                        title: { display: true, text: 'Điểm (thang 100)' }
+                    }
+                }
+            }
+        });
+    }
+}
+
 if (typeof window !== 'undefined') {
     window.calculateMonthlyTimesheet = calculateMonthlyTimesheet;
     window.renderDailyTimesheet = renderDailyTimesheet;
+    window.calculateMonthlyChartData = calculateMonthlyChartData;
+    window.renderMonthlyCharts = renderMonthlyCharts;
+    window.analyticsCharts = analyticsCharts;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         calculateMonthlyTimesheet,
         renderDailyTimesheet,
+        calculateMonthlyChartData,
+        renderMonthlyCharts,
+        analyticsCharts
     };
 }
+
 
