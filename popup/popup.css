@@ -38,6 +38,42 @@ body {
 /* Login Screen */
 #login-screen {
     text-align: center;
+    position: relative;
+}
+
+.login-lang-switch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-sub);
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    padding: 3px;
+    margin-bottom: 12px;
+    gap: 4px;
+}
+
+.lang-btn {
+    background: transparent;
+    border: none;
+    border-radius: 9999px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: inherit;
+}
+
+.lang-btn:hover {
+    color: var(--text-main);
+}
+
+.lang-btn.active {
+    background: white;
+    color: var(--primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .login-header img {
@@ -544,7 +580,7 @@ input:checked + .slider:before {
     color: var(--text-muted);
 }
 
-.snooze-select, .url-input {
+.snooze-select, .url-input, .lang-select, #appLangSelect {
     width: 100%;
     padding: 6px 8px;
     border: 1px solid var(--border);
@@ -554,9 +590,11 @@ input:checked + .slider:before {
     background: white;
     outline: none;
     font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.2s;
 }
 
-.snooze-select:focus, .url-input:focus {
+.snooze-select:focus, .url-input:focus, .lang-select:focus, #appLangSelect:focus {
     border-color: var(--primary);
 }
 

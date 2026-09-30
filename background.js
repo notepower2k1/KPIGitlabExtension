@@ -6,12 +6,12 @@
  *   3. End-of-day unadded KPI tasks reminder with badge and desktop alert
  */
 
-// --- Helper Integration for Utils ---
+// --- Helper Integration for Utils & i18n ---
 if (typeof importScripts === 'function') {
     try {
-        importScripts('utils.js');
+        importScripts('utils.js', 'i18n.js');
     } catch (e) {
-        console.warn('Failed to importScripts utils.js:', e);
+        console.warn('Failed to importScripts:', e);
     }
 } else if (typeof require !== 'undefined') {
     try {
@@ -21,6 +21,11 @@ if (typeof importScripts === 'function') {
         if (typeof filterUnaddedTasks === 'undefined') global.filterUnaddedTasks = u.filterUnaddedTasks;
         if (typeof evaluateKpiReminderState === 'undefined') global.evaluateKpiReminderState = u.evaluateKpiReminderState;
         if (typeof fetchTodayCreatedIssues === 'undefined') global.fetchTodayCreatedIssues = u.fetchTodayCreatedIssues;
+
+        const i18n = require('./i18n.js');
+        if (typeof t === 'undefined') global.t = i18n.t;
+        if (typeof detectBrowserLanguage === 'undefined') global.detectBrowserLanguage = i18n.detectBrowserLanguage;
+        if (typeof getLanguage === 'undefined') global.getLanguage = i18n.getLanguage;
     } catch (e) {}
 }
 
@@ -28,6 +33,16 @@ const _getTodayStartIso = (typeof getTodayStartIso === 'function') ? getTodaySta
 const _filterUnaddedTasks = (typeof filterUnaddedTasks === 'function') ? filterUnaddedTasks : ((typeof global !== 'undefined' && global.filterUnaddedTasks) || (typeof require !== 'undefined' && require('./utils.js').filterUnaddedTasks));
 const _evaluateKpiReminderState = (typeof evaluateKpiReminderState === 'function') ? evaluateKpiReminderState : ((typeof global !== 'undefined' && global.evaluateKpiReminderState) || (typeof require !== 'undefined' && require('./utils.js').evaluateKpiReminderState));
 const _fetchTodayCreatedIssues = (typeof fetchTodayCreatedIssues === 'function') ? fetchTodayCreatedIssues : ((typeof global !== 'undefined' && global.fetchTodayCreatedIssues) || (typeof require !== 'undefined' && require('./utils.js').fetchTodayCreatedIssues));
+const _t = (typeof t === 'function') ? t : ((typeof global !== 'undefined' && global.t) || ((typeof require !== 'undefined') ? require('./i18n.js').t : (k => k)));
+const _detectBrowserLanguage = (typeof detectBrowserLanguage === 'function') ? detectBrowserLanguage : ((typeof global !== 'undefined' && global.detectBrowserLanguage) || ((typeof require !== 'undefined') ? require('./i18n.js').detectBrowserLanguage : (() => 'en')));
+
+function resolveLanguage(appLanguage) {
+    if (appLanguage === 'vi' || appLanguage === 'en') return appLanguage;
+    if (typeof chrome !== 'undefined' && chrome.i18n && typeof chrome.i18n.getUILanguage === 'function') {
+        return (typeof _detectBrowserLanguage === 'function') ? _detectBrowserLanguage() : 'en';
+    }
+    return 'vi';
+}
 
 // --- Check-in & Check-out Helper Functions ---
 
@@ -124,8 +139,7 @@ function evaluateAlertState(now, settings, state = {}) {
     return { shouldNotify: false, nextState: curState };
 }
 
-async function checkCheckInOutAlerts() {
-    const now = new Date();
+async function checkCheckInOutAlerts(now = new Date()) {
     if (!isWorkday(now)) return;
 
     const data = await chrome.storage.local.get([
@@ -136,8 +150,11 @@ async function checkCheckInOutAlerts() {
         'checkInOutSnoozeMinutes',
         'checkInOutUrl',
         'checkInState',
-        'checkOutState'
+        'checkOutState',
+        'appLanguage'
     ]);
+
+    const lang = resolveLanguage(data.appLanguage);
 
     const checkInSettings = {
         enabled: data.checkInEnabled !== false,
@@ -165,12 +182,8 @@ async function checkCheckInOutAlerts() {
     updatedCheckInState = inEval.nextState;
 
     if (inEval.shouldNotify) {
-        const title = inEval.isSnooze
-            ? `⏰ Nhắc nhở Check-in (Lần ${inEval.repeatIndex})`
-            : `⏰ Đã đến giờ Check-in! (${checkInSettings.targetTime})`;
-        const message = data.checkInOutUrl
-            ? `Đừng quên chấm công buổi sáng nhé! Nhấn vào thông báo để mở link chấm công.`
-            : `Đừng quên chấm công buổi sáng nhé! Chúc bạn một ngày làm việc hiệu quả!`;
+        const title = _t('notifCheckinTitle', null, lang);
+        const message = _t('notifCheckinMsg', { time: checkInSettings.targetTime }, lang);
 
         chrome.notifications.create('checkin-alert', {
             type: 'basic',
@@ -190,12 +203,8 @@ async function checkCheckInOutAlerts() {
     updatedCheckOutState = outEval.nextState;
 
     if (outEval.shouldNotify) {
-        const title = outEval.isSnooze
-            ? `👋 Nhắc nhở Check-out (Lần ${outEval.repeatIndex})`
-            : `👋 Đã đến giờ Check-out! (${checkOutSettings.targetTime})`;
-        const message = data.checkInOutUrl
-            ? `Hết giờ làm việc rồi! Đừng quên checkout nhé. Nhấn vào thông báo để mở link chấm công.`
-            : `Hết giờ làm việc rồi! Đừng quên checkout trước khi về nhé.`;
+        const title = _t('notifCheckoutTitle', null, lang);
+        const message = _t('notifCheckoutMsg', { time: checkOutSettings.targetTime }, lang);
 
         chrome.notifications.create('checkout-alert', {
             type: 'basic',
@@ -226,8 +235,11 @@ async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null
         'kpiReminderMinutesBefore',
         'kpiReminderState',
         'WorkItemIds',
-        'gitlabUrl'
+        'gitlabUrl',
+        'appLanguage'
     ]);
+
+    const lang = resolveLanguage(data.appLanguage);
 
     const settings = {
         enabled: data.kpiReminderEnabled !== false,
@@ -274,11 +286,13 @@ async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null
         }
 
         if (evalResult.shouldNotify) {
+            const title = _t('notifKpiAlertTitle', null, lang);
+            const message = _t('notifKpiAlertMsg', { count: unaddedTasks.length }, lang);
             chrome.notifications.create('kpi-unadded-alert', {
                 type: 'basic',
                 iconUrl: chrome.runtime.getURL('icon48.png'),
-                title: '⚠️ Nhắc nhở KPI cuối ngày',
-                message: `Bạn có ${unaddedTasks.length} task tạo hôm nay chưa thêm vào KPI! Nhấn vào đây để xem và thêm ngay.`,
+                title: title,
+                message: message,
                 priority: 2,
                 requireInteraction: true
             });
@@ -355,12 +369,14 @@ if (typeof chrome !== 'undefined' && chrome.alarms && chrome.alarms.onAlarm) {
     if (alarm.name !== "checkTodos") return;
 
     // 1. Check To-Do Reminders
-    const { todos = [], reminderMinutesBefore = 30, reminderRepeatMinutes = 10, lastNotifiedMap = {} } = await chrome.storage.local.get([
+    const { todos = [], reminderMinutesBefore = 30, reminderRepeatMinutes = 10, lastNotifiedMap = {}, appLanguage } = await chrome.storage.local.get([
         'todos',
         'reminderMinutesBefore',
         'reminderRepeatMinutes',
-        'lastNotifiedMap'
+        'lastNotifiedMap',
+        'appLanguage'
     ]);
+    const lang = resolveLanguage(appLanguage);
 
     const now = new Date();
     const updatedLastNotifiedMap = { ...lastNotifiedMap };
@@ -379,11 +395,19 @@ if (typeof chrome !== 'undefined' && chrome.alarms && chrome.alarms.onAlarm) {
             Math.abs(minutesLeft) <= reminderMinutesBefore &&
             timeSinceLastNotification >= reminderRepeatMinutes
         ) {
+            const statusStr = minutesLeft < 0 ? _t('notifTodoOverdue', null, lang) : _t('notifTodoUpcoming', null, lang);
+            const title = _t('notifTodoReminderTitle', null, lang);
+            const message = _t('notifTodoReminderMsg', {
+                title: todo.title,
+                status: statusStr,
+                time: deadline.toLocaleTimeString()
+            }, lang);
+
             chrome.notifications.create(todo.id, {
                 type: "basic",
                 iconUrl: chrome.runtime.getURL('icon48.png'),
-                title: "🔔 Nhắc nhở công việc",
-                message: `👉 "${todo.title}" ${minutesLeft < 0 ? "đã quá hạn" : "sắp đến hạn"} lúc ${deadline.toLocaleTimeString()}`,
+                title: title,
+                message: message,
                 priority: 2
             });
 

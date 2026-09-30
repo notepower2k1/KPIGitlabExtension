@@ -93,7 +93,7 @@ function batchAddTasksToWorkItemIds(tasksToAdd, currentWorkItemIds = []) {
     return result;
 }
 
-function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? document : null)) {
+function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? document : null), lang = null) {
     if (!doc) return;
     const banner = doc.getElementById('unaddedKpiBanner');
     const titleEl = doc.getElementById('unaddedKpiTitle');
@@ -101,13 +101,33 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
 
     if (!banner) return;
 
+    let currentLang = 'vi';
+    if (lang === 'vi' || lang === 'en') {
+        currentLang = lang;
+    } else if (doc && doc.documentElement && typeof doc.documentElement.lang === 'string') {
+        currentLang = doc.documentElement.lang.startsWith('en') ? 'en' : 'vi';
+    } else if (typeof chrome !== 'undefined' && chrome.i18n && typeof chrome.i18n.getUILanguage === 'function' && typeof getLanguage === 'function') {
+        currentLang = getLanguage();
+    }
+
+    const _tr = (typeof t === 'function')
+        ? t
+        : ((typeof window !== 'undefined' && typeof window.t === 'function') ? window.t : null);
+
     if (Array.isArray(tasks) && tasks.length > 0) {
         banner.style.display = 'block';
         if (titleEl) {
-            titleEl.textContent = `Bạn có ${tasks.length} task tạo hôm nay chưa thêm vào KPI!`;
+            if (_tr) {
+                titleEl.textContent = tasks.length === 1
+                    ? (_tr('unaddedBannerTitleSingle', null, currentLang) || _tr('unaddedBannerTitle', { count: 1 }, currentLang))
+                    : (_tr('unaddedBannerTitlePlural', { count: tasks.length }, currentLang) || _tr('unaddedBannerTitle', { count: tasks.length }, currentLang));
+            } else {
+                titleEl.textContent = `Bạn có ${tasks.length} task tạo hôm nay chưa thêm vào KPI!`;
+            }
         }
         if (listEl) {
             listEl.innerHTML = '';
+            const addBtnText = _tr ? _tr('addSingleTask', null, currentLang) : '+ Thêm';
             tasks.forEach(task => {
                 const itemDiv = doc.createElement('div');
                 itemDiv.className = 'unadded-kpi-item';
@@ -124,7 +144,7 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
                 addBtn.className = 'unadded-kpi-add-btn';
                 addBtn.type = 'button';
                 addBtn.setAttribute('data-task-id', String(task.id));
-                addBtn.textContent = '+ Thêm';
+                addBtn.textContent = addBtnText;
 
                 itemDiv.appendChild(link);
                 itemDiv.appendChild(addBtn);
@@ -134,7 +154,9 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
     } else {
         banner.style.display = 'none';
         const toggleBtn = doc.getElementById('toggleUnaddedListBtn');
-        if (toggleBtn) toggleBtn.textContent = 'Chi tiết ▼';
+        if (toggleBtn) {
+            toggleBtn.textContent = _tr ? _tr('viewDetails', null, currentLang) : 'Chi tiết ▼';
+        }
         if (listEl) listEl.style.display = 'none';
         if (typeof chrome !== 'undefined' && chrome.action && typeof chrome.action.setBadgeText === 'function') {
             chrome.action.setBadgeText({ text: '' });
@@ -143,6 +165,93 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
 }
 
 (async () => {
+    if (typeof document === 'undefined') {
+        return;
+    }
+
+    // Khởi tạo i18n
+    let currentLang = 'vi';
+    if (typeof initLanguage === 'function') {
+        const storageLocal = (typeof chrome !== 'undefined' && chrome.storage) ? chrome.storage.local : null;
+        currentLang = await initLanguage(storageLocal);
+    }
+    if (typeof applyI18n === 'function' && typeof document !== 'undefined') {
+        applyI18n(document, currentLang);
+    }
+
+    function syncLanguageUI(lang) {
+        document.querySelectorAll('.login-lang-switch .lang-btn').forEach(btn => {
+            if (btn.getAttribute('data-lang') === lang) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+        const langSelect = document.getElementById('appLangSelect');
+        if (langSelect && langSelect.value !== lang) {
+            langSelect.value = lang;
+        }
+    }
+
+    async function changeAppLanguage(newLang) {
+        if (!newLang || (newLang !== 'vi' && newLang !== 'en')) return;
+        const storageLocal = (typeof chrome !== 'undefined' && chrome.storage) ? chrome.storage.local : null;
+        if (typeof setLanguage === 'function') {
+            await setLanguage(newLang, storageLocal);
+        }
+        currentLang = newLang;
+        if (typeof document !== 'undefined' && document.documentElement) {
+            document.documentElement.lang = newLang;
+        }
+        syncLanguageUI(newLang);
+        if (typeof applyI18n === 'function' && typeof document !== 'undefined') {
+            applyI18n(document, newLang);
+        }
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            try {
+                const data = await chrome.storage.local.get(['UnaddedTodayTasks']);
+                renderUnaddedKpiBanner(data.UnaddedTodayTasks || [], document, newLang);
+            } catch (e) {}
+        }
+    }
+
+    // Gắn sự kiện cho nút chọn ngôn ngữ tại màn hình đăng nhập
+    document.querySelectorAll('.login-lang-switch .lang-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const targetLang = btn.getAttribute('data-lang');
+            await changeAppLanguage(targetLang);
+        });
+    });
+
+    // Gắn sự kiện cho select ngôn ngữ tại tab cài đặt
+    const appLangSelect = document.getElementById('appLangSelect');
+    if (appLangSelect) {
+        appLangSelect.value = currentLang;
+        appLangSelect.addEventListener('change', async (e) => {
+            await changeAppLanguage(e.target.value);
+        });
+    }
+
+    syncLanguageUI(currentLang);
+
+    // Lắng nghe thay đổi appLanguage qua storage
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+        chrome.storage.onChanged.addListener(async (changes, area) => {
+            if (area === 'local' && changes.appLanguage) {
+                const newLang = changes.appLanguage.newValue;
+                if (newLang && newLang !== currentLang) {
+                    currentLang = newLang;
+                    syncLanguageUI(newLang);
+                    if (typeof applyI18n === 'function' && typeof document !== 'undefined') {
+                        applyI18n(document, newLang);
+                    }
+                    const data = await chrome.storage.local.get(['UnaddedTodayTasks']);
+                    renderUnaddedKpiBanner(data.UnaddedTodayTasks || [], document, newLang);
+                }
+            }
+        });
+    }
+
     if (typeof getUserProfile !== 'function' || typeof document === 'undefined') {
         return;
     }
@@ -158,7 +267,7 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
         const token = document.getElementById("token").value;
 
         if (!token) {
-            alert("Vui lòng nhập token");
+            alert(typeof t === 'function' ? t('tokenRequired') : "Vui lòng nhập token");
             return;
         }
 
@@ -167,7 +276,7 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
             if (user) {
                 renderUserProfile(user);
             } else {
-                alert("Token không hợp lệ!");
+                alert(typeof t === 'function' ? t('connectFailed') : "Token không hợp lệ!");
             }
         });
         await addAccessToken(token);
@@ -356,6 +465,8 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
                 await chrome.storage.local.set(newSettings);
 
                 if (saveMsg) {
+                    const curL = (typeof getLanguage === 'function') ? getLanguage() : 'vi';
+                    saveMsg.textContent = (typeof t === 'function') ? t('saveSettingsSuccess', null, curL) : "✔ Đã lưu cài đặt!";
                     saveMsg.style.display = "block";
                     setTimeout(() => {
                         saveMsg.style.display = "none";
@@ -368,13 +479,23 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
                 testBtn.addEventListener("click", () => {
                     const notifId = 'test-checkin-alert-' + Date.now();
                     const url = checkInOutUrlEl.value.trim();
+                    const curL = (typeof getLanguage === 'function') ? getLanguage() : 'vi';
+                    const notifTitle = (typeof t === 'function')
+                        ? t('notifTestSoundTitle', null, curL)
+                        : "🔔 Kiểm tra chuông nhắc việc";
+                    const notifMessage = url
+                        ? ((typeof t === 'function')
+                            ? t('notifTestSoundMsgUrl', null, curL)
+                            : "Thông báo hoạt động tốt! Nhấn vào đây để thử mở link chấm công.")
+                        : ((typeof t === 'function')
+                            ? t('notifTestSoundMsgNoUrl', null, curL)
+                            : "Thông báo hoạt động tốt! Bạn có thể lưu lại cài đặt.");
+
                     chrome.notifications.create(notifId, {
                         type: "basic",
                         iconUrl: chrome.runtime.getURL("icon48.png"),
-                        title: "🔔 Kiểm tra chuông nhắc việc",
-                        message: url
-                            ? "Thông báo hoạt động tốt! Nhấn vào đây để thử mở link chấm công."
-                            : "Thông báo hoạt động tốt! Bạn có thể lưu lại cài đặt.",
+                        title: notifTitle,
+                        message: notifMessage,
                         priority: 2,
                         requireInteraction: true
                     });
@@ -398,7 +519,10 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
                 toggleBtn.addEventListener("click", () => {
                     const isHidden = itemsList.style.display === "none" || !itemsList.style.display;
                     itemsList.style.display = isHidden ? "block" : "none";
-                    toggleBtn.textContent = isHidden ? "Thu gọn ▲" : "Chi tiết ▼";
+                    const curL = (typeof getLanguage === 'function') ? getLanguage() : 'vi';
+                    const hideText = (typeof t === 'function') ? t('hideDetails', null, curL) : "Thu gọn ▲";
+                    const viewText = (typeof t === 'function') ? t('viewDetails', null, curL) : "Chi tiết ▼";
+                    toggleBtn.textContent = isHidden ? hideText : viewText;
                 });
             }
 

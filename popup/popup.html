@@ -8,26 +8,31 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="popup.css">
+    <script src="../i18n.js"></script>
 </head>
 
 <body>
     <!-- Màn hình đăng nhập -->
     <div id="login-screen" class="screen">
+        <div class="login-lang-switch">
+            <button type="button" class="lang-btn active" data-lang="vi" title="Tiếng Việt">VI 🇻🇳</button>
+            <button type="button" class="lang-btn" data-lang="en" title="English">EN 🇬🇧</button>
+        </div>
         <div class="login-header">
             <img src="../icon128.png" alt="Logo" id="logo" />
-            <h2>Chào bạn 👋</h2>
-            <p>Nhập Personal Access Token để bắt đầu</p>
+            <h2 data-i18n="welcomeTitle">Chào bạn 👋</h2>
+            <p data-i18n="welcomeDesc">Nhập Personal Access Token để bắt đầu</p>
         </div>
         <div class="login-form">
-            <input type="password" id="token" placeholder="Your GitLab Token..." />
-            <button id="login-btn" class="btn-primary">Kết nối ngay</button>
-            <button id="tutorial-btn" class="btn-secondary">Hướng dẫn sử dụng</button>
+            <input type="password" id="token" placeholder="Your GitLab Token..." data-i18n-placeholder="tokenPlaceholder" />
+            <button id="login-btn" class="btn-primary" data-i18n="connectBtn">Kết nối ngay</button>
+            <button id="tutorial-btn" class="btn-secondary" data-i18n="tutorialBtn">Hướng dẫn sử dụng</button>
         </div>
     </div>
 
     <!-- Màn hình sau khi đăng nhập -->
     <div id="user-screen" class="screen" style="display: none;">
-        <button id="logout-btn" class="btn-icon-danger" title="Đăng xuất">
+        <button id="logout-btn" class="btn-icon-danger" title="Đăng xuất" data-i18n-title="logoutBtn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -50,47 +55,47 @@
             <div class="unadded-kpi-header">
                 <span class="unadded-kpi-icon">⚠️</span>
                 <span id="unaddedKpiTitle" class="unadded-kpi-title">Bạn có task tạo hôm nay chưa thêm vào KPI!</span>
-                <button id="toggleUnaddedListBtn" class="btn-text-sm" type="button" title="Xem danh sách">Chi tiết ▼</button>
+                <button id="toggleUnaddedListBtn" class="btn-text-sm" type="button" title="Xem danh sách" data-i18n="viewDetails">Chi tiết ▼</button>
             </div>
             <div class="unadded-kpi-actions">
-                <button id="addAllUnaddedKpiBtn" class="btn-warning-sm" type="button">➕ Thêm tất cả vào KPI</button>
+                <button id="addAllUnaddedKpiBtn" class="btn-warning-sm" type="button" data-i18n="addAllToKpi">➕ Thêm tất cả vào KPI</button>
             </div>
             <div id="unaddedKpiItemsList" class="unadded-kpi-items-list" style="display: none;"></div>
         </div>
 
         <!-- Thanh tab -->
         <nav class="tab-nav">
-            <button class="tab-btn active" data-tab="week-tab">📅 Tuần</button>
-            <button class="tab-btn" data-tab="month-tab">📊 Tháng</button>
-            <button class="tab-btn" data-tab="tools-tab">🛠️ Công cụ</button>
+            <button class="tab-btn active" data-tab="week-tab" data-i18n="tabWeek">📅 Tuần</button>
+            <button class="tab-btn" data-tab="month-tab" data-i18n="tabMonth">📊 Tháng</button>
+            <button class="tab-btn" data-tab="tools-tab" data-i18n="tabTools">🛠️ Công cụ</button>
         </nav>
 
         <!-- Nội dung Tab 1: Tuần -->
         <div id="week-tab" class="tab-content active">
             <div class="stats-card">
                 <div class="stat-header">
-                    <h4>⭐ Thống kê tuần</h4>
+                    <h4 data-i18n="statsWeekTitle">⭐ Thống kê tuần</h4>
                     <span id="stats-time" class="time-badge"></span>
                 </div>
 
                 <div class="stat-grid">
                     <div class="stat-item">
-                        <span class="label">Tổng Task</span>
+                        <span class="label" data-i18n="statTotalTasks">Tổng Task</span>
                         <span id="total-tasks" class="value">-</span>
                     </div>
                     <div class="stat-item">
-                        <span class="label">Estimate</span>
+                        <span class="label" data-i18n="statEstimate">Estimate</span>
                         <span id="estimate-time" class="value">-</span>
                     </div>
                     <div class="stat-item">
-                        <span class="label">Spent</span>
+                        <span class="label" data-i18n="statSpent">Spent</span>
                         <span id="spent-time" class="value">-</span>
                     </div>
                 </div>
 
                 <div class="progress-section">
                     <div class="progress-header">
-                        <span class="label">Tiến trình tuần: <strong id="estimate-time-total">-</strong></span>
+                        <span class="label"><span data-i18n="progressWeek">Tiến trình tuần:</span> <strong id="estimate-time-total">-</strong></span>
                     </div>
                     <div class="progress-bar">
                         <div id="progress-fill" class="progress-fill"></div>
@@ -99,7 +104,7 @@
 
                 <div class="progress-section">
                     <div class="progress-header">
-                        <span class="label">Tiến trình ngày: <strong id="estimate-time-daily">-</strong></span>
+                        <span class="label"><span data-i18n="progressDaily">Tiến trình ngày:</span> <strong id="estimate-time-daily">-</strong></span>
                     </div>
                     <div class="progress-bar accent">
                         <div id="progress-fill-daily" class="progress-fill"></div>
@@ -112,39 +117,39 @@
         <div id="month-tab" class="tab-content">
             <div class="stats-card">
                 <div class="stat-header">
-                    <h4>⭐ Thống kê tháng</h4>
+                    <h4 data-i18n="statsMonthTitle">⭐ Thống kê tháng</h4>
                     <span id="month-stats-time" class="time-badge"></span>
                 </div>
 
                 <div class="stat-grid">
                     <div class="stat-item">
-                        <span class="label">Tổng Task</span>
+                        <span class="label" data-i18n="statTotalTasks">Tổng Task</span>
                         <span id="month-total-tasks" class="value">-</span>
                     </div>
                     <div class="stat-item">
-                        <span class="label">Estimate</span>
+                        <span class="label" data-i18n="statEstimate">Estimate</span>
                         <span id="month-estimate-time" class="value">-</span>
                     </div>
                     <div class="stat-item">
-                        <span class="label">Spent</span>
+                        <span class="label" data-i18n="statSpent">Spent</span>
                         <span id="month-spent-time" class="value">-</span>
                     </div>
                 </div>
 
                 <div class="month-metrics-grid">
                     <div class="metric-badge-item">
-                        <span class="metric-label">Đúng hạn</span>
+                        <span class="metric-label" data-i18n="metricOnTime">Đúng hạn</span>
                         <span id="month-ontime-val" class="metric-value">-</span>
                     </div>
                     <div class="metric-badge-item">
-                        <span class="metric-label">Dự báo KPI</span>
+                        <span class="metric-label" data-i18n="metricKpiForecast">Dự báo KPI</span>
                         <div id="month-kpi-score" class="metric-value score-text">-</div>
                     </div>
                 </div>
 
                 <div class="progress-section" style="margin-top: 14px;">
                     <div class="progress-header">
-                        <span class="label">Tiến trình tháng: <strong id="month-spent-total">-</strong></span>
+                        <span class="label"><span data-i18n="progressMonth">Tiến trình tháng:</span> <strong id="month-spent-total">-</strong></span>
                     </div>
                     <div class="progress-bar">
                         <div id="month-progress-fill" class="progress-fill"></div>
@@ -156,7 +161,7 @@
         <!-- Nội dung Tab 3: Công cụ -->
         <div id="tools-tab" class="tab-content">
             <div class="stats-card">
-                <h4>📦 Bộ nhớ</h4>
+                <h4 data-i18n="storageTitle">📦 Bộ nhớ</h4>
                 <div class="storage-info">
                     <div class="progress-bar small">
                         <div id="storage-fill" class="progress-fill" style="width: 0%"></div>
@@ -170,8 +175,17 @@
 
             <div class="stats-card checkin-card">
                 <div class="checkin-header">
-                    <h4>⏰ Nhắc Check-in / Out</h4>
-                    <span class="badge-workday">T2 - T6</span>
+                    <h4 data-i18n="checkinCardTitle">⏰ Nhắc Check-in / Out</h4>
+                    <span class="badge-workday" data-i18n="workdayBadge">T2 - T6</span>
+                </div>
+
+                <!-- Cài đặt Ngôn ngữ -->
+                <div class="checkin-setting-row lang-setting-row">
+                    <label for="appLangSelect" data-i18n="languageLabel">Ngôn ngữ:</label>
+                    <select id="appLangSelect" class="lang-select">
+                        <option value="vi" data-i18n="langVi">Tiếng Việt</option>
+                        <option value="en" data-i18n="langEn">English</option>
+                    </select>
                 </div>
 
                 <div class="checkin-row">
@@ -180,7 +194,7 @@
                             <input type="checkbox" id="checkInEnabled" checked>
                             <span class="slider round"></span>
                         </label>
-                        <span class="checkin-label">Check-in</span>
+                        <span class="checkin-label" data-i18n="checkinLabel">Check-in</span>
                     </div>
                     <input type="time" id="checkInTime" class="time-input" value="08:30" />
                 </div>
@@ -191,7 +205,7 @@
                             <input type="checkbox" id="checkOutEnabled" checked>
                             <span class="slider round"></span>
                         </label>
-                        <span class="checkin-label">Check-out</span>
+                        <span class="checkin-label" data-i18n="checkoutLabel">Check-out</span>
                     </div>
                     <input type="time" id="checkOutTime" class="time-input" value="18:00" />
                 </div>
@@ -202,44 +216,44 @@
                             <input type="checkbox" id="kpiReminderEnabled" checked>
                             <span class="slider round"></span>
                         </label>
-                        <span class="checkin-label" title="Tự động quét và cảnh báo các task tạo hôm nay chưa thêm vào KPI trước giờ check-out">Nhắc KPI cuối ngày</span>
+                        <span class="checkin-label" data-i18n="kpiReminderLabel" data-i18n-title="kpiReminderTooltip" title="Tự động quét và cảnh báo các task tạo hôm nay chưa thêm vào KPI trước giờ check-out">Nhắc KPI cuối ngày</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 4px;">
-                        <span style="font-size: 11px; color: var(--text-secondary, #666);">Trước:</span>
+                        <span style="font-size: 11px; color: var(--text-secondary, #666);" data-i18n="kpiReminderBefore">Trước:</span>
                         <input type="number" id="kpiReminderMinutesBefore" class="time-input" style="width: 50px; text-align: center;" value="15" min="5" max="120" />
-                        <span style="font-size: 11px; color: var(--text-secondary, #666);">phút</span>
+                        <span style="font-size: 11px; color: var(--text-secondary, #666);" data-i18n="minutesUnit">phút</span>
                     </div>
                 </div>
 
                 <div class="checkin-setting-row">
-                    <label for="checkInOutSnooze">Nhắc lại:</label>
+                    <label for="checkInOutSnooze" data-i18n="snoozeLabel">Nhắc lại:</label>
                     <select id="checkInOutSnooze" class="snooze-select">
-                        <option value="5">Mỗi 5 phút (Tối đa 3 lần)</option>
-                        <option value="10">Mỗi 10 phút (Tối đa 3 lần)</option>
-                        <option value="15">Mỗi 15 phút (Tối đa 3 lần)</option>
-                        <option value="0">Không nhắc lại</option>
+                        <option value="5" data-i18n="snooze5m">Mỗi 5 phút (Tối đa 3 lần)</option>
+                        <option value="10" data-i18n="snooze10m">Mỗi 10 phút (Tối đa 3 lần)</option>
+                        <option value="15" data-i18n="snooze15m">Mỗi 15 phút (Tối đa 3 lần)</option>
+                        <option value="0" data-i18n="snoozeNone">Không nhắc lại</option>
                     </select>
                 </div>
 
                 <div class="checkin-setting-row">
-                    <label for="checkInOutUrl">Link chấm công:</label>
-                    <input type="url" id="checkInOutUrl" class="url-input" placeholder="https://chamcong.congty.com..." />
+                    <label for="checkInOutUrl" data-i18n="urlLabel">Link chấm công:</label>
+                    <input type="url" id="checkInOutUrl" class="url-input" placeholder="https://chamcong.congty.com..." data-i18n-placeholder="urlPlaceholder" />
                 </div>
 
                 <div class="checkin-actions">
-                    <button id="testCheckInOutBtn" class="btn-secondary btn-sm" type="button" title="Bấm để thử thông báo ngay lập tức">🔔 Thử chuông</button>
-                    <button id="saveCheckInOutBtn" class="btn-primary btn-sm" type="button">💾 Lưu</button>
+                    <button id="testCheckInOutBtn" class="btn-secondary btn-sm" type="button" title="Bấm để thử thông báo ngay lập tức" data-i18n="testSoundBtn" data-i18n-title="testSoundBtnTitle">🔔 Thử chuông</button>
+                    <button id="saveCheckInOutBtn" class="btn-primary btn-sm" type="button" data-i18n="saveSettingsBtn">💾 Lưu</button>
                 </div>
-                <div id="checkInOutSaveMsg" class="save-msg" style="display: none;">✔ Đã lưu cài đặt!</div>
+                <div id="checkInOutSaveMsg" class="save-msg" style="display: none;" data-i18n="saveSettingsSuccess">✔ Đã lưu cài đặt!</div>
             </div>
 
             <div class="tools-grid">
-                <button id="note-btn" class="btn-secondary" title="Mở ghi chú trong cửa sổ rời">Ghi chú (Cửa sổ) 🗗</button>
-                <button id="note-tab-btn" class="btn-secondary" title="Mở ghi chú trong tab mới">Ghi chú (Tab) 📑</button>
-                <button id="todo-btn" class="btn-secondary" title="Mở việc cần làm trong cửa sổ rời">Việc cần làm (Cửa sổ) 🗗</button>
-                <button id="todo-tab-btn" class="btn-secondary" title="Mở việc cần làm trong tab mới">Việc cần làm (Tab) 📑</button>
-                <button id="exportTask-btn" class="btn-secondary">Xuất dữ liệu 💿</button>
-                <button id="importTask-btn" class="btn-secondary">Nhập dữ liệu 📀</button>
+                <button id="note-btn" class="btn-secondary" title="Mở ghi chú trong cửa sổ rời" data-i18n="noteWindowBtn" data-i18n-title="noteWindowBtnTitle">Ghi chú (Cửa sổ) 🗗</button>
+                <button id="note-tab-btn" class="btn-secondary" title="Mở ghi chú trong tab mới" data-i18n="noteTabBtn" data-i18n-title="noteTabBtnTitle">Ghi chú (Tab) 📑</button>
+                <button id="todo-btn" class="btn-secondary" title="Mở việc cần làm trong cửa sổ rời" data-i18n="todoWindowBtn" data-i18n-title="todoWindowBtnTitle">Việc cần làm (Cửa sổ) 🗗</button>
+                <button id="todo-tab-btn" class="btn-secondary" title="Mở việc cần làm trong tab mới" data-i18n="todoTabBtn" data-i18n-title="todoTabBtnTitle">Việc cần làm (Tab) 📑</button>
+                <button id="exportTask-btn" class="btn-secondary" data-i18n="exportBtn">Xuất dữ liệu 💿</button>
+                <button id="importTask-btn" class="btn-secondary" data-i18n="importBtn">Nhập dữ liệu 📀</button>
             </div>
             <input type="file" id="importFile" style="display: none" />
         </div>
@@ -248,21 +262,21 @@
         <div class="popup-footer">
             <!-- Mở nhanh trên GitLab -->
             <div class="gitlab-quick-section">
-                <div class="gitlab-quick-title">🦊 Mở nhanh trên GitLab</div>
+                <div class="gitlab-quick-title" data-i18n="quickGitlabTitle">🦊 Mở nhanh trên GitLab</div>
                 <div class="gitlab-quick-buttons">
-                    <button id="quickIssuesBtn" class="btn-gitlab-quick" title="Issues được giao cho bạn">
-                        <span>📋 Issues</span>
+                    <button id="quickIssuesBtn" class="btn-gitlab-quick" title="Issues được giao cho bạn" data-i18n-title="quickIssuesTooltip">
+                        <span data-i18n="quickIssuesBtn">📋 Issues</span>
                     </button>
-                    <button id="quickMRsBtn" class="btn-gitlab-quick" title="Merge Requests của bạn">
-                        <span>🚀 MRs</span>
+                    <button id="quickMRsBtn" class="btn-gitlab-quick" title="Merge Requests của bạn" data-i18n-title="quickMRsTooltip">
+                        <span data-i18n="quickMRsBtn">🚀 MRs</span>
                     </button>
-                    <button id="quickTodosBtn" class="btn-gitlab-quick" title="Việc cần làm trên GitLab">
-                        <span>📝 To-Do</span>
+                    <button id="quickTodosBtn" class="btn-gitlab-quick" title="Việc cần làm trên GitLab" data-i18n-title="quickTodosTooltip">
+                        <span data-i18n="quickTodosBtn">📝 To-Do</span>
                     </button>
                 </div>
             </div>
 
-            <button id="manage-btn" class="btn-primary full-width">Mở Dashboard 📊</button>
+            <button id="manage-btn" class="btn-primary full-width" data-i18n="openDashboardBtn">Mở Dashboard 📊</button>
         </div>
     </div>
 

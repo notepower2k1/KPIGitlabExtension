@@ -290,5 +290,386 @@ const mockStorage = {
     delete global.window;
     console.log('✔ Passed: Dual export correctly handles browser window binding');
 
-    console.log('\n🎉 ALL I18N CORE TESTS PASSED SUCCESSFULLY! 🎉\n');
+    // =========================================================================
+    // TASK 2: POPUP INTERFACE & BACKGROUND NOTIFICATIONS INTEGRATION TESTS
+    // =========================================================================
+    console.log('\n=============================================================');
+    console.log('--- Running Task 2: Popup Interface & Background Integration ---');
+    console.log('=============================================================');
+
+    const fs = require('fs');
+
+    // 8. Verify popup/popup.html Markup & Declarative Attributes
+    console.log('\n--- 8. Testing popup/popup.html Markup & i18n Wiring ---');
+    const popupHtmlPath = path.resolve(__dirname, '../popup/popup.html');
+    const popupHtml = fs.readFileSync(popupHtmlPath, 'utf8');
+
+    // 8.1 Script tag for i18n.js
+    assert.ok(
+        popupHtml.includes('src="../i18n.js"') || popupHtml.includes("src='../i18n.js'"),
+        'popup.html must include script tag for ../i18n.js'
+    );
+
+    // 8.2 Login Screen Language Switcher
+    assert.ok(
+        popupHtml.includes('login-lang-switch') || popupHtml.includes('loginLangSelect'),
+        'popup.html must include a language switcher container on login screen'
+    );
+    assert.ok(
+        popupHtml.includes('data-lang="vi"') && popupHtml.includes('data-lang="en"'),
+        'Language switcher must include buttons or options for "vi" and "en"'
+    );
+
+    // 8.3 Login Screen Declarative i18n Attributes
+    const requiredLoginAttrs = [
+        'data-i18n="welcomeTitle"',
+        'data-i18n="welcomeDesc"',
+        'data-i18n-placeholder="tokenPlaceholder"',
+        'data-i18n="connectBtn"',
+        'data-i18n="tutorialBtn"'
+    ];
+    requiredLoginAttrs.forEach(attr => {
+        assert.ok(popupHtml.includes(attr), `popup.html #login-screen must contain ${attr}`);
+    });
+
+    // 8.4 User Screen Header & Tabs Declarative Attributes
+    assert.ok(popupHtml.includes('data-i18n-title="logoutBtn"'), 'Logout button must have data-i18n-title="logoutBtn"');
+    assert.ok(popupHtml.includes('data-i18n="tabWeek"'), 'Tab navigation must have data-i18n="tabWeek"');
+    assert.ok(popupHtml.includes('data-i18n="tabMonth"'), 'Tab navigation must have data-i18n="tabMonth"');
+    assert.ok(popupHtml.includes('data-i18n="tabTools"'), 'Tab navigation must have data-i18n="tabTools"');
+
+    // 8.5 Unadded KPI Banner Declarative Attributes
+    assert.ok(popupHtml.includes('data-i18n="viewDetails"'), 'Toggle unadded list button must have data-i18n="viewDetails"');
+    assert.ok(popupHtml.includes('data-i18n="addAllToKpi"'), 'Add all unadded button must have data-i18n="addAllToKpi"');
+
+    // 8.6 Check-in Card Language Switcher & Controls
+    assert.ok(popupHtml.includes('id="appLangSelect"'), 'Check-in settings card must include select #appLangSelect');
+    assert.ok(popupHtml.includes('data-i18n="languageLabel"'), 'Check-in settings card must have label with data-i18n="languageLabel"');
+    assert.ok(popupHtml.includes('data-i18n="checkinLabel"'), 'Check-in row must have data-i18n="checkinLabel"');
+    assert.ok(popupHtml.includes('data-i18n="checkoutLabel"'), 'Check-out row must have data-i18n="checkoutLabel"');
+    assert.ok(popupHtml.includes('data-i18n="kpiReminderLabel"'), 'KPI reminder row must have data-i18n="kpiReminderLabel"');
+    assert.ok(popupHtml.includes('data-i18n="kpiReminderBefore"'), 'KPI reminder row must have data-i18n="kpiReminderBefore"');
+    assert.ok(popupHtml.includes('data-i18n="minutesUnit"'), 'KPI reminder row must have data-i18n="minutesUnit"');
+    assert.ok(popupHtml.includes('data-i18n="snoozeLabel"'), 'Snooze row must have data-i18n="snoozeLabel"');
+    assert.ok(popupHtml.includes('data-i18n="urlLabel"'), 'URL row must have data-i18n="urlLabel"');
+    assert.ok(popupHtml.includes('data-i18n="testSoundBtn"'), 'Test sound button must have data-i18n="testSoundBtn"');
+    assert.ok(popupHtml.includes('data-i18n="saveSettingsBtn"'), 'Save settings button must have data-i18n="saveSettingsBtn"');
+
+    // 8.7 Tools Grid Buttons
+    const requiredToolsAttrs = [
+        'data-i18n="noteWindowBtn"',
+        'data-i18n="noteTabBtn"',
+        'data-i18n="todoWindowBtn"',
+        'data-i18n="todoTabBtn"',
+        'data-i18n="exportBtn"',
+        'data-i18n="importBtn"'
+    ];
+    requiredToolsAttrs.forEach(attr => {
+        assert.ok(popupHtml.includes(attr), `popup.html tools grid must contain ${attr}`);
+    });
+    console.log('✔ Passed: popup/popup.html contains all required i18n tags, selectors, and declarative attributes');
+
+    // 9. Verify popup/popup.css Styling
+    console.log('\n--- 9. Testing popup/popup.css Styles ---');
+    const popupCssPath = path.resolve(__dirname, '../popup/popup.css');
+    const popupCss = fs.readFileSync(popupCssPath, 'utf8');
+
+    assert.ok(popupCss.includes('.login-lang-switch'), 'popup.css must style .login-lang-switch');
+    assert.ok(popupCss.includes('.lang-btn'), 'popup.css must style .lang-btn');
+    assert.ok(popupCss.includes('.lang-btn.active') || popupCss.includes('.lang-btn:active'), 'popup.css must style active state of .lang-btn');
+    assert.ok(
+        popupCss.includes('#appLangSelect') || popupCss.includes('.lang-select'),
+        'popup.css must style language selector in settings'
+    );
+    console.log('✔ Passed: popup/popup.css contains language switcher styling rules');
+
+    // 10. Verify background.js Localized Desktop Notifications
+    console.log('\n--- 10. Testing background.js Localized Desktop Notifications ---');
+
+    let bgStorage = {};
+    let bgNotifications = [];
+    global.chrome = {
+        runtime: {
+            onInstalled: { addListener: () => {} },
+            onStartup: { addListener: () => {} },
+            getURL: (p) => `chrome-extension://mock-id/${p}`
+        },
+        alarms: {
+            create: () => {},
+            onAlarm: { addListener: () => {} }
+        },
+        notifications: {
+            create: (id, opts) => {
+                bgNotifications.push({ id, ...opts });
+            },
+            clear: () => {},
+            onClicked: { addListener: () => {} }
+        },
+        action: {
+            setBadgeText: () => {},
+            setBadgeBackgroundColor: () => {},
+            openPopup: async () => {}
+        },
+        storage: {
+            local: {
+                get: async (keys) => {
+                    if (typeof keys === 'string') return { [keys]: bgStorage[keys] };
+                    if (Array.isArray(keys)) {
+                        const res = {};
+                        keys.forEach(k => { if (bgStorage[k] !== undefined) res[k] = bgStorage[k]; });
+                        return res;
+                    }
+                    return { ...bgStorage };
+                },
+                set: async (obj) => {
+                    Object.assign(bgStorage, obj);
+                }
+            }
+        },
+        tabs: {
+            create: () => {}
+        }
+    };
+
+    // Clear module cache to test fresh background.js
+    delete require.cache[require.resolve('../background.js')];
+    const background = require('../background.js');
+
+    // 10.1 Check-in Alert in VI
+    {
+        bgStorage = {
+            appLanguage: 'vi',
+            checkInEnabled: true,
+            checkInTime: '08:30',
+            checkInOutSnoozeMinutes: 5,
+            checkInState: { lastDate: '2026-10-01', count: 0, done: false }
+        };
+        bgNotifications = [];
+        await background.checkCheckInOutAlerts(new Date('2026-10-01T08:30:00'));
+        assert.strictEqual(bgNotifications.length, 1);
+        assert.strictEqual(bgNotifications[0].id, 'checkin-alert');
+        assert.ok(
+            bgNotifications[0].title.includes(i18n.t('notifCheckinTitle', null, 'vi')),
+            `Check-in alert title in VI should match: expected "${i18n.t('notifCheckinTitle', null, 'vi')}", got "${bgNotifications[0].title}"`
+        );
+        assert.ok(
+            bgNotifications[0].message.includes('08:30'),
+            'Check-in alert message should include target time'
+        );
+    }
+
+    // 10.2 Check-in Alert in EN
+    {
+        bgStorage = {
+            appLanguage: 'en',
+            checkInEnabled: true,
+            checkInTime: '08:30',
+            checkInOutSnoozeMinutes: 5,
+            checkInState: { lastDate: '2026-10-01', count: 0, done: false }
+        };
+        bgNotifications = [];
+        await background.checkCheckInOutAlerts(new Date('2026-10-01T08:30:00'));
+        assert.strictEqual(bgNotifications.length, 1);
+        assert.strictEqual(bgNotifications[0].id, 'checkin-alert');
+        assert.ok(
+            bgNotifications[0].title.includes(i18n.t('notifCheckinTitle', null, 'en')),
+            `Check-in alert title in EN should match: expected "${i18n.t('notifCheckinTitle', null, 'en')}", got "${bgNotifications[0].title}"`
+        );
+        assert.ok(
+            bgNotifications[0].message.includes("It's time to start work"),
+            'Check-in alert message in EN should be in English'
+        );
+    }
+
+    // 10.3 Check-out Alert in VI
+    {
+        bgStorage = {
+            appLanguage: 'vi',
+            checkInEnabled: false,
+            checkOutEnabled: true,
+            checkOutTime: '18:00',
+            checkInOutSnoozeMinutes: 5,
+            checkOutState: { lastDate: '2026-10-01', count: 0, done: false }
+        };
+        bgNotifications = [];
+        await background.checkCheckInOutAlerts(new Date('2026-10-01T18:00:00'));
+        assert.strictEqual(bgNotifications.length, 1);
+        assert.strictEqual(bgNotifications[0].id, 'checkout-alert');
+        assert.ok(
+            bgNotifications[0].title.includes(i18n.t('notifCheckoutTitle', null, 'vi')),
+            `Check-out alert title in VI should match: expected "${i18n.t('notifCheckoutTitle', null, 'vi')}", got "${bgNotifications[0].title}"`
+        );
+    }
+
+    // 10.4 Check-out Alert in EN
+    {
+        bgStorage = {
+            appLanguage: 'en',
+            checkInEnabled: false,
+            checkOutEnabled: true,
+            checkOutTime: '18:00',
+            checkInOutSnoozeMinutes: 5,
+            checkOutState: { lastDate: '2026-10-01', count: 0, done: false }
+        };
+        bgNotifications = [];
+        await background.checkCheckInOutAlerts(new Date('2026-10-01T18:00:00'));
+        assert.strictEqual(bgNotifications.length, 1);
+        assert.strictEqual(bgNotifications[0].id, 'checkout-alert');
+        assert.ok(
+            bgNotifications[0].title.includes(i18n.t('notifCheckoutTitle', null, 'en')),
+            `Check-out alert title in EN should match: expected "${i18n.t('notifCheckoutTitle', null, 'en')}", got "${bgNotifications[0].title}"`
+        );
+        assert.ok(
+            bgNotifications[0].message.includes("It's time to check out"),
+            'Check-out alert message in EN should be in English'
+        );
+    }
+
+    // 10.5 Unadded KPI Alert in VI & EN
+    {
+        const mockFetch = async () => ({
+            ok: true,
+            json: async () => [
+                { id: 99, iid: 1, title: 'New Task', web_url: 'https://gitlab.com/grp/prj/-/issues/1', created_at: '2026-10-01T08:00:00Z' }
+            ]
+        });
+
+        // VI test
+        bgStorage = {
+            appLanguage: 'vi',
+            AccessToken: 'token123',
+            gitlabUrl: 'https://gitlab.com',
+            checkOutTime: '18:00',
+            kpiReminderMinutesBefore: 15,
+            kpiReminderEnabled: true,
+            WorkItemIds: [],
+            kpiReminderState: {}
+        };
+        bgNotifications = [];
+        const triggerTime = new Date('2026-10-01T17:45:00');
+        await background.checkUnaddedKpiTasksReminder(triggerTime, mockFetch);
+        assert.strictEqual(bgNotifications.length, 1);
+        assert.strictEqual(bgNotifications[0].id, 'kpi-unadded-alert');
+        assert.ok(
+            bgNotifications[0].title.includes(i18n.t('notifKpiAlertTitle', null, 'vi')),
+            'Unadded KPI alert title should be localized in VI'
+        );
+        assert.ok(
+            bgNotifications[0].message.includes('1 task tạo hôm nay chưa thêm'),
+            'Unadded KPI alert message should be in Vietnamese'
+        );
+
+        // EN test
+        bgStorage = {
+            appLanguage: 'en',
+            AccessToken: 'token123',
+            gitlabUrl: 'https://gitlab.com',
+            checkOutTime: '18:00',
+            kpiReminderMinutesBefore: 15,
+            kpiReminderEnabled: true,
+            WorkItemIds: [],
+            kpiReminderState: {}
+        };
+        bgNotifications = [];
+        await background.checkUnaddedKpiTasksReminder(triggerTime, mockFetch);
+        assert.strictEqual(bgNotifications.length, 1);
+        assert.strictEqual(bgNotifications[0].id, 'kpi-unadded-alert');
+        assert.ok(
+            bgNotifications[0].title.includes(i18n.t('notifKpiAlertTitle', null, 'en')),
+            'Unadded KPI alert title should be localized in EN'
+        );
+        assert.ok(
+            bgNotifications[0].message.includes('1 task(s) created today not yet added'),
+            'Unadded KPI alert message should be in English'
+        );
+    }
+    console.log('✔ Passed: background.js dispatches properly localized notifications for Check-in, Check-out, and KPI alerts');
+
+    // 11. Verify popup.js Localization Logic
+    console.log('\n--- 11. Testing popup/popup.js Localization Logic ---');
+    const popupJsContent = fs.readFileSync(path.resolve(__dirname, '../popup/popup.js'), 'utf8');
+
+    assert.ok(popupJsContent.includes('initLanguage'), 'popup.js must call initLanguage');
+    assert.ok(popupJsContent.includes('applyI18n'), 'popup.js must call applyI18n');
+    assert.ok(popupJsContent.includes('setLanguage'), 'popup.js must call setLanguage when user toggles language');
+
+    // Test renderUnaddedKpiBanner with language argument
+    const popupModule = require('../popup/popup.js');
+    function makeElement(tagName = 'div') {
+        let _children = [];
+        const attrs = {};
+        return {
+            tagName,
+            style: {},
+            get children() { return _children; },
+            set children(val) { _children = val; },
+            textContent: '',
+            get innerHTML() { return ''; },
+            set innerHTML(val) {
+                if (val === '') _children = [];
+            },
+            setAttribute(k, v) { attrs[k] = String(v); },
+            getAttribute(k) { return attrs[k]; },
+            appendChild(c) { _children.push(c); }
+        };
+    }
+
+    const testMockDoc = {
+        elements: {
+            unaddedKpiBanner: makeElement('div'),
+            unaddedKpiTitle: makeElement('span'),
+            unaddedKpiItemsList: makeElement('div'),
+            toggleUnaddedListBtn: makeElement('button'),
+            addAllUnaddedKpiBtn: makeElement('button')
+        },
+        getElementById(id) {
+            return this.elements[id] || null;
+        },
+        createElement(tag) {
+            return makeElement(tag);
+        }
+    };
+
+    // Render with 2 tasks in English
+    popupModule.renderUnaddedKpiBanner(
+        [
+            { id: '1', iid: '1', title: 'Task A' },
+            { id: '2', iid: '2', title: 'Task B' }
+        ],
+        testMockDoc,
+        'en'
+    );
+    assert.ok(
+        testMockDoc.elements.unaddedKpiTitle.textContent.includes('2 task(s)') ||
+        testMockDoc.elements.unaddedKpiTitle.textContent.includes('2 task'),
+        'Unadded KPI banner title in EN should be in English'
+    );
+    assert.strictEqual(
+        testMockDoc.elements.unaddedKpiItemsList.children[0].children[1].textContent,
+        '+ Add',
+        'Add single task button in EN should show "+ Add"'
+    );
+
+    // Render with 1 task in Vietnamese
+    popupModule.renderUnaddedKpiBanner(
+        [
+            { id: '1', iid: '1', title: 'Task A' }
+        ],
+        testMockDoc,
+        'vi'
+    );
+    assert.ok(
+        testMockDoc.elements.unaddedKpiTitle.textContent.includes('1 task tạo hôm nay'),
+        'Unadded KPI banner title in VI should be in Vietnamese'
+    );
+    assert.strictEqual(
+        testMockDoc.elements.unaddedKpiItemsList.children[0].children[1].textContent,
+        '+ Thêm',
+        'Add single task button in VI should show "+ Thêm"'
+    );
+
+    console.log('✔ Passed: popup.js initializes i18n, handles language switching, and localizes dynamic elements');
+
+    console.log('\n🎉 ALL TASK 1 & TASK 2 TESTS PASSED SUCCESSFULLY! 🎉\n');
 })();
+

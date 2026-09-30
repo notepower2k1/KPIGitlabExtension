@@ -9,6 +9,7 @@ const I18N_DICTIONARIES = {
         langVi: "Tiếng Việt",
         langEn: "English",
         langSwitcherTitle: "Đổi ngôn ngữ giao diện",
+        languageLabel: "Ngôn ngữ:",
 
         // --- Navigation & Tabs ---
         tabWeek: "📅 Tuần",
@@ -34,6 +35,8 @@ const I18N_DICTIONARIES = {
 
         // --- Banner & Unadded Tasks ---
         unaddedBannerTitle: "Bạn có {count} task tạo hôm nay chưa thêm vào KPI!",
+        unaddedBannerTitlePlural: "Bạn có {count} task tạo hôm nay chưa thêm vào KPI!",
+        unaddedBannerTitleSingle: "Bạn có 1 task tạo hôm nay chưa thêm vào KPI!",
         viewDetails: "Chi tiết ▼",
         hideDetails: "Thu gọn ▲",
         addAllToKpi: "➕ Thêm tất cả vào KPI",
@@ -71,15 +74,20 @@ const I18N_DICTIONARIES = {
         urlLabel: "Link chấm công:",
         urlPlaceholder: "https://chamcong.congty.com...",
         testSoundBtn: "🔔 Thử chuông",
+        testSoundBtnTitle: "Bấm để thử thông báo ngay lập tức",
         testSoundTooltip: "Bấm để thử thông báo ngay lập tức",
         saveSettingsBtn: "💾 Lưu",
         saveSettingsSuccess: "✔ Đã lưu cài đặt!",
 
         // --- Tools Grid & Quick Links ---
         noteWindowBtn: "Ghi chú (Cửa sổ) 🗗",
+        noteWindowBtnTitle: "Mở ghi chú trong cửa sổ rời",
         noteTabBtn: "Ghi chú (Tab) 📑",
+        noteTabBtnTitle: "Mở ghi chú trong tab mới",
         todoWindowBtn: "Việc cần làm (Cửa sổ) 🗗",
+        todoWindowBtnTitle: "Mở việc cần làm trong cửa sổ rời",
         todoTabBtn: "Việc cần làm (Tab) 📑",
+        todoTabBtnTitle: "Mở việc cần làm trong tab mới",
         exportBtn: "Xuất dữ liệu 💿",
         importBtn: "Nhập dữ liệu 📀",
         importSuccess: "Nhập dữ liệu thành công!",
@@ -287,6 +295,7 @@ const I18N_DICTIONARIES = {
         langVi: "Tiếng Việt",
         langEn: "English",
         langSwitcherTitle: "Switch interface language",
+        languageLabel: "Language:",
 
         // --- Navigation & Tabs ---
         tabWeek: "📅 Week",
@@ -312,6 +321,8 @@ const I18N_DICTIONARIES = {
 
         // --- Banner & Unadded Tasks ---
         unaddedBannerTitle: "You have {count} task(s) created today not yet added to KPI!",
+        unaddedBannerTitlePlural: "You have {count} tasks created today not yet added to KPI!",
+        unaddedBannerTitleSingle: "You have 1 task created today not yet added to KPI!",
         viewDetails: "Details ▼",
         hideDetails: "Collapse ▲",
         addAllToKpi: "➕ Add All to KPI",
@@ -349,15 +360,20 @@ const I18N_DICTIONARIES = {
         urlLabel: "Attendance URL:",
         urlPlaceholder: "https://attendance.company.com...",
         testSoundBtn: "🔔 Test Bell",
+        testSoundBtnTitle: "Click to test notification immediately",
         testSoundTooltip: "Click to test notification immediately",
         saveSettingsBtn: "💾 Save",
         saveSettingsSuccess: "✔ Settings saved!",
 
         // --- Tools Grid & Quick Links ---
         noteWindowBtn: "Notes (Window) 🗗",
+        noteWindowBtnTitle: "Open notes in a pop-out window",
         noteTabBtn: "Notes (Tab) 📑",
+        noteTabBtnTitle: "Open notes in a new tab",
         todoWindowBtn: "To-Do (Window) 🗗",
+        todoWindowBtnTitle: "Open to-do in a pop-out window",
         todoTabBtn: "To-Do (Tab) 📑",
+        todoTabBtnTitle: "Open to-do in a new tab",
         exportBtn: "Export Data 💿",
         importBtn: "Import Data 📀",
         importSuccess: "Data imported successfully!",
