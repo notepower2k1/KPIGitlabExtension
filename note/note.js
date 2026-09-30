@@ -157,9 +157,22 @@ function handleTabKeyIndentation(textarea) {
     const end = (textarea.selectionEnd !== undefined) ? textarea.selectionEnd : textarea.value.length;
     const val = textarea.value || '';
     const insert = '  ';
-    textarea.value = val.substring(0, start) + insert + val.substring(end);
-    textarea.selectionStart = start + insert.length;
-    textarea.selectionEnd = start + insert.length;
+
+    let success = false;
+    if (typeof document !== 'undefined' && typeof document.execCommand === 'function') {
+        try {
+            success = document.execCommand('insertText', false, insert);
+        } catch (_) {
+            success = false;
+        }
+    }
+
+    if (!success) {
+        textarea.value = val.substring(0, start) + insert + val.substring(end);
+        textarea.selectionStart = start + insert.length;
+        textarea.selectionEnd = start + insert.length;
+    }
+
     return {
         value: textarea.value,
         selectionStart: textarea.selectionStart,
@@ -529,11 +542,10 @@ if (typeof document !== 'undefined') {
                     document.execCommand('copy');
                 }
                 if (copyAllBtn) {
-                    const originalIcon = copyAllBtn.textContent;
                     copyAllBtn.textContent = '✔';
                     copyAllBtn.title = 'Đã sao chép!';
                     setTimeout(() => {
-                        copyAllBtn.textContent = originalIcon;
+                        copyAllBtn.textContent = '📋';
                         copyAllBtn.title = 'Sao chép toàn bộ ghi chú';
                     }, 1500);
                 }
@@ -637,9 +649,9 @@ if (typeof document !== 'undefined') {
             if (noteTextarea) {
                 noteTextarea.addEventListener('input', onTextareaInput);
 
-                // Tab key indentation (insert 2 spaces instead of losing focus)
+                // Tab key indentation (insert 2 spaces instead of losing focus, only when not Shift+Tab)
                 noteTextarea.addEventListener('keydown', (e) => {
-                    if (e.key === 'Tab') {
+                    if (e.key === 'Tab' && !e.shiftKey) {
                         e.preventDefault();
                         handleTabKeyIndentation(noteTextarea);
                         onTextareaInput();
