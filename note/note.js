@@ -1,223 +1,3 @@
-if (typeof document !== 'undefined') {
-(async () => {
-    const STORAGE_KEY = 'Notes';
-    let pastedImageData = null;
-    let selectedColor = '#ffffff';
-    let currentEditingId = null;
-
-    // Initialization
-    await displayNotes();
-
-    // Event Listeners for Composer
-    document.getElementById("addBtn").addEventListener("click", async () => {
-        const input = document.getElementById("noteInput");
-        const imageInput = document.getElementById("imageInput");
-        const text = input.value.trim();
-
-        let imageBase64 = pastedImageData;
-
-        if (!imageBase64 && imageInput.files.length > 0) {
-            imageBase64 = await convertToBase64(imageInput.files[0]);
-        }
-
-        if (!text && !imageBase64) return;
-
-        const note = {
-            id: Date.now(),
-            text: text,
-            timestamp: new Date().toISOString(),
-            image: imageBase64,
-            color: selectedColor
-        };
-
-        await saveNote(STORAGE_KEY, note);
-
-        // Reset state
-        input.value = "";
-        imageInput.value = "";
-        pastedImageData = null;
-        selectedColor = '#ffffff';
-        document.getElementById("imagePreview").innerHTML = "";
-        resetColorDots();
-
-        displayNotes();
-    });
-
-    // Color Picker logic
-    document.querySelectorAll(".color-dot").forEach(dot => {
-        dot.addEventListener("click", () => {
-            selectedColor = dot.dataset.color;
-            resetColorDots();
-            dot.classList.add("active");
-            document.querySelector(".composer-card").style.backgroundColor = selectedColor;
-        });
-    });
-
-    function resetColorDots() {
-        document.querySelectorAll(".color-dot").forEach(d => d.classList.remove("active"));
-        document.querySelectorAll(".color-dot")[0].classList.add("active");
-        document.querySelector(".composer-card").style.backgroundColor = "#ffffff";
-    }
-
-    // List rendering
-    async function displayNotes(searchTerm = "") {
-        const container = document.getElementById("notesContainer");
-        const notes = await getStoredIds(STORAGE_KEY);
-
-        // Sort notes (newest first)
-        notes.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-        const filteredNotes = searchTerm
-            ? notes.filter(n => n.text.toLowerCase().includes(searchTerm.toLowerCase()))
-            : notes;
-
-        document.getElementById("total-notes-count").textContent = `${notes.length} ghi chú đã lưu`;
-
-        container.innerHTML = "";
-
-        filteredNotes.forEach(note => {
-            const card = document.createElement("div");
-            card.className = "note-card";
-            card.style.backgroundColor = note.color || '#ffffff';
-
-            const date = new Date(note.timestamp);
-            const formattedTime = date.toLocaleString('vi-VN', {
-                day: '2-digit', month: '2-digit', year: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-            });
-
-            card.innerHTML = `
-                <div class="note-text">${linkify(note.text)}</div>
-                ${note.image ? `<img src="${note.image}" class="note-image" />` : ''}
-                <div class="note-footer">
-                    <span class="note-time">${formattedTime}</span>
-                    <div class="note-actions">
-                        <button class="action-btn edit" data-id="${note.id}" title="Sửa">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                        <button class="action-btn delete" data-id="${note.id}" title="Xóa">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        </button>
-                    </div>
-                </div>
-            `;
-            container.appendChild(card);
-        });
-
-        attachActionEvents();
-    }
-
-    function attachActionEvents() {
-        // Delete
-        document.querySelectorAll(".action-btn.delete").forEach(btn => {
-            btn.onclick = async (e) => {
-                const id = parseInt(btn.dataset.id);
-                if (confirm("Xóa ghi chú này?")) {
-                    await deleteNoteById(STORAGE_KEY, id);
-                    displayNotes(document.getElementById("searchInput").value);
-                }
-            };
-        });
-
-        // Edit
-        document.querySelectorAll(".action-btn.edit").forEach(btn => {
-            btn.onclick = async () => {
-                const id = parseInt(btn.dataset.id);
-                const notes = await getStoredIds(STORAGE_KEY);
-                const note = notes.find(n => n.id === id);
-                if (note) {
-                    currentEditingId = id;
-                    document.getElementById("editNoteInput").value = note.text;
-                    document.getElementById("editImagePreview").innerHTML = note.image ? `<img src="${note.image}" style="max-width:100%;" />` : "";
-                    document.getElementById("editModal").style.display = "block";
-                }
-            };
-        });
-    }
-
-    // Search logic
-    document.getElementById("searchInput").addEventListener("input", (e) => {
-        displayNotes(e.target.value);
-    });
-
-    // Modal Logic
-    document.querySelector(".close-modal").onclick = () => {
-        document.getElementById("editModal").style.display = "none";
-    };
-
-    window.onclick = (event) => {
-        const modal = document.getElementById("editModal");
-        if (event.target == modal) modal.style.display = "none";
-    };
-
-    document.getElementById("saveEditBtn").onclick = async () => {
-        const newText = document.getElementById("editNoteInput").value.trim();
-        if (currentEditingId) {
-            await updateNote(STORAGE_KEY, currentEditingId, newText);
-            document.getElementById("editModal").style.display = "none";
-            displayNotes(document.getElementById("searchInput").value);
-        }
-    };
-
-    // Helper functions
-    async function saveNote(key, newNote) {
-        const notes = await getStoredIds(key);
-        notes.push(newNote);
-        await chrome.storage.local.set({ [key]: notes });
-    }
-
-    async function updateNote(key, id, newText) {
-        const notes = await getStoredIds(key);
-        const index = notes.findIndex(n => n.id === id);
-        if (index !== -1) {
-            notes[index].text = newText;
-            notes[index].timestamp = new Date().toISOString(); // Update timestamp on edit
-            await chrome.storage.local.set({ [key]: notes });
-        }
-    }
-
-    async function deleteNoteById(key, id) {
-        let notes = await getStoredIds(key);
-        notes = notes.filter(note => note.id !== id);
-        await chrome.storage.local.set({ [key]: notes });
-    }
-
-    function convertToBase64(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    }
-
-    // Paste Handle
-    document.getElementById("noteInput").addEventListener("paste", async (event) => {
-        const items = (event.clipboardData || event.originalEvent.clipboardData).items;
-        for (const item of items) {
-            if (item.type.indexOf("image") === 0) {
-                const file = item.getAsFile();
-                pastedImageData = await convertToBase64(file);
-                showImagePreview(pastedImageData);
-            }
-        }
-    });
-
-    function showImagePreview(base64) {
-        const preview = document.getElementById("imagePreview");
-        preview.innerHTML = `<img src="${base64}" />`;
-    }
-
-    document.getElementById("clearAllBtn").onclick = async () => {
-        if (confirm("Chắc chắn xóa SẠCH ghi chú?")) {
-            await chrome.storage.local.remove(STORAGE_KEY);
-            displayNotes();
-        }
-    };
-
-})();
-}
-
 // ==========================================
 // Notepad Multi-Tab Pure Data Model & Helpers
 // ==========================================
@@ -367,6 +147,553 @@ function migrateLegacyNotes(legacyNotes) {
     };
 }
 
+function detectWindowMode(win) {
+    return (win && win.type === 'popup') ? 'window' : 'tab';
+}
+
+function handleTabKeyIndentation(textarea) {
+    if (!textarea) return null;
+    const start = (textarea.selectionStart !== undefined) ? textarea.selectionStart : textarea.value.length;
+    const end = (textarea.selectionEnd !== undefined) ? textarea.selectionEnd : textarea.value.length;
+    const val = textarea.value || '';
+    const insert = '  ';
+    textarea.value = val.substring(0, start) + insert + val.substring(end);
+    textarea.selectionStart = start + insert.length;
+    textarea.selectionEnd = start + insert.length;
+    return {
+        value: textarea.value,
+        selectionStart: textarea.selectionStart,
+        selectionEnd: textarea.selectionEnd
+    };
+}
+
+function createDebouncedSaver(saveFn, delayMs = 300) {
+    let timer = null;
+    let pendingData = null;
+    return {
+        trigger(data) {
+            pendingData = data;
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+                timer = null;
+                const d = pendingData;
+                pendingData = null;
+                saveFn(d);
+            }, delayMs);
+        },
+        flush() {
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            if (pendingData !== null) {
+                const d = pendingData;
+                pendingData = null;
+                saveFn(d);
+            }
+        },
+        cancel() {
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            pendingData = null;
+        },
+        isPending() {
+            return timer !== null || pendingData !== null;
+        }
+    };
+}
+
+function applyTheme(theme, doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc) return theme;
+    const isDark = theme === 'dark';
+    if (doc.documentElement) {
+        doc.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    }
+    if (doc.body && doc.body.classList) {
+        if (isDark) {
+            doc.body.classList.add('dark-theme');
+        } else {
+            doc.body.classList.remove('dark-theme');
+        }
+    }
+    return isDark ? 'dark' : 'light';
+}
+
+function togglePrivacyMask(editorEl, isMasked) {
+    if (!editorEl || !editorEl.classList) return false;
+    if (typeof isMasked === 'boolean') {
+        if (isMasked) {
+            editorEl.classList.add('privacy-blur');
+        } else {
+            editorEl.classList.remove('privacy-blur');
+        }
+        return isMasked;
+    }
+    const hasClass = editorEl.classList.contains('privacy-blur');
+    if (hasClass) {
+        editorEl.classList.remove('privacy-blur');
+        return false;
+    } else {
+        editorEl.classList.add('privacy-blur');
+        return true;
+    }
+}
+
+// ==========================================
+// Client-side Application Controller
+// ==========================================
+
+if (typeof document !== 'undefined') {
+    (function () {
+        let currentState = null;
+        let currentTheme = 'light';
+        let isPrivacyMaskActive = false;
+        let currentMode = 'tab';
+        let isEditingTabTitle = false;
+
+        let tabStrip = null;
+        let addTabBtn = null;
+        let modeSwitchBtn = null;
+        let privacyBtn = null;
+        let copyAllBtn = null;
+        let themeToggleBtn = null;
+        let noteTextarea = null;
+        let saveStatusEl = null;
+        let wordCountEl = null;
+        let charCountEl = null;
+
+        const debouncedSaver = createDebouncedSaver(async (stateToSave) => {
+            await persistState(stateToSave);
+            setSaveStatus('saved');
+        }, 300);
+
+        function setSaveStatus(status) {
+            if (!saveStatusEl) return;
+            if (status === 'saving') {
+                saveStatusEl.textContent = 'Đang lưu...';
+                saveStatusEl.className = 'save-status saving';
+            } else if (status === 'saved') {
+                saveStatusEl.textContent = 'Đã lưu ✔';
+                saveStatusEl.className = 'save-status saved';
+            }
+        }
+
+        function updateCounts(text) {
+            const { words, chars } = calculateWordAndCharCount(text);
+            if (wordCountEl) wordCountEl.textContent = `${words} từ`;
+            if (charCountEl) charCountEl.textContent = `${chars} ký tự`;
+        }
+
+        async function persistState(stateToSave) {
+            if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+                return;
+            }
+            const payload = {
+                ...stateToSave,
+                theme: currentTheme,
+                privacyMask: isPrivacyMaskActive
+            };
+            return new Promise((resolve) => {
+                chrome.storage.local.set({ NotepadTabs: payload }, () => resolve());
+            });
+        }
+
+        function syncActiveTabToEditor() {
+            if (!currentState || !noteTextarea) return;
+            const activeTab = currentState.tabs.find(t => t.id === currentState.activeTabId) || currentState.tabs[0];
+            if (activeTab) {
+                noteTextarea.value = activeTab.content || '';
+                updateCounts(activeTab.content || '');
+            }
+        }
+
+        function renderTabs() {
+            if (!tabStrip || !currentState) return;
+            tabStrip.innerHTML = '';
+
+            currentState.tabs.forEach((tab) => {
+                const isActive = tab.id === currentState.activeTabId;
+                const tabEl = document.createElement('div');
+                tabEl.className = `tab-item${isActive ? ' active' : ''}`;
+                tabEl.setAttribute('role', 'tab');
+                tabEl.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                tabEl.setAttribute('data-tab-id', tab.id);
+
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'tab-title';
+                titleSpan.textContent = tab.title || 'Ghi chú';
+                titleSpan.title = tab.title || 'Ghi chú';
+                tabEl.appendChild(titleSpan);
+
+                // Render close button only if there are > 1 tabs
+                if (currentState.tabs.length > 1) {
+                    const closeBtn = document.createElement('button');
+                    closeBtn.className = 'tab-close-btn';
+                    closeBtn.textContent = '×';
+                    closeBtn.title = 'Đóng tab';
+                    closeBtn.setAttribute('aria-label', 'Đóng tab');
+                    closeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        closeTab(tab.id);
+                    });
+                    tabEl.appendChild(closeBtn);
+                }
+
+                // Tab selection on click
+                tabEl.addEventListener('click', () => {
+                    if (isEditingTabTitle) return;
+                    if (tab.id !== currentState.activeTabId) {
+                        switchTab(tab.id);
+                    }
+                });
+
+                // Tab renaming on double click
+                titleSpan.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    startRenameTab(tab.id, titleSpan);
+                });
+
+                tabStrip.appendChild(tabEl);
+            });
+
+            const activeEl = tabStrip.querySelector('.tab-item.active');
+            if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+                activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            }
+        }
+
+        function switchTab(newTabId) {
+            if (debouncedSaver.isPending()) {
+                debouncedSaver.flush();
+            } else if (noteTextarea) {
+                currentState = updateTabContent(currentState, currentState.activeTabId, noteTextarea.value);
+                persistState(currentState);
+            }
+            currentState = selectTab(currentState, newTabId);
+            renderTabs();
+            syncActiveTabToEditor();
+            if (noteTextarea) noteTextarea.focus();
+        }
+
+        function addNewTab() {
+            if (debouncedSaver.isPending()) {
+                debouncedSaver.flush();
+            } else if (noteTextarea) {
+                currentState = updateTabContent(currentState, currentState.activeTabId, noteTextarea.value);
+            }
+            currentState = addTab(currentState);
+            persistState(currentState);
+            renderTabs();
+            syncActiveTabToEditor();
+            if (noteTextarea) noteTextarea.focus();
+        }
+
+        function closeTab(tabId) {
+            if (debouncedSaver.isPending()) {
+                debouncedSaver.flush();
+            }
+            currentState = removeTab(currentState, tabId);
+            persistState(currentState);
+            renderTabs();
+            syncActiveTabToEditor();
+            if (noteTextarea) noteTextarea.focus();
+        }
+
+        function startRenameTab(tabId, titleSpan) {
+            isEditingTabTitle = true;
+            const currentTitle = titleSpan.textContent;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'tab-rename-input';
+            input.value = currentTitle;
+
+            function finishRename() {
+                if (!isEditingTabTitle) return;
+                isEditingTabTitle = false;
+                const newTitle = input.value.trim() || 'Ghi chú';
+                currentState = renameTab(currentState, tabId, newTitle);
+                persistState(currentState);
+                renderTabs();
+            }
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    finishRename();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    isEditingTabTitle = false;
+                    renderTabs();
+                }
+            });
+
+            input.addEventListener('blur', () => {
+                finishRename();
+            });
+
+            input.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+
+            titleSpan.replaceWith(input);
+            input.focus();
+            input.select();
+        }
+
+        function onTextareaInput() {
+            if (!noteTextarea) return;
+            const text = noteTextarea.value;
+            updateCounts(text);
+            setSaveStatus('saving');
+            currentState = updateTabContent(currentState, currentState.activeTabId, text);
+            debouncedSaver.trigger(currentState);
+        }
+
+        function updateModeSwitchButton(mode) {
+            if (!modeSwitchBtn) return;
+            if (mode === 'window') {
+                modeSwitchBtn.textContent = '🗖';
+                modeSwitchBtn.title = 'Mở dạng Tab trình duyệt 🗖';
+                modeSwitchBtn.setAttribute('aria-label', 'Mở dạng Tab trình duyệt');
+            } else {
+                modeSwitchBtn.textContent = '🗗';
+                modeSwitchBtn.title = 'Tách thành cửa sổ riêng 🗗';
+                modeSwitchBtn.setAttribute('aria-label', 'Tách thành cửa sổ riêng');
+            }
+        }
+
+        async function onModeSwitchClick() {
+            if (debouncedSaver.isPending()) {
+                debouncedSaver.flush();
+            } else if (noteTextarea) {
+                currentState = updateTabContent(currentState, currentState.activeTabId, noteTextarea.value);
+                await persistState(currentState);
+            }
+
+            if (typeof chrome === 'undefined') return;
+            const noteUrl = chrome.runtime.getURL("note/note.html");
+
+            if (currentMode === 'tab') {
+                if (chrome.windows && chrome.windows.create) {
+                    chrome.windows.create({
+                        url: noteUrl,
+                        type: 'popup',
+                        width: 520,
+                        height: 640
+                    }, () => {
+                        window.close();
+                    });
+                }
+            } else {
+                if (chrome.tabs && chrome.tabs.create) {
+                    chrome.tabs.create({ url: noteUrl }, () => {
+                        window.close();
+                    });
+                }
+            }
+        }
+
+        function onPrivacyClick() {
+            isPrivacyMaskActive = togglePrivacyMask(noteTextarea);
+            if (privacyBtn) {
+                privacyBtn.classList.toggle('active', isPrivacyMaskActive);
+                privacyBtn.title = isPrivacyMaskActive ? 'Tắt che mờ riêng tư' : 'Bật/Tắt che mờ riêng tư';
+            }
+            persistState(currentState);
+        }
+
+        function onThemeToggleClick() {
+            currentTheme = (currentTheme === 'dark') ? 'light' : 'dark';
+            applyTheme(currentTheme, document);
+            if (themeToggleBtn) {
+                themeToggleBtn.title = currentTheme === 'dark' ? 'Chuyển sang giao diện Sáng' : 'Chuyển sang giao diện Tối';
+            }
+            persistState(currentState);
+        }
+
+        async function onCopyAllClick() {
+            const textToCopy = noteTextarea ? noteTextarea.value : '';
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(textToCopy);
+                } else if (noteTextarea) {
+                    noteTextarea.select();
+                    document.execCommand('copy');
+                }
+                if (copyAllBtn) {
+                    const originalIcon = copyAllBtn.textContent;
+                    copyAllBtn.textContent = '✔';
+                    copyAllBtn.title = 'Đã sao chép!';
+                    setTimeout(() => {
+                        copyAllBtn.textContent = originalIcon;
+                        copyAllBtn.title = 'Sao chép toàn bộ ghi chú';
+                    }, 1500);
+                }
+            } catch (err) {
+                console.error('Failed to copy note text: ', err);
+            }
+        }
+
+        async function initApp() {
+            tabStrip = document.getElementById('tabStrip');
+            addTabBtn = document.getElementById('addTabBtn');
+            modeSwitchBtn = document.getElementById('modeSwitchBtn');
+            privacyBtn = document.getElementById('privacyBtn');
+            copyAllBtn = document.getElementById('copyAllBtn');
+            themeToggleBtn = document.getElementById('themeToggleBtn');
+            noteTextarea = document.getElementById('noteTextarea');
+            saveStatusEl = document.getElementById('saveStatus');
+            wordCountEl = document.getElementById('wordCount');
+            charCountEl = document.getElementById('charCount');
+
+            // 1. Detect Dual-Mode
+            if (typeof chrome !== 'undefined' && chrome.windows && chrome.windows.getCurrent) {
+                chrome.windows.getCurrent((win) => {
+                    currentMode = detectWindowMode(win);
+                    updateModeSwitchButton(currentMode);
+                });
+            }
+
+            // 2. Load storage data & migrate legacy if needed
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.get(['NotepadTabs', 'Notes', 'theme', 'privacyMask'], (data) => {
+                    let loadedState = null;
+                    if (data && data.NotepadTabs && Array.isArray(data.NotepadTabs.tabs) && data.NotepadTabs.tabs.length > 0) {
+                        loadedState = data.NotepadTabs;
+                    } else if (data && data.Notes && Array.isArray(data.Notes) && data.Notes.length > 0) {
+                        loadedState = migrateLegacyNotes(data.Notes);
+                    } else {
+                        loadedState = createInitialState();
+                    }
+
+                    const loadedTheme = (data && data.NotepadTabs && data.NotepadTabs.theme) || (data && data.theme) || 'light';
+                    const loadedPrivacy = (data && data.NotepadTabs && data.NotepadTabs.privacyMask !== undefined)
+                        ? data.NotepadTabs.privacyMask
+                        : Boolean(data && data.privacyMask);
+
+                    currentTheme = loadedTheme;
+                    isPrivacyMaskActive = loadedPrivacy;
+                    currentState = {
+                        ...loadedState,
+                        theme: currentTheme,
+                        privacyMask: isPrivacyMaskActive
+                    };
+
+                    // Persist if migrated or fresh
+                    if (!data || !data.NotepadTabs) {
+                        chrome.storage.local.set({ NotepadTabs: currentState });
+                    }
+
+                    applyTheme(currentTheme, document);
+                    if (noteTextarea) {
+                        togglePrivacyMask(noteTextarea, isPrivacyMaskActive);
+                    }
+                    if (privacyBtn) {
+                        privacyBtn.classList.toggle('active', isPrivacyMaskActive);
+                        privacyBtn.title = isPrivacyMaskActive ? 'Tắt che mờ riêng tư' : 'Bật/Tắt che mờ riêng tư';
+                    }
+                    if (themeToggleBtn) {
+                        themeToggleBtn.title = currentTheme === 'dark' ? 'Chuyển sang giao diện Sáng' : 'Chuyển sang giao diện Tối';
+                    }
+
+                    renderTabs();
+                    syncActiveTabToEditor();
+                });
+            } else {
+                currentState = createInitialState();
+                renderTabs();
+                syncActiveTabToEditor();
+            }
+
+            // 3. Attach Event Listeners
+            if (addTabBtn) {
+                addTabBtn.addEventListener('click', addNewTab);
+            }
+
+            if (modeSwitchBtn) {
+                modeSwitchBtn.addEventListener('click', onModeSwitchClick);
+            }
+
+            if (privacyBtn) {
+                privacyBtn.addEventListener('click', onPrivacyClick);
+            }
+
+            if (themeToggleBtn) {
+                themeToggleBtn.addEventListener('click', onThemeToggleClick);
+            }
+
+            if (copyAllBtn) {
+                copyAllBtn.addEventListener('click', onCopyAllClick);
+            }
+
+            if (noteTextarea) {
+                noteTextarea.addEventListener('input', onTextareaInput);
+
+                // Tab key indentation (insert 2 spaces instead of losing focus)
+                noteTextarea.addEventListener('keydown', (e) => {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        handleTabKeyIndentation(noteTextarea);
+                        onTextareaInput();
+                    }
+                });
+            }
+
+            // 4. Cross-window Real-time Sync
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+                chrome.storage.onChanged.addListener((changes, areaName) => {
+                    if (areaName === 'local' && changes.NotepadTabs) {
+                        const newTabsData = changes.NotepadTabs.newValue;
+                        if (!newTabsData || !Array.isArray(newTabsData.tabs)) return;
+
+                        const isFocused = (document.activeElement === noteTextarea);
+                        if (!isFocused) {
+                            currentState = newTabsData;
+                            if (newTabsData.theme && newTabsData.theme !== currentTheme) {
+                                currentTheme = newTabsData.theme;
+                                applyTheme(currentTheme, document);
+                            }
+                            if (newTabsData.privacyMask !== undefined && newTabsData.privacyMask !== isPrivacyMaskActive) {
+                                isPrivacyMaskActive = newTabsData.privacyMask;
+                                togglePrivacyMask(noteTextarea, isPrivacyMaskActive);
+                                if (privacyBtn) privacyBtn.classList.toggle('active', isPrivacyMaskActive);
+                            }
+                            renderTabs();
+                            syncActiveTabToEditor();
+                        } else {
+                            const activeId = currentState ? currentState.activeTabId : newTabsData.activeTabId;
+                            currentState = {
+                                ...newTabsData,
+                                activeTabId: activeId
+                            };
+                            renderTabs();
+                        }
+                    }
+                });
+            }
+
+            // 5. Window beforeunload flush
+            window.addEventListener('beforeunload', () => {
+                if (debouncedSaver && debouncedSaver.isPending()) {
+                    debouncedSaver.flush();
+                }
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initApp);
+        } else {
+            initApp();
+        }
+    })();
+}
+
+// ==========================================
+// Exports for Global Browser & Node.js Test
+// ==========================================
+
 if (typeof window !== 'undefined') {
     window.createInitialState = createInitialState;
     window.addTab = addTab;
@@ -376,6 +703,11 @@ if (typeof window !== 'undefined') {
     window.selectTab = selectTab;
     window.calculateWordAndCharCount = calculateWordAndCharCount;
     window.migrateLegacyNotes = migrateLegacyNotes;
+    window.detectWindowMode = detectWindowMode;
+    window.handleTabKeyIndentation = handleTabKeyIndentation;
+    window.createDebouncedSaver = createDebouncedSaver;
+    window.applyTheme = applyTheme;
+    window.togglePrivacyMask = togglePrivacyMask;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -387,7 +719,11 @@ if (typeof module !== 'undefined' && module.exports) {
         updateTabContent,
         selectTab,
         calculateWordAndCharCount,
-        migrateLegacyNotes
+        migrateLegacyNotes,
+        detectWindowMode,
+        handleTabKeyIndentation,
+        createDebouncedSaver,
+        applyTheme,
+        togglePrivacyMask
     };
 }
-

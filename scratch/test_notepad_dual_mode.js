@@ -208,3 +208,112 @@ assert.ok(
 console.log('✔ All required CSS selectors, themes, and styles exist in note/note.css');
 console.log('✔ All Task 2 UI & Styling tests passed!');
 
+console.log('\n--- Testing Editor Interactions, Auto-Save & Dual-Mode (Task 3) ---');
+
+// 11. Mode Detection Helper
+console.log('Testing detectWindowMode()...');
+assert.strictEqual(notepad.detectWindowMode({ type: 'popup' }), 'window', 'Popup window should be detected as window mode');
+assert.strictEqual(notepad.detectWindowMode({ type: 'normal' }), 'tab', 'Normal window should be detected as tab mode');
+assert.strictEqual(notepad.detectWindowMode(null), 'tab', 'Null window should default to tab mode');
+assert.strictEqual(notepad.detectWindowMode({}), 'tab', 'Undefined type should default to tab mode');
+
+// 12. Tab Key Indentation Helper
+console.log('Testing handleTabKeyIndentation()...');
+const mockTextarea = {
+    value: 'Hello',
+    selectionStart: 5,
+    selectionEnd: 5
+};
+const indentResult = notepad.handleTabKeyIndentation(mockTextarea);
+assert.strictEqual(mockTextarea.value, 'Hello  ', 'Should insert 2 spaces at caret position');
+assert.strictEqual(mockTextarea.selectionStart, 7, 'Caret should advance by 2 spaces');
+assert.strictEqual(mockTextarea.selectionEnd, 7, 'Selection end should match caret');
+
+// With selection replacement
+const mockTextareaWithSelection = {
+    value: 'Start [REPLACE_ME] End',
+    selectionStart: 6,
+    selectionEnd: 18
+};
+notepad.handleTabKeyIndentation(mockTextareaWithSelection);
+assert.strictEqual(mockTextareaWithSelection.value, 'Start    End', 'Selected text should be replaced with 2 spaces');
+assert.strictEqual(mockTextareaWithSelection.selectionStart, 8);
+
+// 13. Debounced Auto-Save Logic
+console.log('Testing createDebouncedSaver()...');
+let saveCallCount = 0;
+let lastSavedState = null;
+const debouncedSaver = notepad.createDebouncedSaver((data) => {
+    saveCallCount++;
+    lastSavedState = data;
+}, 50);
+
+assert.strictEqual(debouncedSaver.isPending(), false);
+debouncedSaver.trigger({ text: 'Draft 1' });
+debouncedSaver.trigger({ text: 'Draft 2' });
+debouncedSaver.trigger({ text: 'Draft 3' });
+assert.strictEqual(debouncedSaver.isPending(), true);
+assert.strictEqual(saveCallCount, 0, 'Should not save immediately when debounced');
+
+// Test flush()
+debouncedSaver.flush();
+assert.strictEqual(saveCallCount, 1, 'Flush should execute save immediately');
+assert.deepStrictEqual(lastSavedState, { text: 'Draft 3' });
+assert.strictEqual(debouncedSaver.isPending(), false);
+
+// 14. Theme Application Helper
+console.log('Testing applyTheme()...');
+const mockDocument = {
+    documentElement: {
+        attributes: {},
+        setAttribute(k, v) { this.attributes[k] = v; },
+        removeAttribute(k) { delete this.attributes[k]; },
+        getAttribute(k) { return this.attributes[k]; }
+    },
+    body: {
+        classList: {
+            classes: new Set(),
+            add(c) { this.classes.add(c); },
+            remove(c) { this.classes.delete(c); },
+            contains(c) { return this.classes.has(c); }
+        }
+    }
+};
+
+notepad.applyTheme('dark', mockDocument);
+assert.strictEqual(mockDocument.documentElement.getAttribute('data-theme'), 'dark');
+assert.strictEqual(mockDocument.body.classList.contains('dark-theme'), true);
+
+notepad.applyTheme('light', mockDocument);
+assert.strictEqual(mockDocument.documentElement.getAttribute('data-theme'), 'light');
+assert.strictEqual(mockDocument.body.classList.contains('dark-theme'), false);
+
+// 15. Privacy Mask Helper
+console.log('Testing togglePrivacyMask()...');
+const mockEditorElement = {
+    classList: {
+        classes: new Set(),
+        add(c) { this.classes.add(c); },
+        remove(c) { this.classes.delete(c); },
+        contains(c) { return this.classes.has(c); },
+        toggle(c, force) {
+            if (force !== undefined) {
+                if (force) this.add(c); else this.remove(c);
+                return force;
+            }
+            if (this.contains(c)) { this.remove(c); return false; }
+            this.add(c); return true;
+        }
+    }
+};
+
+const maskActive = notepad.togglePrivacyMask(mockEditorElement, true);
+assert.strictEqual(maskActive, true);
+assert.strictEqual(mockEditorElement.classList.contains('privacy-blur'), true);
+
+const maskInactive = notepad.togglePrivacyMask(mockEditorElement, false);
+assert.strictEqual(maskInactive, false);
+assert.strictEqual(mockEditorElement.classList.contains('privacy-blur'), false);
+
+console.log('✔ All Task 3 editor interactions, auto-save & dual-mode tests passed!');
+
