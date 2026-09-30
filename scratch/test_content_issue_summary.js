@@ -24,6 +24,7 @@ const {
     fetchTaskDetail,
     parseGraphQLChildrenNodes,
     fetchParentTaskWithChildren,
+    formatDateDisplay,
     filterAndSortTasks,
     renderTaskTableRows,
     refreshSummaryModal,
@@ -47,6 +48,7 @@ assert.strictEqual(typeof batchAddTasksToStorage, 'function', 'batchAddTasksToSt
 assert.strictEqual(typeof fetchTaskDetail, 'function', 'fetchTaskDetail should be exported as a function');
 assert.strictEqual(typeof parseGraphQLChildrenNodes, 'function', 'parseGraphQLChildrenNodes should be exported as a function');
 assert.strictEqual(typeof fetchParentTaskWithChildren, 'function', 'fetchParentTaskWithChildren should be exported as a function');
+assert.strictEqual(typeof formatDateDisplay, 'function', 'formatDateDisplay should be exported as a function');
 assert.strictEqual(typeof filterAndSortTasks, 'function', 'filterAndSortTasks should be exported as a function');
 assert.strictEqual(typeof renderTaskTableRows, 'function', 'renderTaskTableRows should be exported as a function');
 assert.strictEqual(typeof refreshSummaryModal, 'function', 'refreshSummaryModal should be exported as a function');
@@ -1088,6 +1090,83 @@ class MockDocument {
         assert.ok(modalHtml.includes('data-sort-key="diff"'), 'Modal table header must include sort key diff');
 
         console.log('✔ Passed: Search & column sorting for child tasks table');
+    }
+
+    // 21. Date Extraction (Start, Due, Open, Close), Formatting & Date Sorting
+    {
+        // 1. formatDateDisplay tests
+        assert.strictEqual(formatDateDisplay('2026-09-15T08:30:00Z'), '15/09/2026');
+        assert.strictEqual(formatDateDisplay('2026-10-01'), '01/10/2026');
+        assert.strictEqual(formatDateDisplay(null), '-');
+        assert.strictEqual(formatDateDisplay(undefined), '-');
+        assert.strictEqual(formatDateDisplay(''), '-');
+
+        // 2. parseGraphQLChildrenNodes date fields extraction
+        const mockNodesWithDates = [
+            {
+                id: 'gid://gitlab/WorkItem/401',
+                iid: '401',
+                title: 'Task with full dates',
+                state: 'closed',
+                createdAt: '2026-09-10T08:00:00Z',
+                closedAt: '2026-09-25T16:00:00Z',
+                webUrl: 'https://gitlab.com/grp/prj/-/work_items/401',
+                widgets: [
+                    {
+                        type: 'START_AND_DUE_DATE',
+                        startDate: '2026-09-12',
+                        dueDate: '2026-09-24'
+                    }
+                ]
+            },
+            {
+                id: 'gid://gitlab/WorkItem/402',
+                iid: '402',
+                title: 'Task without start/due dates',
+                state: 'opened',
+                createdAt: '2026-09-15T09:00:00Z',
+                closedAt: null,
+                webUrl: 'https://gitlab.com/grp/prj/-/work_items/402',
+                widgets: []
+            }
+        ];
+
+        const parsedDates = parseGraphQLChildrenNodes(mockNodesWithDates);
+        assert.strictEqual(parsedDates.length, 2);
+        assert.strictEqual(parsedDates[0].startDate, '2026-09-12');
+        assert.strictEqual(parsedDates[0].dueDate, '2026-09-24');
+        assert.strictEqual(parsedDates[0].createdAt, '2026-09-10T08:00:00Z');
+        assert.strictEqual(parsedDates[0].closedAt, '2026-09-25T16:00:00Z');
+
+        assert.strictEqual(parsedDates[1].startDate, null);
+        assert.strictEqual(parsedDates[1].dueDate, null);
+        assert.strictEqual(parsedDates[1].createdAt, '2026-09-15T09:00:00Z');
+        assert.strictEqual(parsedDates[1].closedAt, null);
+
+        // 3. Sorting by dates via filterAndSortTasks
+        const sortCreatedAsc = filterAndSortTasks(parsedDates, { sortKey: 'createdAt', sortOrder: 'asc' });
+        assert.strictEqual(sortCreatedAsc[0].id, '401');
+        assert.strictEqual(sortCreatedAsc[1].id, '402');
+
+        const sortCreatedDesc = filterAndSortTasks(parsedDates, { sortKey: 'createdAt', sortOrder: 'desc' });
+        assert.strictEqual(sortCreatedDesc[0].id, '402');
+        assert.strictEqual(sortCreatedDesc[1].id, '401');
+
+        // 4. renderTaskTableRows includes date cells formatted as DD/MM/YYYY
+        const rowsHtml = renderTaskTableRows(parsedDates);
+        assert.ok(rowsHtml.includes('12/09/2026'), 'Should render formatted start date');
+        assert.ok(rowsHtml.includes('24/09/2026'), 'Should render formatted due date');
+        assert.ok(rowsHtml.includes('10/09/2026'), 'Should render formatted open/created date');
+        assert.ok(rowsHtml.includes('25/09/2026'), 'Should render formatted close date');
+
+        // 5. renderSummaryModalHtml includes date header columns
+        const modalHtml = renderSummaryModalHtml(null, parsedDates, 'Parent');
+        assert.ok(modalHtml.includes('data-sort-key="startDate"'), 'Modal must have sortable startDate header');
+        assert.ok(modalHtml.includes('data-sort-key="dueDate"'), 'Modal must have sortable dueDate header');
+        assert.ok(modalHtml.includes('data-sort-key="createdAt"'), 'Modal must have sortable createdAt header');
+        assert.ok(modalHtml.includes('data-sort-key="closedAt"'), 'Modal must have sortable closedAt header');
+
+        console.log('✔ Passed: Date extraction (Start, Due, Open, Close), formatting & date sorting');
     }
 
     console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');

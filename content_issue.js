@@ -136,6 +136,15 @@ function shouldBackfillParent(currentTasks, backfilledSet, lastTitle, currentTit
     return false;
 }
 
+function formatDateDisplay(dateStr) {
+    if (!dateStr) return '-';
+    const str = String(dateStr).trim();
+    const match = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return str || '-';
+    const [, year, month, day] = match;
+    return `${day}/${month}/${year}`;
+}
+
 function filterAndSortTasks(tasks, options = {}) {
     if (!tasks || !Array.isArray(tasks)) return [];
     const query = (options.query || '').trim().toLowerCase();
@@ -163,6 +172,14 @@ function filterAndSortTasks(tasks, options = {}) {
                 comp = (a.diffHour || 0) - (b.diffHour || 0);
             } else if (sortKey === 'title') {
                 comp = (a.title || '').localeCompare(b.title || '');
+            } else if (sortKey === 'startDate' || sortKey === 'start') {
+                comp = (a.startDate || '').localeCompare(b.startDate || '');
+            } else if (sortKey === 'dueDate' || sortKey === 'due') {
+                comp = (a.dueDate || '').localeCompare(b.dueDate || '');
+            } else if (sortKey === 'createdAt' || sortKey === 'open') {
+                comp = (a.createdAt || '').localeCompare(b.createdAt || '');
+            } else if (sortKey === 'closedAt' || sortKey === 'close') {
+                comp = (a.closedAt || '').localeCompare(b.closedAt || '');
             }
             return sortOrder === 'asc' ? comp : -comp;
         });
@@ -181,7 +198,7 @@ function renderTaskTableRows(tasks, options = {}) {
             : (isFiltered ? 'Không tìm thấy task con nào phù hợp' : 'Không tìm thấy task con nào thuộc về bạn trên trang này.');
         return `
             <tr>
-                <td colspan="7" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #64748b;">
+                <td colspan="11" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #64748b;">
                     ${emptyMsg}
                 </td>
             </tr>`;
@@ -206,6 +223,11 @@ function renderTaskTableRows(tasks, options = {}) {
             diffClass = diffVal >= 0 ? 'gl-text-success' : 'gl-text-danger';
         }
 
+        const startDateText = formatDateDisplay(task.startDate);
+        const dueDateText = formatDateDisplay(task.dueDate);
+        const openDateText = formatDateDisplay(task.createdAt);
+        const closeDateText = formatDateDisplay(task.closedAt);
+
         const state = (task.state || '').toLowerCase();
         const stateBadge = state === 'closed'
             ? '<span class="gl-badge gl-badge-closed">Đã đóng</span>'
@@ -227,6 +249,10 @@ function renderTaskTableRows(tasks, options = {}) {
                 <td class="gl-kpi-num">${est}</td>
                 <td class="gl-kpi-num">${spent}</td>
                 <td class="gl-kpi-num ${diffClass}">${diffText}</td>
+                <td class="gl-kpi-date">${startDateText}</td>
+                <td class="gl-kpi-date">${dueDateText}</td>
+                <td class="gl-kpi-date">${openDateText}</td>
+                <td class="gl-kpi-date">${closeDateText}</td>
                 <td class="gl-kpi-status">${stateBadge}</td>
                 <td class="gl-kpi-status">${timelinessBadge}</td>
                 <td class="gl-kpi-status">${planBadge}</td>
@@ -309,6 +335,10 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options =
                             <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="estimate" style="cursor: pointer; user-select: none;">Estimate <span class="gl-kpi-sort-icon">↕</span></th>
                             <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="spent" style="cursor: pointer; user-select: none;">Spent <span class="gl-kpi-sort-icon">↕</span></th>
                             <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="diff" style="cursor: pointer; user-select: none;">Chênh lệch <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable" data-sort-key="startDate" style="cursor: pointer; user-select: none;">Bắt đầu <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable" data-sort-key="dueDate" style="cursor: pointer; user-select: none;">Hạn chót <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable" data-sort-key="createdAt" style="cursor: pointer; user-select: none;">Ngày mở <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable" data-sort-key="closedAt" style="cursor: pointer; user-select: none;">Ngày đóng <span class="gl-kpi-sort-icon">↕</span></th>
                             <th>Trạng thái</th>
                             <th>Tiến độ</th>
                             <th>Phân loại</th>
@@ -348,7 +378,7 @@ function getModalStyles() {
     border-radius: 8px;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
     width: 92%;
-    max-width: 980px;
+    max-width: 1180px;
     max-height: 88vh;
     display: flex;
     flex-direction: column;
@@ -495,6 +525,12 @@ function getModalStyles() {
 #gitlabKpiSummaryModal .gl-kpi-num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-date {
+    font-size: 12px;
+    color: #4b5563;
+    white-space: nowrap;
 }
 
 #gitlabKpiSummaryModal .gl-kpi-table th:nth-child(2),
@@ -791,6 +827,10 @@ function enrichChildTasks(tasks, userProfile, storedKpi = []) {
                 estimateHour: est,
                 spentHour: spent,
                 diffHour: diff,
+                startDate: task.startDate || kpi?.startDate || null,
+                dueDate: task.dueDate || kpi?.dueDate || null,
+                createdAt: task.createdAt || kpi?.createdAt || null,
+                closedAt: task.closedAt || kpi?.closedAt || null,
                 isLate,
                 isUnplanned,
                 state
@@ -802,6 +842,10 @@ function enrichChildTasks(tasks, userProfile, storedKpi = []) {
             estimateHour: 0,
             spentHour: 0,
             diffHour: 0,
+            startDate: task.startDate || null,
+            dueDate: task.dueDate || null,
+            createdAt: task.createdAt || null,
+            closedAt: task.closedAt || null,
             isLate: false,
             isUnplanned: false,
             state: (task.state || 'opened').toLowerCase()
@@ -882,6 +926,7 @@ async function fetchTaskDetail(projectPath, iidOrTask, token, customEndpoint = n
               iid
               title
               state
+              createdAt
               closedAt
               widgets {
                 type
@@ -949,6 +994,10 @@ function parseGraphQLChildrenNodes(childrenNodes = []) {
             : false;
 
         const assigneeUrl = assignees?.assignees?.nodes?.[0]?.webUrl || '';
+        const startDate = startAndDueDate?.startDate || null;
+        const dueDate = startAndDueDate?.dueDate || null;
+        const createdAt = node.createdAt || null;
+        const closedAt = node.closedAt || null;
 
         return {
             id: String(node.iid || node.id || ''),
@@ -959,6 +1008,10 @@ function parseGraphQLChildrenNodes(childrenNodes = []) {
             spentHour: spent,
             diffHour: diff,
             state: (node.state || 'opened').toLowerCase(),
+            startDate,
+            dueDate,
+            createdAt,
+            closedAt,
             isLate,
             isUnplanned
         };
@@ -997,6 +1050,7 @@ async function fetchParentTaskWithChildren(projectPath, parentIid, token, custom
                       iid
                       title
                       state
+                      createdAt
                       closedAt
                       webUrl
                       widgets {
@@ -1154,6 +1208,10 @@ async function refreshSummaryModal(doc = (typeof document !== 'undefined' ? docu
                             const isLate = (detail.state === 'closed' && detail.closedAt && startAndDueDate?.dueDate)
                                 ? (detail.closedAt.slice(0, 10) > startAndDueDate.dueDate)
                                 : t.isLate;
+                            const startDate = startAndDueDate?.startDate || t.startDate || null;
+                            const dueDate = startAndDueDate?.dueDate || t.dueDate || null;
+                            const createdAt = detail.createdAt || t.createdAt || null;
+                            const closedAt = detail.closedAt || t.closedAt || null;
 
                             return {
                                 ...t,
@@ -1161,6 +1219,10 @@ async function refreshSummaryModal(doc = (typeof document !== 'undefined' ? docu
                                 spentHour: spent,
                                 diffHour: diff,
                                 state: detail.state || t.state,
+                                startDate,
+                                dueDate,
+                                createdAt,
+                                closedAt,
                                 isLate,
                                 isUnplanned
                             };
@@ -1414,6 +1476,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.fetchTaskDetail = fetchTaskDetail;
     window.parseGraphQLChildrenNodes = parseGraphQLChildrenNodes;
     window.fetchParentTaskWithChildren = fetchParentTaskWithChildren;
+    window.formatDateDisplay = formatDateDisplay;
     window.filterAndSortTasks = filterAndSortTasks;
     window.renderTaskTableRows = renderTaskTableRows;
     window.refreshSummaryModal = refreshSummaryModal;
@@ -1728,6 +1791,7 @@ if (typeof module !== 'undefined' && module.exports) {
         fetchTaskDetail,
         parseGraphQLChildrenNodes,
         fetchParentTaskWithChildren,
+        formatDateDisplay,
         filterAndSortTasks,
         renderTaskTableRows,
         refreshSummaryModal,
