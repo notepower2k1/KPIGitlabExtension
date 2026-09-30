@@ -136,3 +136,75 @@ const nullMigration = notepad.migrateLegacyNotes(null);
 assert.strictEqual(nullMigration.tabs.length, 1);
 
 console.log('✔ All Task 1 unit tests passed!');
+
+console.log('\n--- Testing Notepad UI Structure & CSS Styling (Task 2) ---');
+
+const fs = require('fs');
+
+// 9. Verify note/note.html DOM structure
+const noteHtmlPath = path.join(__dirname, '../note/note.html');
+assert.ok(fs.existsSync(noteHtmlPath), 'note/note.html should exist');
+const noteHtml = fs.readFileSync(noteHtmlPath, 'utf8');
+
+const requiredElementIds = [
+    'tabStrip',
+    'addTabBtn',
+    'modeSwitchBtn',
+    'privacyBtn',
+    'copyAllBtn',
+    'themeToggleBtn',
+    'noteTextarea',
+    'statusBar',
+    'saveStatus',
+    'wordCount',
+    'charCount'
+];
+
+requiredElementIds.forEach(id => {
+    const idRegex = new RegExp(`id=["']${id}["']`);
+    assert.ok(idRegex.test(noteHtml), `note/note.html must contain element with id="${id}"`);
+});
+console.log('✔ All required DOM IDs exist in note/note.html');
+
+// Check textarea attributes
+assert.ok(/<textarea[^>]*id=["']noteTextarea["'][^>]*>/i.test(noteHtml) || /<textarea[^>]*id=["']noteTextarea["']/i.test(noteHtml), 'noteTextarea must be a textarea element');
+assert.ok(/spellcheck=["']false["']/i.test(noteHtml), 'noteTextarea should have spellcheck="false"');
+assert.ok(/placeholder=/i.test(noteHtml), 'noteTextarea should have a placeholder attribute');
+
+// 10. Verify note/note.css styling and classes
+const noteCssPath = path.join(__dirname, '../note/note.css');
+assert.ok(fs.existsSync(noteCssPath), 'note/note.css should exist');
+const noteCss = fs.readFileSync(noteCssPath, 'utf8');
+
+const requiredCssSelectors = [
+    '.tab-strip',
+    '.tab-item',
+    '.tab-item.active',
+    '.privacy-blur'
+];
+
+requiredCssSelectors.forEach(sel => {
+    assert.ok(noteCss.includes(sel), `note/note.css must contain CSS selector "${sel}"`);
+});
+
+// Check theme support (data-theme="dark" and/or .dark-theme)
+assert.ok(
+    noteCss.includes('[data-theme="dark"]') || noteCss.includes('.dark-theme'),
+    'note/note.css must support dark theme via [data-theme="dark"] or .dark-theme'
+);
+
+// Check privacy blur filter
+assert.ok(
+    /\.privacy-blur[\s\S]*?filter:\s*blur\(/i.test(noteCss),
+    'note/note.css must have filter: blur(...) defined on .privacy-blur'
+);
+
+// Check monospace/crisp font family for editor
+assert.ok(
+    /monospace/i.test(noteCss),
+    'note/note.css must include monospace in typography for editor'
+);
+
+console.log('✔ All required CSS selectors, themes, and styles exist in note/note.css');
+console.log('✔ All Task 2 UI & Styling tests passed!');
+

@@ -1,325 +1,429 @@
+/* ==========================================================================
+   Windows 11 Fluent Multi-Tab Notepad Styling
+   Light & Dark Theme Variables
+   ========================================================================== */
+
 :root {
-    --primary: #6366f1;
-    --primary-hover: #4f46e5;
-    --danger: #ef4444;
-    --success: #22c55e;
-    --bg-main: #f8fafc;
-    --bg-card: #ffffff;
-    --text-main: #1e293b;
-    --text-muted: #64748b;
-    --border: #e2e8f0;
-    --radius-lg: 16px;
-    --radius-md: 10px;
-    --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    /* Fluent Light Theme (Default) */
+    --bg-window: #f3f3f3;
+    --bg-header: #e8e8e8;
+    --bg-tab: rgba(255, 255, 255, 0.45);
+    --bg-tab-hover: rgba(255, 255, 255, 0.75);
+    --bg-tab-active: #ffffff;
+    --border-tab-active: #0067c0;
+    --bg-editor: #ffffff;
+    --bg-status: #f9f9f9;
+    
+    --text-primary: #1b1b1b;
+    --text-secondary: #5d5d5d;
+    --text-muted: #767676;
+    --text-placeholder: #8a8a8a;
+    
+    --border-subtle: rgba(0, 0, 0, 0.08);
+    --border-divider: rgba(0, 0, 0, 0.06);
+    --btn-hover: rgba(0, 0, 0, 0.06);
+    --btn-active: rgba(0, 0, 0, 0.1);
+    
+    --accent: #0067c0;
+    --accent-hover: #1879cd;
+    --status-saved: #107c10;
+    --status-saving: #d83b01;
+    --danger-hover: #c42b1c;
+    
+    --tab-height: 34px;
+    --header-height: 44px;
+    --status-height: 30px;
+    
+    --shadow-window: 0 8px 24px rgba(0, 0, 0, 0.08);
+    --shadow-tab-active: 0 1px 3px rgba(0, 0, 0, 0.07);
 }
 
+/* Fluent Dark Theme */
+:root[data-theme="dark"],
+body.dark-theme,
+[data-theme="dark"] {
+    --bg-window: #202020;
+    --bg-header: #1b1b1b;
+    --bg-tab: rgba(255, 255, 255, 0.04);
+    --bg-tab-hover: rgba(255, 255, 255, 0.08);
+    --bg-tab-active: #2b2b2b;
+    --border-tab-active: #4cc2ff;
+    --bg-editor: #282828;
+    --bg-status: #1e1e1e;
+    
+    --text-primary: #f3f3f3;
+    --text-secondary: #cccccc;
+    --text-muted: #999999;
+    --text-placeholder: #666666;
+    
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-divider: rgba(255, 255, 255, 0.06);
+    --btn-hover: rgba(255, 255, 255, 0.08);
+    --btn-active: rgba(255, 255, 255, 0.14);
+    
+    --accent: #4cc2ff;
+    --accent-hover: #6dd0ff;
+    --status-saved: #6ccb5f;
+    --status-saving: #fce100;
+    --danger-hover: #e81123;
+    
+    --shadow-window: 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-tab-active: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+/* Reset & Box Sizing */
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
-body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background-color: var(--bg-main);
-    color: var(--text-main);
-    line-height: 1.5;
-    padding: 24px;
-}
-
-.main-wrapper {
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-/* Header */
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 32px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border);
-}
-
-h1 {
-    font-size: 1.75rem;
-    font-weight: 700;
-}
-
-#total-notes-count {
-    color: var(--text-muted);
-    font-size: 0.875rem;
-}
-
-.header-right {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-}
-
-.search-bar input {
-    padding: 10px 16px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-    width: 280px;
-    outline: none;
-    transition: all 0.2s;
-}
-
-.search-bar input:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-/* Composer Area */
-.note-composer {
-    margin-bottom: 40px;
-    display: flex;
-    justify-content: center;
-}
-
-.composer-card {
-    background: var(--bg-card);
+html, body {
     width: 100%;
-    max-width: 650px;
-    padding: 16px;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow);
-    border: 1px solid var(--border);
-    transition: transform 0.2s;
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-window);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
 }
 
-textarea {
-    width: 100%;
-    min-height: 120px;
-    border: none;
-    font-family: inherit;
-    font-size: 1rem;
-    resize: vertical;
-    outline: none;
-    padding: 8px;
-}
-
-.preview-area img {
-    max-height: 200px;
-    border-radius: var(--radius-md);
-    margin: 10px 0;
-}
-
-.composer-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border);
-}
-
-.left-actions {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-}
-
-.icon-btn {
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: color 0.2s;
-    display: flex;
-}
-
-.icon-btn:hover {
-    color: var(--primary);
-}
-
-.color-picker {
-    display: flex;
-    gap: 8px;
-}
-
-.color-dot {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: all 0.2s;
-}
-
-.color-dot.active {
-    border-color: var(--primary);
-    transform: scale(1.1);
-}
-
-/* Note Cards Grid */
-.notes-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 20px;
-}
-
-.note-card {
-    background: var(--bg-card);
-    padding: 20px;
-    border-radius: var(--radius-lg);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    border: 1px solid var(--border);
-    position: relative;
-    transition: all 0.2s;
+/* Main Application Window Shell */
+.notepad-window {
     display: flex;
     flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    background-color: var(--bg-window);
+    overflow: hidden;
 }
 
-.note-card:hover {
-    box-shadow: var(--shadow);
-    transform: translateY(-2px);
-}
+/* ==========================================================================
+   Top Header: Tab Strip & Quick Toolbar
+   ========================================================================== */
 
-.note-card .note-text {
-    white-space: pre-wrap;
-    word-break: break-word;
-    margin-bottom: 12px;
-}
-
-.note-card .note-image {
-    width: 100%;
-    border-radius: var(--radius-md);
-    margin-top: 8px;
-    cursor: pointer;
-}
-
-.note-card .note-footer {
-    margin-top: auto;
+.notepad-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding-top: 12px;
-    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    justify-content: space-between;
+    height: var(--header-height);
+    background-color: var(--bg-header);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 0 10px 0 10px;
+    user-select: none;
+    gap: 12px;
 }
 
-.note-time {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-}
-
-.note-actions {
+/* Tabs Container & Tab Strip */
+.tab-bar-container {
     display: flex;
-    gap: 8px;
-    opacity: 0;
-    transition: opacity 0.2s;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+    gap: 4px;
 }
 
-.note-card:hover .note-actions {
+.tab-strip {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none; /* Firefox */
+}
+
+.tab-strip::-webkit-scrollbar {
+    display: none; /* Chrome/Edge/Safari */
+}
+
+/* Tab Item */
+.tab-item {
+    display: inline-flex;
+    align-items: center;
+    height: var(--tab-height);
+    max-width: 190px;
+    min-width: 110px;
+    padding: 0 8px 0 12px;
+    background-color: var(--bg-tab);
+    color: var(--text-secondary);
+    border-radius: 7px 7px 0 0;
+    font-size: 12.5px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    position: relative;
+    border: 1px solid transparent;
+    border-bottom: none;
+}
+
+.tab-item:hover {
+    background-color: var(--bg-tab-hover);
+    color: var(--text-primary);
+}
+
+.tab-item.active {
+    background-color: var(--bg-tab-active);
+    color: var(--text-primary);
+    font-weight: 500;
+    border-color: var(--border-subtle);
+    border-bottom: none;
+    box-shadow: var(--shadow-tab-active);
+}
+
+/* Tab Accent Indicator (Bottom pill or line) */
+.tab-item.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 8px;
+    right: 8px;
+    height: 2.5px;
+    background-color: var(--border-tab-active);
+    border-radius: 3px 3px 0 0;
+}
+
+.tab-title {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 6px;
+}
+
+/* Inline rename input */
+.tab-rename-input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: inherit;
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 1px 4px;
+    outline: none;
+}
+
+/* Tab Close Button */
+.tab-close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.65;
+    transition: all 0.15s ease;
+}
+
+.tab-item:hover .tab-close-btn,
+.tab-item.active .tab-close-btn {
     opacity: 1;
 }
 
-.action-btn {
-    background: transparent;
+.tab-close-btn:hover {
+    background-color: var(--btn-active);
+    color: var(--danger-hover);
+}
+
+/* Add Tab Plus Button */
+.add-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-bottom: 2px;
     border: none;
-    cursor: pointer;
-    color: var(--text-muted);
-    padding: 4px;
-    border-radius: 4px;
-}
-
-.action-btn:hover {
-    background: #f1f5f9;
-    color: var(--primary);
-}
-
-.action-btn.delete:hover {
-    color: var(--danger);
-}
-
-/* Buttons */
-.btn-primary {
-    background: var(--primary);
-    color: white;
-    padding: 8px 18px;
-    border-radius: var(--radius-md);
-    border: none;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.btn-primary:hover {
-    background: var(--primary-hover);
-}
-
-.btn-danger-outline {
+    border-radius: 5px;
     background: transparent;
-    color: var(--danger);
-    border: 1px solid var(--danger);
-    padding: 8px 16px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 18px;
+    font-weight: 300;
     cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.btn-danger-outline:hover {
-    background: var(--danger);
-    color: white;
+.add-tab-btn:hover {
+    background-color: var(--btn-hover);
+    color: var(--text-primary);
 }
 
-/* Modal */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
+.add-tab-btn:active {
+    background-color: var(--btn-active);
+}
+
+/* Quick Action Toolbar */
+.notepad-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tool-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 30px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.tool-btn:hover {
+    background-color: var(--btn-hover);
+}
+
+.tool-btn:active {
+    background-color: var(--btn-active);
+    transform: scale(0.96);
+}
+
+/* ==========================================================================
+   Main Editor Area
+   ========================================================================== */
+
+.notepad-editor-container {
+    flex: 1;
+    display: flex;
+    width: 100%;
+    min-height: 0;
+    position: relative;
+    background-color: var(--bg-editor);
+}
+
+.note-textarea {
+    flex: 1;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 16px 20px;
+    background-color: var(--bg-editor);
+    color: var(--text-primary);
+    font-family: 'Consolas', 'JetBrains Mono', 'Segoe UI Mono', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    letter-spacing: 0.2px;
+    tab-size: 2;
+    transition: filter 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.modal-content {
-    background: white;
-    margin: 10% auto;
-    padding: 24px;
-    width: 90%;
-    max-width: 600px;
-    border-radius: var(--radius-lg);
-    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+.note-textarea::placeholder {
+    color: var(--text-placeholder);
+    font-style: italic;
+    font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
-.modal-header {
+/* Privacy Mask Blur */
+.privacy-blur,
+.note-textarea.privacy-blur {
+    filter: blur(8px);
+    user-select: none;
+    transition: filter 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth custom scrollbars */
+.note-textarea::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.note-textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.note-textarea::-webkit-scrollbar-thumb {
+    background-color: var(--border-subtle);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+.note-textarea::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-muted);
+}
+
+/* ==========================================================================
+   Bottom Status Bar
+   ========================================================================== */
+
+.notepad-status-bar {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
+    height: var(--status-height);
+    background-color: var(--bg-status);
+    border-top: 1px solid var(--border-subtle);
+    padding: 0 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    user-select: none;
 }
 
-.close-modal {
-    font-size: 1.5rem;
-    cursor: pointer;
+.status-left,
+.status-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.save-status {
+    font-weight: 500;
+    transition: color 0.2s ease;
+}
+
+.save-status.saved {
+    color: var(--status-saved);
+}
+
+.save-status.saving {
+    color: var(--status-saving);
+}
+
+.status-item {
     color: var(--text-muted);
 }
 
-#editNoteInput {
-    width: 100%;
-    height: 200px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    margin-bottom: 16px;
+.status-divider {
+    color: var(--border-subtle);
+    font-size: 10px;
 }
 
-.modal-footer {
-    display: flex;
-    justify-content: flex-end;
-}
+/* ==========================================================================
+   Responsive Adaptations
+   ========================================================================== */
 
-/* Responsive */
-@media (max-width: 640px) {
-    .page-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 16px;
+@media (max-width: 480px) {
+    .tab-item {
+        min-width: 80px;
+        max-width: 140px;
+        padding: 0 6px 0 8px;
     }
 
-    .search-bar input {
-        width: 100%;
+    .tool-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 13px;
+    }
+
+    .note-textarea {
+        padding: 12px 14px;
+        font-size: 13.5px;
     }
 }

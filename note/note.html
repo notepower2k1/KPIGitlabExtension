@@ -1,91 +1,53 @@
 <!DOCTYPE html>
 <html lang="vi">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GitLab Productivity - Ghi chú cá nhân</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="note.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notepad - Ghi chú cá nhân</title>
+    <link rel="stylesheet" href="note.css">
 </head>
-
-<body>
-    <div class="main-wrapper">
-        <header class="page-header">
-            <div class="header-left">
-                <h1>📚 Ghi chú của tôi</h1>
-                <p id="total-notes-count">0 ghi chú đã lưu</p>
-            </div>
-            <div class="header-right">
-                <div class="search-bar">
-                    <input type="text" id="searchInput" placeholder="Tìm kiếm ghi chú..." />
+<body class="notepad-body">
+    <div class="notepad-window">
+        <!-- Windows 11 Fluent App Header: Tab Strip & Toolbar -->
+        <header class="notepad-header">
+            <div class="tab-bar-container">
+                <div id="tabStrip" class="tab-strip" role="tablist">
+                    <!-- Tab items dynamically rendered by note.js -->
+                    <div class="tab-item active" role="tab" aria-selected="true" data-tab-id="default">
+                        <span class="tab-title">Ghi chú 1</span>
+                        <button class="tab-close-btn" title="Đóng tab" aria-label="Đóng tab">×</button>
+                    </div>
                 </div>
-                <button id="clearAllBtn" class="btn-danger-outline">Xóa toàn bộ</button>
+                <button id="addTabBtn" class="add-tab-btn" title="Thêm tab mới (+)" aria-label="Thêm tab mới">+</button>
+            </div>
+
+            <div class="notepad-toolbar">
+                <button id="modeSwitchBtn" class="tool-btn" title="Chuyển chế độ Cửa sổ / Tab" aria-label="Chuyển chế độ">🗗</button>
+                <button id="privacyBtn" class="tool-btn" title="Bật/Tắt che mờ riêng tư" aria-label="Che mờ riêng tư">👁️</button>
+                <button id="copyAllBtn" class="tool-btn" title="Sao chép toàn bộ ghi chú" aria-label="Sao chép">📋</button>
+                <button id="themeToggleBtn" class="tool-btn" title="Đổi giao diện Sáng / Tối" aria-label="Đổi giao diện">🌓</button>
             </div>
         </header>
 
-        <div class="content-container">
-            <!-- Composer Area -->
-            <div class="note-composer">
-                <div class="composer-card">
-                    <textarea id="noteInput" placeholder="Nội dung ghi chú... (Hỗ trợ Paste hình ảnh)"></textarea>
+        <!-- Main Editor Area -->
+        <main class="notepad-editor-container">
+            <textarea id="noteTextarea" class="note-textarea" placeholder="Bắt đầu ghi chú..." spellcheck="false" autofocus></textarea>
+        </main>
 
-                    <div id="imagePreview" class="preview-area"></div>
-
-                    <div class="composer-actions">
-                        <div class="left-actions">
-                            <label for="imageInput" class="icon-btn" title="Chọn ảnh">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                    <circle cx="8.5" cy="8.5" r="1.5" />
-                                    <polyline points="21 15 16 10 5 21" />
-                                </svg>
-                                <input type="file" id="imageInput" accept="image/*" style="display: none;" />
-                            </label>
-
-                            <div class="color-picker" id="colorPicker">
-                                <div class="color-dot active" data-color="#ffffff" style="background: #ffffff;"></div>
-                                <div class="color-dot" data-color="#fef3c7" style="background: #fef3c7;"></div>
-                                <div class="color-dot" data-color="#d1fae5" style="background: #d1fae5;"></div>
-                                <div class="color-dot" data-color="#dbeafe" style="background: #dbeafe;"></div>
-                                <div class="color-dot" data-color="#fce7f3" style="background: #fce7f3;"></div>
-                            </div>
-                        </div>
-
-                        <button id="addBtn" class="btn-primary">Lưu ghi chú</button>
-                    </div>
-                </div>
+        <!-- Bottom Status Bar -->
+        <footer id="statusBar" class="notepad-status-bar">
+            <div class="status-left">
+                <span id="saveStatus" class="save-status saved">Đã lưu ✔</span>
             </div>
-
-            <!-- Notes Display Grid -->
-            <div id="notesContainer" class="notes-grid">
-                <!-- Notes will be injected here -->
+            <div class="status-right">
+                <span id="wordCount" class="status-item">0 từ</span>
+                <span class="status-divider">•</span>
+                <span id="charCount" class="status-item">0 ký tự</span>
             </div>
-        </div>
-    </div>
-
-    <!-- Edit Modal -->
-    <div id="editModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Chỉnh sửa ghi chú</h3>
-                <span class="close-modal">&times;</span>
-            </div>
-            <div class="modal-body">
-                <textarea id="editNoteInput"></textarea>
-                <div id="editImagePreview"></div>
-            </div>
-            <div class="modal-footer">
-                <button id="saveEditBtn" class="btn-primary">Cập nhật</button>
-            </div>
-        </div>
+        </footer>
     </div>
 
     <script src="../utils.js"></script>
     <script src="note.js"></script>
 </body>
-
 </html>
