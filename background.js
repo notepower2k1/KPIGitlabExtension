@@ -3,7 +3,31 @@
  * Handles:
  *   1. Periodic to-do reminder notifications
  *   2. Workday check-in & check-out alert notifications with snooze & URL integration
+ *   3. End-of-day unadded KPI tasks reminder with badge and desktop alert
  */
+
+// --- Helper Integration for Utils ---
+if (typeof importScripts === 'function') {
+    try {
+        importScripts('utils.js');
+    } catch (e) {
+        console.warn('Failed to importScripts utils.js:', e);
+    }
+} else if (typeof require !== 'undefined') {
+    try {
+        const u = require('./utils.js');
+        // Assign helpers if not globally present
+        if (typeof getTodayStartIso === 'undefined') global.getTodayStartIso = u.getTodayStartIso;
+        if (typeof filterUnaddedTasks === 'undefined') global.filterUnaddedTasks = u.filterUnaddedTasks;
+        if (typeof evaluateKpiReminderState === 'undefined') global.evaluateKpiReminderState = u.evaluateKpiReminderState;
+        if (typeof fetchTodayCreatedIssues === 'undefined') global.fetchTodayCreatedIssues = u.fetchTodayCreatedIssues;
+    } catch (e) {}
+}
+
+const _getTodayStartIso = (typeof getTodayStartIso === 'function') ? getTodayStartIso : ((typeof global !== 'undefined' && global.getTodayStartIso) || (typeof require !== 'undefined' && require('./utils.js').getTodayStartIso));
+const _filterUnaddedTasks = (typeof filterUnaddedTasks === 'function') ? filterUnaddedTasks : ((typeof global !== 'undefined' && global.filterUnaddedTasks) || (typeof require !== 'undefined' && require('./utils.js').filterUnaddedTasks));
+const _evaluateKpiReminderState = (typeof evaluateKpiReminderState === 'function') ? evaluateKpiReminderState : ((typeof global !== 'undefined' && global.evaluateKpiReminderState) || (typeof require !== 'undefined' && require('./utils.js').evaluateKpiReminderState));
+const _fetchTodayCreatedIssues = (typeof fetchTodayCreatedIssues === 'function') ? fetchTodayCreatedIssues : ((typeof global !== 'undefined' && global.fetchTodayCreatedIssues) || (typeof require !== 'undefined' && require('./utils.js').fetchTodayCreatedIssues));
 
 // --- Check-in & Check-out Helper Functions ---
 
@@ -191,6 +215,80 @@ async function checkCheckInOutAlerts() {
     }
 }
 
+// --- End-of-Day Unadded KPI Tasks Helper Function ---
+
+async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null) {
+    const data = await chrome.storage.local.get([
+        'AccessToken',
+        'checkOutTime',
+        'checkOutEnabled',
+        'kpiReminderEnabled',
+        'kpiReminderMinutesBefore',
+        'kpiReminderState',
+        'WorkItemIds',
+        'gitlabUrl'
+    ]);
+
+    const settings = {
+        enabled: data.kpiReminderEnabled !== false,
+        checkOutTime: data.checkOutTime || '18:00',
+        minutesBefore: Number(data.kpiReminderMinutesBefore ?? 15)
+    };
+
+    const currentState = data.kpiReminderState || {};
+    const evalResult = _evaluateKpiReminderState(now, settings, currentState);
+
+    if (evalResult.nextState && (
+        evalResult.nextState.lastDate !== currentState.lastDate ||
+        evalResult.nextState.count !== currentState.count ||
+        evalResult.nextState.done !== currentState.done ||
+        evalResult.nextState.lastNotified !== currentState.lastNotified
+    )) {
+        await chrome.storage.local.set({ kpiReminderState: evalResult.nextState });
+    }
+
+    if (!evalResult.shouldScan) {
+        return;
+    }
+
+    if (!data.AccessToken) {
+        return;
+    }
+
+    const todayStartIso = _getTodayStartIso(now);
+    const gitlabUrl = data.gitlabUrl || 'https://gitlab.widosoft.com';
+    const apiIssues = await _fetchTodayCreatedIssues(data.AccessToken, gitlabUrl, todayStartIso, customFetch);
+    const unaddedTasks = _filterUnaddedTasks(apiIssues, data.WorkItemIds || []);
+
+    if (unaddedTasks.length > 0) {
+        await chrome.storage.local.set({ UnaddedTodayTasks: unaddedTasks });
+
+        if (chrome.action && chrome.action.setBadgeText) {
+            chrome.action.setBadgeText({ text: '!' });
+            if (chrome.action.setBadgeBackgroundColor) {
+                chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' });
+            }
+        }
+
+        if (evalResult.shouldNotify) {
+            chrome.notifications.create('kpi-unadded-alert', {
+                type: 'basic',
+                iconUrl: chrome.runtime.getURL('icon48.png'),
+                title: '⚠️ Nhắc nhở KPI cuối ngày',
+                message: `Bạn có ${unaddedTasks.length} task tạo hôm nay chưa thêm vào KPI! Nhấn vào đây để xem và thêm ngay.`,
+                priority: 2,
+                requireInteraction: true
+            });
+        }
+    } else {
+        await chrome.storage.local.set({ UnaddedTodayTasks: [] });
+
+        if (chrome.action && chrome.action.setBadgeText) {
+            chrome.action.setBadgeText({ text: '' });
+        }
+    }
+}
+
 // --- Lifecycle Event Listeners ---
 
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalled) {
@@ -225,6 +323,18 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
         if (checkInOutDefaults.checkInOutUrl === undefined) toSet.checkInOutUrl = '';
         if (Object.keys(toSet).length > 0) {
             await chrome.storage.local.set(toSet);
+        }
+
+        // Cấu hình mặc định cho Nhắc nhở KPI chưa thêm cuối ngày
+        const kpiDefaults = await chrome.storage.local.get([
+            'kpiReminderEnabled',
+            'kpiReminderMinutesBefore'
+        ]);
+        const kpiToSet = {};
+        if (kpiDefaults.kpiReminderEnabled === undefined) kpiToSet.kpiReminderEnabled = true;
+        if (kpiDefaults.kpiReminderMinutesBefore === undefined) kpiToSet.kpiReminderMinutesBefore = 15;
+        if (Object.keys(kpiToSet).length > 0) {
+            await chrome.storage.local.set(kpiToSet);
         }
     });
 }
@@ -280,13 +390,34 @@ if (typeof chrome !== 'undefined' && chrome.alarms && chrome.alarms.onAlarm) {
 
     // 2. Check Workday Check-in & Check-out Alerts
     await checkCheckInOutAlerts();
+
+    // 3. Check End-of-Day Unadded KPI Tasks Reminder
+    try {
+        await checkUnaddedKpiTasksReminder();
+    } catch (e) {
+        console.error('Failed to check unadded KPI tasks reminder:', e);
+    }
     });
 }
 
-// Notification click handler: opens attendance URL or to-do page
+// Notification click handler: opens attendance URL, KPI popup, or to-do page
 async function handleNotificationClick(notifId) {
     if (!notifId || typeof notifId !== 'string') return;
-    if (notifId === 'checkin-alert' || notifId === 'checkout-alert' || notifId.startsWith('test-checkin-alert')) {
+    if (notifId === 'kpi-unadded-alert') {
+        chrome.notifications.clear(notifId);
+        if (chrome.action && typeof chrome.action.openPopup === 'function') {
+            try {
+                const res = chrome.action.openPopup();
+                if (res && typeof res.then === 'function') {
+                    await res;
+                }
+            } catch (err) {
+                chrome.tabs.create({ url: chrome.runtime.getURL('popup/popup.html') });
+            }
+        } else {
+            chrome.tabs.create({ url: chrome.runtime.getURL('popup/popup.html') });
+        }
+    } else if (notifId === 'checkin-alert' || notifId === 'checkout-alert' || notifId.startsWith('test-checkin-alert')) {
         const stateKey = notifId === 'checkin-alert' ? 'checkInState' : (notifId === 'checkout-alert' ? 'checkOutState' : null);
         const data = await chrome.storage.local.get(['checkInOutUrl', ...(stateKey ? [stateKey] : [])]);
 
@@ -322,6 +453,7 @@ if (typeof module !== 'undefined' && module.exports) {
         sanitizeAttendanceUrl,
         evaluateAlertState,
         checkCheckInOutAlerts,
-        handleNotificationClick
+        handleNotificationClick,
+        checkUnaddedKpiTasksReminder
     };
 }

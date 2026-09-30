@@ -205,4 +205,260 @@ const mockFetch = async (url, opts) => {
     assert.deepStrictEqual(failedResult, []);
 
     console.log('✔ Task 1 assertions passed!');
+
+    // --- Task 2: Background Service Worker Scheduler, Alarm & Notification Tests ---
+    console.log('\n--- Testing Task 2: Background Service Worker Scheduler & Notifications ---');
+
+    let mockStorage = {};
+    let createdNotifications = [];
+    let clearedNotifications = [];
+    let createdTabs = [];
+    let actionBadge = { text: null, color: null };
+    let openPopupCalled = false;
+    let openPopupShouldThrow = false;
+
+    global.chrome = {
+        runtime: {
+            onInstalled: { addListener: () => {} },
+            onStartup: { addListener: () => {} },
+            getURL: (pathStr) => `chrome-extension://mock-id/${pathStr}`
+        },
+        alarms: {
+            create: () => {},
+            onAlarm: { addListener: () => {} }
+        },
+        notifications: {
+            create: (id, options) => {
+                createdNotifications.push({ id, ...options });
+            },
+            clear: (id) => {
+                clearedNotifications.push(id);
+            },
+            onClicked: { addListener: () => {} }
+        },
+        action: {
+            setBadgeText: ({ text }) => {
+                actionBadge.text = text;
+            },
+            setBadgeBackgroundColor: ({ color }) => {
+                actionBadge.color = color;
+            },
+            openPopup: async () => {
+                openPopupCalled = true;
+                if (openPopupShouldThrow) throw new Error('openPopup failed');
+            }
+        },
+        storage: {
+            local: {
+                get: async (keys) => {
+                    if (typeof keys === 'string') {
+                        return { [keys]: mockStorage[keys] };
+                    }
+                    if (Array.isArray(keys)) {
+                        const result = {};
+                        keys.forEach(k => {
+                            if (mockStorage[k] !== undefined) result[k] = mockStorage[k];
+                        });
+                        return result;
+                    }
+                    return { ...mockStorage };
+                },
+                set: async (obj) => {
+                    Object.assign(mockStorage, obj);
+                },
+                remove: async (keys) => {
+                    const arr = Array.isArray(keys) ? keys : [keys];
+                    arr.forEach(k => delete mockStorage[k]);
+                }
+            }
+        },
+        tabs: {
+            create: (opts) => {
+                createdTabs.push(opts);
+            }
+        }
+    };
+
+    const background = require('../background.js');
+
+    // 2.1 Function existence & export
+    assert.strictEqual(
+        typeof background.checkUnaddedKpiTasksReminder,
+        'function',
+        'checkUnaddedKpiTasksReminder should be exported by background.js'
+    );
+
+    // Mock API fetcher for background scheduler tests
+    const mockGitlabFetch = async (url) => {
+        return {
+            ok: true,
+            json: async () => [
+                {
+                    id: 101,
+                    iid: 11,
+                    title: 'Task 1 (Already added)',
+                    web_url: 'https://gitlab.example.com/team/repo/-/issues/11',
+                    created_at: '2026-10-01T08:00:00Z'
+                },
+                {
+                    id: 102,
+                    iid: 12,
+                    title: 'Task 2 (Unadded)',
+                    web_url: 'https://gitlab.example.com/team/repo/-/issues/12',
+                    created_at: '2026-10-01T09:00:00Z'
+                }
+            ]
+        };
+    };
+
+    // 2.2 Triggers when time reaches reminder window, stores UnaddedTodayTasks, sets badge '!', creates notification
+    {
+        mockStorage = {
+            AccessToken: 'token-abc',
+            gitlabUrl: 'https://gitlab.example.com',
+            checkOutTime: '18:00',
+            kpiReminderMinutesBefore: 15,
+            kpiReminderEnabled: true,
+            WorkItemIds: [
+                { id: '11', href: 'https://gitlab.example.com/team/repo/-/issues/11' }
+            ],
+            kpiReminderState: {}
+        };
+        createdNotifications = [];
+        actionBadge = { text: null, color: null };
+
+        const triggerTime = new Date('2026-10-01T17:45:00'); // Thursday 17:45 (15 mins before 18:00)
+        await background.checkUnaddedKpiTasksReminder(triggerTime, mockGitlabFetch);
+
+        // Check storage contains UnaddedTodayTasks with Task 2
+        assert.ok(Array.isArray(mockStorage.UnaddedTodayTasks), 'UnaddedTodayTasks should be stored');
+        assert.strictEqual(mockStorage.UnaddedTodayTasks.length, 1, 'Should have 1 unadded task');
+        assert.strictEqual(mockStorage.UnaddedTodayTasks[0].id, '102');
+        assert.strictEqual(mockStorage.UnaddedTodayTasks[0].title, 'Task 2 (Unadded)');
+
+        // Check badge
+        assert.strictEqual(actionBadge.text, '!', 'Badge text should be set to "!"');
+        assert.strictEqual(actionBadge.color, '#f59e0b', 'Badge color should be #f59e0b');
+
+        // Check notification
+        assert.strictEqual(createdNotifications.length, 1, 'Should create 1 notification');
+        const notif = createdNotifications[0];
+        assert.strictEqual(notif.id, 'kpi-unadded-alert');
+        assert.ok(notif.title.includes('Nhắc nhở KPI'), 'Notification title should match');
+        assert.ok(notif.message.includes('1 task'), 'Notification message should indicate 1 unadded task');
+        assert.strictEqual(notif.priority, 2);
+        assert.strictEqual(notif.requireInteraction, true);
+
+        // Check state persisted
+        assert.strictEqual(mockStorage.kpiReminderState.count, 1);
+        assert.strictEqual(mockStorage.kpiReminderState.lastDate, '2026-10-01');
+        console.log('✔ Passed: Triggered reminder sets storage, badge "!", and desktop notification');
+    }
+
+    // 2.3 Clears badge and UnaddedTodayTasks when 0 unadded tasks
+    {
+        mockStorage = {
+            AccessToken: 'token-abc',
+            gitlabUrl: 'https://gitlab.example.com',
+            checkOutTime: '18:00',
+            kpiReminderMinutesBefore: 15,
+            kpiReminderEnabled: true,
+            WorkItemIds: [
+                { id: '11', href: 'https://gitlab.example.com/team/repo/-/issues/11' },
+                { id: '12', href: 'https://gitlab.example.com/team/repo/-/issues/12' }
+            ],
+            UnaddedTodayTasks: [{ id: '102', title: 'Task 2' }],
+            kpiReminderState: { lastDate: '2026-10-01', count: 1, done: false }
+        };
+        createdNotifications = [];
+        actionBadge = { text: '!', color: '#f59e0b' };
+
+        const checkTime = new Date('2026-10-01T17:50:00');
+        await background.checkUnaddedKpiTasksReminder(checkTime, mockGitlabFetch);
+
+        // UnaddedTodayTasks should be cleared or set to empty array
+        assert.deepStrictEqual(mockStorage.UnaddedTodayTasks, [], 'UnaddedTodayTasks should be empty array');
+        assert.strictEqual(actionBadge.text, '', 'Badge text should be cleared to ""');
+        assert.strictEqual(createdNotifications.length, 0, 'No notification should be created when 0 unadded tasks');
+        console.log('✔ Passed: 0 unadded tasks clears badge and empty UnaddedTodayTasks array');
+    }
+
+    // 2.4 Snooze cooldown: within 10 minutes, should scan but not send duplicate notification
+    {
+        mockStorage = {
+            AccessToken: 'token-abc',
+            gitlabUrl: 'https://gitlab.example.com',
+            checkOutTime: '18:00',
+            kpiReminderMinutesBefore: 15,
+            kpiReminderEnabled: true,
+            WorkItemIds: [
+                { id: '11', href: 'https://gitlab.example.com/team/repo/-/issues/11' }
+            ],
+            kpiReminderState: {
+                lastDate: '2026-10-01',
+                count: 1,
+                done: false,
+                lastNotified: new Date('2026-10-01T17:45:00').toISOString()
+            }
+        };
+        createdNotifications = [];
+        actionBadge = { text: null, color: null };
+
+        const snoozeTime = new Date('2026-10-01T17:48:00'); // 3 minutes later
+        await background.checkUnaddedKpiTasksReminder(snoozeTime, mockGitlabFetch);
+
+        assert.strictEqual(mockStorage.UnaddedTodayTasks.length, 1);
+        assert.strictEqual(actionBadge.text, '!');
+        assert.strictEqual(createdNotifications.length, 0, 'Should not dispatch notification during snooze cooldown');
+        console.log('✔ Passed: Snooze cooldown suppresses duplicate notification while maintaining badge');
+    }
+
+    // 2.5 Graceful exit when AccessToken is missing
+    {
+        mockStorage = {
+            AccessToken: '',
+            kpiReminderEnabled: true,
+            checkOutTime: '18:00',
+            kpiReminderMinutesBefore: 15,
+            kpiReminderState: {}
+        };
+        createdNotifications = [];
+        actionBadge = { text: null, color: null };
+
+        const triggerTime = new Date('2026-10-01T17:45:00');
+        await background.checkUnaddedKpiTasksReminder(triggerTime, mockGitlabFetch);
+
+        assert.strictEqual(createdNotifications.length, 0);
+        assert.strictEqual(actionBadge.text, null);
+        console.log('✔ Passed: Missing AccessToken exits gracefully');
+    }
+
+    // 2.6 Notification click routing for kpi-unadded-alert
+    {
+        clearedNotifications = [];
+        createdTabs = [];
+        openPopupCalled = false;
+        openPopupShouldThrow = false;
+
+        // When openPopup succeeds
+        await background.handleNotificationClick('kpi-unadded-alert');
+        assert.ok(clearedNotifications.includes('kpi-unadded-alert'), 'Must clear notification');
+        assert.strictEqual(openPopupCalled, true, 'Must call chrome.action.openPopup');
+        assert.strictEqual(createdTabs.length, 0, 'Must not open tab if openPopup succeeded');
+
+        // When openPopup throws, falls back to chrome.tabs.create with popup/popup.html
+        clearedNotifications = [];
+        createdTabs = [];
+        openPopupCalled = false;
+        openPopupShouldThrow = true;
+
+        await background.handleNotificationClick('kpi-unadded-alert');
+        assert.ok(clearedNotifications.includes('kpi-unadded-alert'), 'Must clear notification');
+        assert.strictEqual(createdTabs.length, 1, 'Must fallback to chrome.tabs.create when openPopup fails');
+        assert.ok(createdTabs[0].url.includes('popup/popup.html'), 'Tab URL must point to popup/popup.html');
+        console.log('✔ Passed: handleNotificationClick correctly routes kpi-unadded-alert and falls back to tab');
+    }
+
+    console.log('\n🎉 ALL TASK 1 & TASK 2 TESTS PASSED SUCCESSFULLY!');
 })();
+
