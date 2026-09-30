@@ -694,4 +694,254 @@ function calculateStats(data, customFilterVal = null, customMonth = null) {
         plannedSpentTimeVsTotalSpentTimeRate,
         unplannedSpentTimeVsTotalSpentTimeRate
     };
-}
+}
+
+function getTodayStartIso(now = new Date()) {
+    const d = (now instanceof Date && !isNaN(now.getTime())) ? now : new Date(now || Date.now());
+    const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    return midnight.toISOString();
+}
+
+function isTaskAlreadyAdded(issue, storedItems) {
+    if (!Array.isArray(storedItems) || storedItems.length === 0) return false;
+    const issueId = String(issue.id || '').trim();
+    const issueIid = String(issue.iid || issue.id || '').trim();
+    const issueHref = String(issue.web_url || issue.href || '').trim();
+    const normIssueHref = normalizeGitLabUrl(issueHref).toLowerCase();
+    const issueMatch = normIssueHref.match(/^(?:https?:\/\/[^\/]+)?\/(.+?)\/(?:issues|work_items|merge_requests)\/(\d+)$/i);
+
+    for (const stored of storedItems) {
+        if (!stored) continue;
+        const storedId = String(stored.id || stored.workItemId || '').trim();
+        const storedIid = String(stored.iid || '').trim();
+        const storedHref = String(stored.href || stored.taskUrl || stored.web_url || '').trim();
+        const normStoredHref = normalizeGitLabUrl(storedHref).toLowerCase();
+
+        // 1. Direct ID or IID match
+        if (storedId && (storedId === issueId || (issueIid && storedId === issueIid))) {
+            return true;
+        }
+        if (storedIid && (storedIid === issueIid || storedIid === issueId)) {
+            return true;
+        }
+
+        // 2. Direct normalized URL match
+        if (normIssueHref && normStoredHref && normIssueHref === normStoredHref) {
+            return true;
+        }
+
+        // 3. Match via isSameItem helper
+        if (isSameItem({ id: issue.id, href: issueHref, taskUrl: issueHref }, stored)) {
+            return true;
+        }
+
+        // 4. Project path and IID match across different URL schemas (/issues/ vs /work_items/)
+        if (issueMatch && normStoredHref) {
+            const storedMatch = normStoredHref.match(/^(?:https?:\/\/[^\/]+)?\/(.+?)\/(?:issues|work_items|merge_requests)\/(\d+)$/i);
+            if (storedMatch && issueMatch[1] === storedMatch[1] && issueMatch[2] === storedMatch[2]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function filterUnaddedTasks(apiIssues, storedWorkItems) {
+    if (!Array.isArray(apiIssues) || apiIssues.length === 0) return [];
+    const stored = Array.isArray(storedWorkItems) ? storedWorkItems : [];
+
+    const unadded = [];
+    for (const issue of apiIssues) {
+        if (!issue) continue;
+        if (!isTaskAlreadyAdded(issue, stored)) {
+            unadded.push({
+                id: String(issue.id),
+                iid: String(issue.iid || issue.id),
+                title: issue.title || '',
+                href: issue.web_url || issue.href || '',
+                createdAt: issue.created_at || issue.createdAt || ''
+            });
+        }
+    }
+    return unadded;
+}
+
+function evaluateKpiReminderState(now, settings = {}, state = {}) {
+    const d = (now instanceof Date && !isNaN(now.getTime())) ? now : new Date(now || Date.now());
+    const todayDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    let curState = { ...state };
+    if (curState.lastDate !== todayDateStr) {
+        curState = {
+            lastDate: todayDateStr,
+            count: 0,
+            done: false,
+            lastNotified: null
+        };
+    } else {
+        curState.count = typeof curState.count === 'number' ? curState.count : 0;
+        curState.done = !!curState.done;
+        curState.lastNotified = curState.lastNotified || null;
+    }
+
+    const enabled = (settings && typeof settings.enabled === 'boolean') ? settings.enabled : true;
+
+    // Non-workday check (Saturday = 6, Sunday = 0)
+    const day = d.getDay();
+    const isWorkday = (day >= 1 && day <= 5);
+    if (!isWorkday) {
+        return { shouldScan: false, shouldNotify: false, nextState: curState };
+    }
+
+    // Disabled or marked done for the day
+    if (!enabled || curState.done) {
+        return { shouldScan: false, shouldNotify: false, nextState: curState };
+    }
+
+    const checkOutTime = (settings && settings.checkOutTime) || '18:00';
+    const minutesBefore = (settings && typeof settings.minutesBefore === 'number') ? settings.minutesBefore : 15;
+    const parts = checkOutTime.split(':').map(Number);
+    const targetHour = isNaN(parts[0]) ? 18 : parts[0];
+    const targetMinute = isNaN(parts[1]) ? 0 : parts[1];
+    const targetTotalMins = targetHour * 60 + targetMinute - minutesBefore;
+    const currentTotalMins = d.getHours() * 60 + d.getMinutes();
+
+    // If current time < target: no scan and no notify
+    if (currentTotalMins < targetTotalMins) {
+        return { shouldScan: false, shouldNotify: false, nextState: curState };
+    }
+
+    // If current time >= target: scan is enabled to update UI/cache
+    const timeDiff = currentTotalMins - targetTotalMins;
+
+    // Optional snooze interval check if provided in settings
+    if (settings && typeof settings.snoozeMinutes === 'number' && settings.snoozeMinutes > 0 && curState.lastNotified) {
+        const minsSinceLast = (d.getTime() - new Date(curState.lastNotified).getTime()) / (60 * 1000);
+        if (minsSinceLast < settings.snoozeMinutes) {
+            return { shouldScan: true, shouldNotify: false, nextState: curState };
+        }
+    }
+
+    // Notify if count < 2 (max 2 alerts per day) and within 60 minutes of target
+    if (curState.count < 2 && timeDiff <= 60) {
+        return {
+            shouldScan: true,
+            shouldNotify: true,
+            nextState: {
+                ...curState,
+                count: curState.count + 1,
+                lastNotified: d.toISOString()
+            }
+        };
+    }
+
+    return {
+        shouldScan: true,
+        shouldNotify: false,
+        nextState: curState
+    };
+}
+
+async function fetchTodayCreatedIssues(token, baseUrl, todayStartIso, customFetch = (typeof fetch !== 'undefined' ? fetch : null)) {
+    if (!token || !baseUrl || !todayStartIso) {
+        return [];
+    }
+    const fetchFn = customFetch || (typeof fetch !== 'undefined' ? fetch : null);
+    if (typeof fetchFn !== 'function') {
+        return [];
+    }
+    const cleanBase = String(baseUrl).trim().replace(/\/+$/, '');
+    const url = `${cleanBase}/api/v4/issues?scope=created_by_me&state=opened&created_after=${encodeURIComponent(todayStartIso)}&per_page=100`;
+
+    try {
+        const response = await fetchFn(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response || !response.ok) {
+            return [];
+        }
+        const data = await response.json();
+        return Array.isArray(data) ? data : [];
+    } catch (err) {
+        return [];
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.deletelocalStorage = deletelocalStorage;
+    window.getStoredIds = getStoredIds;
+    window.getAccessToken = getAccessToken;
+    window.removeIdFromStorage = removeIdFromStorage;
+    window.getUserProfile = getUserProfile;
+    window.compareDate = compareDate;
+    window.formatDate = formatDate;
+    window.isInPreviousWeek = isInPreviousWeek;
+    window.linkify = linkify;
+    window.getCurrentWeekDates = getCurrentWeekDates;
+    window.cleanGroupName = cleanGroupName;
+    window.parseToIsoDate = parseToIsoDate;
+    window.getMonday = getMonday;
+    window.getCurrentWeekRange = getCurrentWeekRange;
+    window.getWeeksOfMonth = getWeeksOfMonth;
+    window.getRecentMonths = getRecentMonths;
+    window.getAvailableMonths = getAvailableMonths;
+    window.isDateInWeek = isDateInWeek;
+    window.matchesFilter = matchesFilter;
+    window.isItemActiveInWeek = isItemActiveInWeek;
+    window.isItemCarryOver = isItemCarryOver;
+    window.isItemActiveInFilter = isItemActiveInFilter;
+    window.getWeeksForRange = getWeeksForRange;
+    window.normalizeGitLabUrl = normalizeGitLabUrl;
+    window.isSameItem = isSameItem;
+    window.getAttitudeScore = getAttitudeScore;
+    window.getVolumeScore = getVolumeScore;
+    window.getQualityScore = getQualityScore;
+    window.calculateKpiScore = calculateKpiScore;
+    window.calculateStats = calculateStats;
+    window.getTodayStartIso = getTodayStartIso;
+    window.filterUnaddedTasks = filterUnaddedTasks;
+    window.evaluateKpiReminderState = evaluateKpiReminderState;
+    window.fetchTodayCreatedIssues = fetchTodayCreatedIssues;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        deletelocalStorage,
+        getStoredIds,
+        getAccessToken,
+        removeIdFromStorage,
+        getUserProfile,
+        compareDate,
+        formatDate,
+        isInPreviousWeek,
+        linkify,
+        getCurrentWeekDates,
+        cleanGroupName,
+        parseToIsoDate,
+        getMonday,
+        getCurrentWeekRange,
+        getWeeksOfMonth,
+        getRecentMonths,
+        getAvailableMonths,
+        isDateInWeek,
+        matchesFilter,
+        isItemActiveInWeek,
+        isItemCarryOver,
+        isItemActiveInFilter,
+        getWeeksForRange,
+        normalizeGitLabUrl,
+        isSameItem,
+        getAttitudeScore,
+        getVolumeScore,
+        getQualityScore,
+        calculateKpiScore,
+        calculateStats,
+        getTodayStartIso,
+        filterUnaddedTasks,
+        evaluateKpiReminderState,
+        fetchTodayCreatedIssues
+    };
+}
+
