@@ -207,7 +207,7 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '') {
                 ${safeParentTitle ? `<div class="gl-kpi-modal-subtitle">${safeParentTitle}</div>` : ''}
             </div>
             <div class="gl-kpi-header-actions">
-                <button id="glKpiAddAllBtn" class="btn btn-sm btn-success gl-button">➕ Thêm tất cả vào KPI</button>
+                <button id="glKpiAddAllBtn" class="btn btn-sm btn-success gl-button"${!tasks || tasks.length === 0 ? ' disabled style="opacity: 0.6; cursor: not-allowed;"' : ''}>➕ Thêm tất cả vào KPI</button>
                 <button id="glKpiRefreshBtn" class="btn btn-sm btn-default gl-button">🔄 Làm mới</button>
                 <span id="glKpiCloseBtn" class="gl-kpi-close-icon" title="Đóng">&times;</span>
             </div>
@@ -602,7 +602,7 @@ function extractChildTasksFromDom(container = (typeof document !== 'undefined' ?
     items.forEach(li => {
         const linkChild = li.querySelector('div[data-testid="links-child"]');
         let id = linkChild?.getAttribute('parent-work-item-id');
-        const anchor = li.querySelector('a');
+        const anchor = li.querySelector('a[href*="/work_items/"], a[href*="/issues/"]') || li.querySelector('a');
         const href = anchor ? (anchor.getAttribute('href') || anchor.href || '') : '';
 
         if (!id && href) {
@@ -945,7 +945,7 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                                     const diff = roundToOneDecimal(est - spent);
                                     const isUnplanned = labels?.labels?.nodes?.some(l => l.title?.toLowerCase() === 'unplanned') || t.isUnplanned;
                                     const isLate = (detail.state === 'closed' && detail.closedAt && startAndDueDate?.dueDate)
-                                        ? (new Date(detail.closedAt) > new Date(startAndDueDate.dueDate))
+                                        ? (detail.closedAt.slice(0, 10) > startAndDueDate.dueDate)
                                         : t.isLate;
 
                                     return {
