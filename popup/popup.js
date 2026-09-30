@@ -59,7 +59,7 @@ function openNoteTab() {
     document.getElementById("tutorial-btn").addEventListener("click", () => {
         // Open new tab
         // chrome.tabs.create({ url: "https://gitlab.widosoft.com/-/user_settings/personal_access_tokens" });
-        chrome.tabs.create({ url: chrome.runtime.getURL("../tutorial/tutorial.html") });
+        chrome.tabs.create({ url: chrome.runtime.getURL("tutorial/tutorial.html") });
     })
 
 
@@ -74,7 +74,7 @@ function openNoteTab() {
         document.getElementById("avatar-link").href = user.web_url;
 
         document.getElementById("manage-btn").onclick = () => {
-            chrome.tabs.create({ url: chrome.runtime.getURL("../page/page.html") });
+            chrome.tabs.create({ url: chrome.runtime.getURL("page/page.html") });
         };
 
         const gitlabUsername = user?.username || '';
@@ -119,7 +119,7 @@ function openNoteTab() {
         const todoBtn = document.getElementById("todo-btn");
         if (todoBtn) {
             todoBtn.onclick = () => {
-                chrome.tabs.create({ url: chrome.runtime.getURL("../todo/todo.html") });
+                chrome.tabs.create({ url: chrome.runtime.getURL("todo/todo.html") });
             };
         }
 
