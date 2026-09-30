@@ -2014,4 +2014,285 @@ tfoot tr td {
 .chart-wrapper canvas {
     max-width: 100%;
     max-height: 100%;
+}
+
+/* Styling cho Ngày Nghỉ Phép / Lễ trên Timesheet */
+.timesheet-day-cell.day-leave {
+    background: rgba(168, 85, 247, 0.08);
+    border-color: #a855f7;
+}
+
+.timesheet-day-cell.day-leave .timesheet-day-status {
+    color: #7e22ce;
+    font-weight: 600;
+}
+
+.timesheet-day-cell.day-leave-half-success {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: #6366f1;
+}
+
+.timesheet-day-cell.day-leave-half-success .timesheet-day-status {
+    color: #4338ca;
+    font-weight: 600;
+}
+
+.timesheet-chip.chip-leave {
+    background: rgba(168, 85, 247, 0.1);
+    color: #7e22ce;
+    border: 1px solid #d8b4fe;
+}
+
+/* Modal Chi Tiết Ngày & Thiết Lập Nghỉ Phép */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 540px;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-12px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.modal-icon {
+    font-size: 1.25rem;
+}
+
+.modal-title-wrap h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.modal-close-btn:hover {
+    background: #f1f5f9;
+    color: var(--text-main);
+}
+
+.modal-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.modal-stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+}
+
+.modal-stat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 2px;
+}
+
+.modal-stat-box .stat-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.modal-stat-box .stat-val {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.modal-stat-box .stat-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.leave-setting-card {
+    background: #faf5ff;
+    border: 1px solid #e9d5ff;
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.leave-setting-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #6b21a8;
+}
+
+.leave-options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.leave-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.leave-radio-label:hover {
+    background: rgba(168, 85, 247, 0.1);
+}
+
+.leave-radio-label input[type="radio"] {
+    accent-color: #9333ea;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.leave-reason-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.leave-reason-field label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.leave-reason-field input {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    background: #ffffff;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.leave-reason-field input:focus {
+    border-color: #9333ea;
+}
+
+.leave-actions-row {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.leave-actions-row button {
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.modal-tasks-section h4 {
+    margin: 0 0 10px 0;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.modal-tasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.modal-task-item {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #f8fafc;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.825rem;
+}
+
+.modal-task-item .task-item-title {
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.modal-task-item .task-item-spent {
+    font-weight: 700;
+    color: var(--primary);
+    white-space: nowrap;
 }

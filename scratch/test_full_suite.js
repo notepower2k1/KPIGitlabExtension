@@ -72,6 +72,7 @@ runSubSuite('Collapsible Sections Feature', 'scratch/test_collapse_feature.js');
 runSubSuite('Daily Timesheet Audit Subsystem', 'scratch/test_timesheet_audit.js');
 runSubSuite('Monthly Chart Aggregation & Rendering', 'scratch/test_chart_aggregation.js');
 runSubSuite('Tab Controller & Monthly Synchronization', 'scratch/test_tab_controller.js');
+runSubSuite('Leave Days (1-day & 0.5-day) Subsystem', 'scratch/test_leave_days.js');
 
 // --- 2. EXTENSION-WIDE JS SYNTAX VALIDATION ---
 printHeader('EXTENSION-WIDE JAVASCRIPT SYNTAX VALIDATION');

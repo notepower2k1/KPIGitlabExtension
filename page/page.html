@@ -235,6 +235,74 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal Chi Tiết Ngày & Thiết Lập Ngày Nghỉ -->
+    <div id="dayDetailModal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="modal-icon">📅</span>
+                    <h3 id="modalDayTitle">Chi tiết ngày làm việc</h3>
+                </div>
+                <button id="closeDayModalBtn" class="modal-close-btn" type="button" title="Đóng">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-stats-row">
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Thời gian đã log:</span>
+                        <span class="stat-val" id="modalDaySpent">0h</span>
+                    </div>
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Chỉ tiêu ngày:</span>
+                        <span class="stat-val" id="modalDayTarget">8.0h</span>
+                    </div>
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Trạng thái:</span>
+                        <span class="stat-badge" id="modalDayStatusBadge">Đạt chuẩn</span>
+                    </div>
+                </div>
+
+                <!-- Thiết lập ngày nghỉ -->
+                <div class="leave-setting-card">
+                    <div class="leave-setting-title">
+                        <span>🏖️ Thiết lập ngày nghỉ phép / Nghỉ lễ:</span>
+                    </div>
+                    <div class="leave-options-list">
+                        <label class="leave-radio-label">
+                            <input type="radio" name="modalLeaveType" value="none" id="radioLeaveNone">
+                            <span class="radio-custom"></span>
+                            <span class="radio-text">💼 Ngày làm việc bình thường (Chỉ tiêu 8h)</span>
+                        </label>
+                        <label class="leave-radio-label">
+                            <input type="radio" name="modalLeaveType" value="half" id="radioLeaveHalf">
+                            <span class="radio-custom"></span>
+                            <span class="radio-text">🌓 Nghỉ nửa ngày (0.5 ngày - Chỉ tiêu 4h)</span>
+                        </label>
+                        <label class="leave-radio-label">
+                            <input type="radio" name="modalLeaveType" value="full" id="radioLeaveFull">
+                            <span class="radio-custom"></span>
+                            <span class="radio-text">🏖️ Nghỉ cả ngày (1.0 ngày - Chỉ tiêu 0h)</span>
+                        </label>
+                    </div>
+                    <div class="leave-reason-field">
+                        <label for="modalLeaveReason">Lý do nghỉ (tùy chọn):</label>
+                        <input type="text" id="modalLeaveReason" placeholder="VD: Nghỉ phép năm, khám bệnh, việc cá nhân, nghỉ lễ...">
+                    </div>
+                    <div class="leave-actions-row">
+                        <button id="saveLeaveDayBtn" class="btn-primary" type="button">💾 Lưu thiết lập ngày</button>
+                    </div>
+                </div>
+
+                <!-- Danh sách công việc -->
+                <div class="modal-tasks-section">
+                    <h4>📋 Công việc đã ghi nhận trong ngày (<span id="modalTasksCount">0</span>):</h4>
+                    <div id="modalTasksList" class="modal-tasks-list">
+                        <!-- Task items -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

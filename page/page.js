@@ -3797,13 +3797,15 @@ function normalizeDateToIso(dateVal) {
     return '';
 }
 
-function calculateMonthlyTimesheet(items = [], selYear, selMonth, refDate = new Date()) {
+function calculateMonthlyTimesheet(items = [], selYear, selMonth, refDate = new Date(), leaveDaysMap = null) {
     let year, month;
     if (typeof selYear === 'string' && selYear.includes('-')) {
         const parts = selYear.split('-');
         year = Number(parts[0]);
         month = Number(parts[1]);
-        if (selMonth instanceof Date || (typeof selMonth === 'string' && !refDate)) {
+        if (selMonth && typeof selMonth === 'object' && !(selMonth instanceof Date)) {
+            leaveDaysMap = selMonth;
+        } else if (selMonth instanceof Date) {
             refDate = selMonth;
         }
     } else {
@@ -3837,7 +3839,22 @@ function calculateMonthlyTimesheet(items = [], selYear, selMonth, refDate = new 
         const dayName = dayNames[dayOfWeek];
         const isFuture = dateIso > refIso;
         const isPastOrToday = !isFuture;
-        const targetHours = isWeekend ? 0 : 8.0;
+        let isLeave = false;
+        let leaveValue = 0;
+        let leaveType = 'none';
+        let leaveReason = '';
+        let targetHours = isWeekend ? 0 : 8.0;
+
+        if (leaveDaysMap && leaveDaysMap[dateIso]) {
+            const leave = leaveDaysMap[dateIso];
+            isLeave = true;
+            leaveValue = typeof leave === 'number' ? leave : (leave.value !== undefined ? leave.value : (leave.type === 'half' ? 0.5 : 1.0));
+            leaveType = leave.type || (leaveValue === 0.5 ? 'half' : 'full');
+            leaveReason = leave.reason || '';
+            if (!isWeekend) {
+                targetHours = Math.max(0, Math.round((8.0 - (leaveValue * 8.0)) * 10) / 10);
+            }
+        }
 
         const dayTasks = itemsByDate.get(dateIso) || [];
         let totalSpentOnDay = 0;
@@ -3860,6 +3877,18 @@ function calculateMonthlyTimesheet(items = [], selYear, selMonth, refDate = new 
         } else if (isWeekend) {
             status = 'weekend';
             diffHours = Math.round(spentHours * 10) / 10;
+        } else if (leaveValue >= 1.0) {
+            status = 'leave';
+            diffHours = spentHours;
+        } else if (leaveValue === 0.5) {
+            diffHours = Math.round((spentHours - 4.0) * 10) / 10;
+            if (spentHours >= 4.0) {
+                status = 'leave-half-success';
+            } else if (spentHours > 0) {
+                status = 'warning';
+            } else {
+                status = 'danger';
+            }
         } else {
             diffHours = Math.round((spentHours - 8.0) * 10) / 10;
             if (spentHours >= 8.0) {
@@ -3882,25 +3911,32 @@ function calculateMonthlyTimesheet(items = [], selYear, selMonth, refDate = new 
             isWeekend,
             isFuture,
             isPastOrToday,
+            isLeave,
+            leaveValue,
+            leaveType,
+            leaveReason,
             status,
             diffHours,
             taskItems: dayTasks
         });
     }
 
-    const totalWorkingDays = days.filter(d => !d.isWeekend).length;
-    const totalTargetHours = totalWorkingDays * 8;
+    const baseWorkingDays = days.filter(d => !d.isWeekend).length;
+    const totalLeaveDays = Math.round(days.filter(d => !d.isWeekend && d.isLeave).reduce((sum, d) => sum + d.leaveValue, 0) * 10) / 10;
+    const totalWorkingDays = Math.max(0, Math.round((baseWorkingDays - totalLeaveDays) * 10) / 10);
+    const totalTargetHours = Math.round(days.filter(d => !d.isWeekend).reduce((sum, d) => sum + d.targetHours, 0) * 10) / 10;
     const totalSpentHours = Math.round(days.reduce((sum, d) => sum + d.spentHours, 0) * 10) / 10;
-    const deficitDaysCount = days.filter(d => d.isPastOrToday && !d.isWeekend && d.spentHours < 8.0).length;
+    const deficitDaysCount = days.filter(d => d.isPastOrToday && !d.isWeekend && d.spentHours < d.targetHours && d.targetHours > 0).length;
     const achievementRate = totalTargetHours > 0
         ? Math.round((totalSpentHours / totalTargetHours) * 1000) / 10
-        : 0;
+        : (totalSpentHours > 0 ? 100 : 0);
 
     return {
         days,
         totalWorkingDays,
         totalTargetHours,
         totalSpentHours,
+        totalLeaveDays,
         deficitDaysCount,
         achievementRate
     };
@@ -3947,6 +3983,14 @@ function renderDailyTimesheet(timesheetData) {
             chipDeficit.innerHTML = `⚠️ Thiếu giờ: <strong>${deficitDaysCount} ngày</strong>`;
         }
         chipsContainer.appendChild(chipDeficit);
+
+        // 5. Số ngày nghỉ phép / lễ (nếu có)
+        if (timesheetData.totalLeaveDays > 0) {
+            const chipLeave = document.createElement('div');
+            chipLeave.className = 'timesheet-chip chip-leave';
+            chipLeave.innerHTML = `🏖️ Nghỉ phép/Lễ: <strong>${timesheetData.totalLeaveDays} ngày (-${Math.round(timesheetData.totalLeaveDays * 8 * 10) / 10}h chỉ tiêu)</strong>`;
+            chipsContainer.appendChild(chipLeave);
+        }
     }
 
     if (gridContainer) {
@@ -3955,6 +3999,7 @@ function renderDailyTimesheet(timesheetData) {
             const cell = document.createElement('div');
             cell.className = `timesheet-day-cell day-${day.status}`;
             cell.setAttribute('data-date', day.dateIso);
+            cell.style.cursor = 'pointer';
 
             const header = document.createElement('div');
             header.className = 'timesheet-day-cell-header';
@@ -3984,6 +4029,8 @@ function renderDailyTimesheet(timesheetData) {
                 diffDiv.textContent = '';
             } else if (day.isWeekend) {
                 diffDiv.textContent = day.spentHours > 0 ? `+${day.spentHours}h` : '';
+            } else if (day.status === 'leave') {
+                diffDiv.textContent = day.spentHours > 0 ? `+${day.spentHours}h` : '';
             } else {
                 if (day.diffHours > 0) {
                     diffDiv.textContent = `+${day.diffHours}h`;
@@ -4004,6 +4051,14 @@ function renderDailyTimesheet(timesheetData) {
             let statusIcon = '';
             let statusLabel = '';
             switch (day.status) {
+                case 'leave':
+                    statusIcon = '🏖️';
+                    statusLabel = day.leaveReason ? `Nghỉ: ${day.leaveReason}` : 'Nghỉ cả ngày';
+                    break;
+                case 'leave-half-success':
+                    statusIcon = '🌓';
+                    statusLabel = day.leaveReason ? `Nghỉ (0.5d): ${day.leaveReason}` : 'Nghỉ 0.5d (Đủ 4h)';
+                    break;
                 case 'success':
                     statusIcon = '✅';
                     statusLabel = 'Đạt chuẩn';
@@ -4014,7 +4069,7 @@ function renderDailyTimesheet(timesheetData) {
                     break;
                 case 'danger':
                     statusIcon = '❌';
-                    statusLabel = 'Chưa log (-8h)';
+                    statusLabel = day.targetHours === 4 ? 'Chưa log (-4h)' : 'Chưa log (-8h)';
                     break;
                 case 'weekend':
                     statusIcon = '☕';
@@ -4038,26 +4093,209 @@ function renderDailyTimesheet(timesheetData) {
                         const title = it.title || it.taskUrl || `Công việc #${idx + 1}`;
                         const sp = typeof it.spent === 'number' ? it.spent : (parseFloat(it.spent) || 0);
                         return `• [${sp}h] ${title}`;
-                    })
+                    }),
+                    '─────────────────────────',
+                    '👉 Bấm để xem chi tiết hoặc thiết lập ngày nghỉ'
                 ];
                 cell.title = tooltipLines.join('\n');
-            } else if (!day.isFuture && !day.isWeekend) {
-                cell.title = `${day.dayName}, ngày ${day.dayNum}/${day.dateIso.slice(5, 7)}: Chưa có giờ log nào!`;
+            } else {
+                cell.title = `${day.dayName}, ngày ${day.dayNum}/${day.dateIso.slice(5, 7)}\n👉 Bấm để xem chi tiết hoặc thiết lập ngày nghỉ`;
             }
 
             cell.addEventListener('click', () => {
-                if (day.taskItems && day.taskItems.length > 0) {
-                    const taskLines = day.taskItems.map(it => {
-                        const sp = typeof it.spent === 'number' ? it.spent : (parseFloat(it.spent) || 0);
-                        return `• [${sp}h] ${it.title || it.taskUrl || 'Công việc'}`;
-                    }).join('\n');
-                    alert(`📋 Chi tiết Log Time ngày ${day.dateIso} (${day.dayName}):\nTổng đã log: ${day.spentHours}h / Chỉ tiêu: ${day.targetHours}h\n\nDanh sách công việc:\n${taskLines}`);
-                } else if (!day.isFuture && !day.isWeekend) {
-                    alert(`⚠️ Ngày ${day.dateIso} (${day.dayName}) chưa có giờ log nào (0h / 8h)!`);
+                if (typeof openDayDetailModal === 'function') {
+                    openDayDetailModal(day);
                 }
             });
 
             gridContainer.appendChild(cell);
+        });
+    }
+}
+
+// --- Leave Days & Day Detail Modal ---
+
+async function getLeaveDays() {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        return new Promise(resolve => {
+            chrome.storage.local.get(['KpiLeaveDays'], result => {
+                resolve(result['KpiLeaveDays'] || {});
+            });
+        });
+    } else if (typeof window !== 'undefined') {
+        return window._kpiLeaveDays || {};
+    }
+    return {};
+}
+
+async function saveLeaveDay(dateIso, leaveInfo) {
+    if (!dateIso) return {};
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        return new Promise(resolve => {
+            chrome.storage.local.get(['KpiLeaveDays'], result => {
+                const leaveMap = result['KpiLeaveDays'] || {};
+                if (!leaveInfo || leaveInfo.type === 'none' || leaveInfo.value === 0) {
+                    delete leaveMap[dateIso];
+                } else {
+                    leaveMap[dateIso] = leaveInfo;
+                }
+                chrome.storage.local.set({ 'KpiLeaveDays': leaveMap }, () => {
+                    if (typeof window !== 'undefined') window._kpiLeaveDays = leaveMap;
+                    resolve(leaveMap);
+                });
+            });
+        });
+    } else if (typeof window !== 'undefined') {
+        if (!window._kpiLeaveDays) window._kpiLeaveDays = {};
+        if (!leaveInfo || leaveInfo.type === 'none' || leaveInfo.value === 0) {
+            delete window._kpiLeaveDays[dateIso];
+        } else {
+            window._kpiLeaveDays[dateIso] = leaveInfo;
+        }
+        return window._kpiLeaveDays;
+    }
+    return {};
+}
+
+function openDayDetailModal(day) {
+    if (!day || typeof document === 'undefined') return;
+    const modal = document.getElementById('dayDetailModal');
+    if (!modal) return;
+
+    window._currentModalDateIso = day.dateIso;
+
+    // Header title
+    const titleEl = document.getElementById('modalDayTitle');
+    if (titleEl) {
+        titleEl.textContent = `Chi tiết ngày ${day.dateIso} (${day.dayName})`;
+    }
+
+    // Stats
+    const spentEl = document.getElementById('modalDaySpent');
+    if (spentEl) spentEl.textContent = `${day.spentHours}h`;
+
+    const targetEl = document.getElementById('modalDayTarget');
+    if (targetEl) targetEl.textContent = `${day.targetHours}h`;
+
+    const badgeEl = document.getElementById('modalDayStatusBadge');
+    if (badgeEl) {
+        if (day.isLeave) {
+            badgeEl.textContent = day.leaveType === 'half' ? 'Nghỉ 0.5 ngày' : 'Nghỉ cả ngày (1.0d)';
+            badgeEl.style.background = 'rgba(168, 85, 247, 0.15)';
+            badgeEl.style.color = '#7e22ce';
+        } else if (day.status === 'success') {
+            badgeEl.textContent = 'Đạt chuẩn (>= 8h)';
+            badgeEl.style.background = 'rgba(16, 185, 129, 0.15)';
+            badgeEl.style.color = '#047857';
+        } else if (day.status === 'warning') {
+            badgeEl.textContent = `Thiếu ${Math.abs(day.diffHours)}h`;
+            badgeEl.style.background = 'rgba(245, 158, 11, 0.15)';
+            badgeEl.style.color = '#b45309';
+        } else if (day.status === 'danger') {
+            badgeEl.textContent = 'Chưa log (0h)';
+            badgeEl.style.background = 'rgba(239, 68, 68, 0.15)';
+            badgeEl.style.color = '#b91c1c';
+        } else if (day.status === 'weekend') {
+            badgeEl.textContent = 'Cuối tuần';
+            badgeEl.style.background = 'rgba(100, 116, 139, 0.15)';
+            badgeEl.style.color = '#475569';
+        } else {
+            badgeEl.textContent = 'Chưa tới';
+            badgeEl.style.background = 'rgba(148, 163, 184, 0.15)';
+            badgeEl.style.color = '#64748b';
+        }
+    }
+
+    // Radio
+    const radioNone = document.getElementById('radioLeaveNone');
+    const radioHalf = document.getElementById('radioLeaveHalf');
+    const radioFull = document.getElementById('radioLeaveFull');
+    if (day.isLeave && day.leaveType === 'half') {
+        if (radioHalf) radioHalf.checked = true;
+    } else if (day.isLeave && (day.leaveType === 'full' || day.leaveValue === 1.0)) {
+        if (radioFull) radioFull.checked = true;
+    } else {
+        if (radioNone) radioNone.checked = true;
+    }
+
+    // Reason
+    const reasonInput = document.getElementById('modalLeaveReason');
+    if (reasonInput) {
+        reasonInput.value = day.leaveReason || '';
+    }
+
+    // Task list
+    const countEl = document.getElementById('modalTasksCount');
+    if (countEl) countEl.textContent = String(day.taskItems ? day.taskItems.length : 0);
+
+    const listEl = document.getElementById('modalTasksList');
+    if (listEl) {
+        listEl.innerHTML = '';
+        if (day.taskItems && day.taskItems.length > 0) {
+            day.taskItems.forEach(it => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'modal-task-item';
+                const sp = typeof it.spent === 'number' ? it.spent : (parseFloat(it.spent) || 0);
+                const title = it.title || it.taskUrl || 'Công việc';
+                itemDiv.innerHTML = `
+                    <span class="task-item-title" title="${title}">${title}</span>
+                    <span class="task-item-spent">${sp}h</span>
+                `;
+                listEl.appendChild(itemDiv);
+            });
+        } else {
+            listEl.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">Chưa có công việc nào ghi nhận trong ngày này.</div>';
+        }
+    }
+
+    modal.style.display = 'flex';
+}
+
+function initDayDetailModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('dayDetailModal');
+    if (!modal || modal._modalInitialized) return;
+    modal._modalInitialized = true;
+
+    const closeBtn = document.getElementById('closeDayModalBtn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    }
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    const saveBtn = document.getElementById('saveLeaveDayBtn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const dateIso = window._currentModalDateIso;
+            if (!dateIso) return;
+
+            const selectedRadio = document.querySelector('input[name="modalLeaveType"]:checked');
+            const selectedType = selectedRadio ? selectedRadio.value : 'none';
+            const reasonInput = document.getElementById('modalLeaveReason');
+            const reason = reasonInput ? reasonInput.value.trim() : '';
+
+            let leaveInfo = null;
+            if (selectedType === 'full') {
+                leaveInfo = { value: 1.0, type: 'full', reason: reason };
+            } else if (selectedType === 'half') {
+                leaveInfo = { value: 0.5, type: 'half', reason: reason };
+            } else {
+                leaveInfo = { value: 0, type: 'none', reason: '' };
+            }
+
+            await saveLeaveDay(dateIso, leaveInfo);
+            modal.style.display = 'none';
+
+            // Refresh analytics
+            const monthSelectEl = document.getElementById('monthSelect');
+            await refreshMonthlyAnalytics(monthSelectEl ? monthSelectEl.value : null);
         });
     }
 }
@@ -4564,6 +4802,10 @@ function initTabs() {
     if (tabWorkItemsBtn._tabsInitialized) return;
     tabWorkItemsBtn._tabsInitialized = true;
 
+    if (typeof initDayDetailModal === 'function') {
+        initDayDetailModal();
+    }
+
     tabWorkItemsBtn.addEventListener('click', () => {
         tabWorkItemsBtn.classList.add('active');
         tabAnalyticsBtn.classList.remove('active');
@@ -4581,7 +4823,7 @@ function initTabs() {
     });
 }
 
-function renderMonthlyKpiSummaryCards(monthItems = [], selYear, selMonth) {
+function renderMonthlyKpiSummaryCards(monthItems = [], selYear, selMonth, timesheetData = null) {
     const container = document.getElementById('monthlyKpiSummaryCards');
     if (!container) return;
 
@@ -4674,14 +4916,16 @@ function renderMonthlyKpiSummaryCards(monthItems = [], selYear, selMonth) {
     });
 
     const daysInMonth = (year && month) ? new Date(year, month, 0).getDate() : 30;
-    let workingDays = 0;
-    for (let d = 1; d <= daysInMonth; d++) {
-        const dayOfWeek = new Date(year, month - 1, d).getDay();
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-            workingDays++;
+    let workingDays = timesheetData ? timesheetData.totalWorkingDays : 0;
+    if (!timesheetData) {
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dayOfWeek = new Date(year, month - 1, d).getDay();
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                workingDays++;
+            }
         }
     }
-    const targetHours = workingDays * 8.0;
+    const targetHours = timesheetData ? timesheetData.totalTargetHours : (workingDays * 8.0);
     const achievementRate = targetHours > 0 ? Math.round((totalSpent / targetHours) * 1000) / 10 : 0;
 
     const onTimeRate = totalWorkItems > 0 ? Math.round((inTimeCount / totalWorkItems) * 1000) / 10 : (totalWorkItems === 0 ? 100 : 0);
@@ -4769,7 +5013,7 @@ function renderMonthlyKpiSummaryCards(monthItems = [], selYear, selMonth) {
             <div class="analytics-stat-info">
                 <span class="analytics-stat-label">Tổng Giờ Đã Log / Chỉ Tiêu</span>
                 <span class="analytics-stat-value">${roundSpent}h <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-muted);">/ ${targetHours}h</span></span>
-                <span class="analytics-stat-sub">Đạt <strong>${achievementRate}%</strong> chỉ tiêu (${workingDays} ngày làm việc)</span>
+                <span class="analytics-stat-sub">Đạt <strong>${achievementRate}%</strong> chỉ tiêu (${workingDays} ngày làm việc${timesheetData && timesheetData.totalLeaveDays > 0 ? ` • Đã trừ ${timesheetData.totalLeaveDays}d nghỉ` : ''})</span>
             </div>
         </div>
 
@@ -4845,16 +5089,29 @@ async function refreshMonthlyAnalytics(selectedMonth = null, kpiData = null) {
         return addedIso.startsWith(monthVal);
     });
 
-    // 1. Render Monthly KPI Summary Cards
-    renderMonthlyKpiSummaryCards(monthItems, selYear, selMonth);
-
-    // 2. Timesheet calculation and rendering
-    if (typeof calculateMonthlyTimesheet === 'function' && typeof renderDailyTimesheet === 'function') {
-        const timesheetData = calculateMonthlyTimesheet(monthItems, selYear, selMonth);
-        renderDailyTimesheet(timesheetData);
+    // 1. Load leave days from storage
+    let leaveDaysMap = {};
+    if (typeof getLeaveDays === 'function') {
+        try {
+            leaveDaysMap = await getLeaveDays();
+        } catch (e) {
+            console.warn('Could not load leave days:', e);
+        }
     }
 
-    // 3. Chart data calculation and rendering
+    // 2. Timesheet calculation and rendering
+    let timesheetData = null;
+    if (typeof calculateMonthlyTimesheet === 'function') {
+        timesheetData = calculateMonthlyTimesheet(monthItems, selYear, selMonth, new Date(), leaveDaysMap);
+        if (typeof renderDailyTimesheet === 'function') {
+            renderDailyTimesheet(timesheetData);
+        }
+    }
+
+    // 3. Render Monthly KPI Summary Cards
+    renderMonthlyKpiSummaryCards(monthItems, selYear, selMonth, timesheetData);
+
+    // 4. Chart data calculation and rendering
     if (typeof calculateMonthlyChartData === 'function' && typeof renderMonthlyCharts === 'function') {
         const chartData = calculateMonthlyChartData(monthItems, selYear, selMonth);
         renderMonthlyCharts(chartData);
@@ -4873,6 +5130,10 @@ if (typeof window !== 'undefined') {
     window.calculateMonthlyChartData = calculateMonthlyChartData;
     window.renderMonthlyCharts = renderMonthlyCharts;
     window.analyticsCharts = analyticsCharts;
+    window.getLeaveDays = getLeaveDays;
+    window.saveLeaveDay = saveLeaveDay;
+    window.openDayDetailModal = openDayDetailModal;
+    window.initDayDetailModal = initDayDetailModal;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -4887,7 +5148,11 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateWeeklyKpiScore,
         calculateMonthlyChartData,
         renderMonthlyCharts,
-        analyticsCharts
+        analyticsCharts,
+        getLeaveDays,
+        saveLeaveDay,
+        openDayDetailModal,
+        initDayDetailModal
     };
 }
 
