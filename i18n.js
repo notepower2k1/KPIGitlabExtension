@@ -656,7 +656,18 @@ async function initLanguage(storage = null) {
  */
 function t(key, params = null, lang = null) {
     if (!key || typeof key !== 'string') return '';
-    const targetLang = (lang === 'vi' || lang === 'en') ? lang : getLanguage();
+    let targetLang = lang;
+    let actualParams = params;
+    // Support t(key, 'vi') overload where second argument is the language code
+    if (typeof params === 'string') {
+        targetLang = params;
+        actualParams = null;
+    }
+    if (targetLang && typeof targetLang === 'string') {
+        targetLang = targetLang.toLowerCase().startsWith('vi') ? 'vi' : 'en';
+    } else {
+        targetLang = getLanguage();
+    }
     const dict = I18N_DICTIONARIES[targetLang] || I18N_DICTIONARIES.en;
     let text = dict[key];
 
@@ -670,9 +681,9 @@ function t(key, params = null, lang = null) {
         return key;
     }
 
-    if (params && typeof params === 'object') {
+    if (actualParams && typeof actualParams === 'object') {
         return text.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, paramName) => {
-            return params[paramName] !== undefined ? String(params[paramName]) : match;
+            return actualParams[paramName] !== undefined ? String(actualParams[paramName]) : match;
         });
     }
 
@@ -744,8 +755,14 @@ function _bindWindow(win) {
     win.t = t;
 }
 
-if (typeof window !== 'undefined') {
-    _bindWindow(window);
+const globalScope = typeof window !== 'undefined'
+    ? window
+    : (typeof self !== 'undefined'
+        ? self
+        : (typeof globalThis !== 'undefined' ? globalThis : null));
+
+if (globalScope) {
+    _bindWindow(globalScope);
 }
 
 // Export for Node.js
