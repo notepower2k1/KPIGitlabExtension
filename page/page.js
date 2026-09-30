@@ -4131,8 +4131,14 @@ function getItemSpentHours(item) {
     return isNaN(num) ? 0 : num;
 }
 
-function calculateWeeklyKpiScore(weekItems) {
+function calculateWeeklyKpiScore(weekItems, week = null, refDate = new Date()) {
     if (!weekItems || weekItems.length === 0) {
+        if (week && week.start) {
+            const refIso = typeof normalizeDateToIso === 'function' ? normalizeDateToIso(refDate || new Date()) : '';
+            if (refIso && week.start > refIso) {
+                return null;
+            }
+        }
         return 100;
     }
 
@@ -4184,12 +4190,15 @@ function calculateWeeklyKpiScore(weekItems) {
     return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-function calculateMonthlyChartData(items = [], selYear, selMonth) {
+function calculateMonthlyChartData(items = [], selYear, selMonth, refDate = new Date()) {
     let year, month;
     if (typeof selYear === 'string' && selYear.includes('-')) {
         const parts = selYear.split('-');
         year = parseInt(parts[0], 10);
         month = parseInt(parts[1], 10);
+        if (selMonth instanceof Date || (typeof selMonth === 'string' && selMonth.includes('-'))) {
+            refDate = selMonth;
+        }
     } else if (selYear && selMonth !== undefined) {
         year = parseInt(selYear, 10);
         month = parseInt(selMonth, 10);
@@ -4201,6 +4210,8 @@ function calculateMonthlyChartData(items = [], selYear, selMonth) {
         year = now.getFullYear();
         month = now.getMonth() + 1;
     }
+
+    const resolvedRefDate = refDate || new Date();
 
     const weeks = getWeeksForMonth(year, month);
     const labels = weeks.map(w => w.label ? w.label.replace(' (Tuần này)', '') : `Tuần ${w.weekNum}`);
@@ -4276,7 +4287,7 @@ function calculateMonthlyChartData(items = [], selYear, selMonth) {
         spentHours[i] = parseFloat(spentHours[i].toFixed(2));
     }
 
-    const kpiScores = weeks.map((w, idx) => calculateWeeklyKpiScore(weekItemsMap[idx]));
+    const kpiScores = weeks.map((w, idx) => calculateWeeklyKpiScore(weekItemsMap[idx], w, resolvedRefDate));
 
     return {
         weeklyData: {
@@ -4489,6 +4500,7 @@ function renderMonthlyCharts(chartData) {
                     backgroundColor: 'rgba(139, 92, 246, 0.15)',
                     fill: true,
                     tension: 0.3,
+                    spanGaps: false,
                     pointBackgroundColor: '#8b5cf6',
                     pointRadius: 5,
                     pointHoverRadius: 7
@@ -4505,6 +4517,9 @@ function renderMonthlyCharts(chartData) {
                     tooltip: {
                         callbacks: {
                             label: function(context) {
+                                if (context.raw === null || context.raw === undefined) {
+                                    return ' Điểm KPI: Chưa có dữ liệu';
+                                }
                                 return ` Điểm KPI: ${context.raw} / 100`;
                             }
                         }
@@ -4854,6 +4869,7 @@ if (typeof window !== 'undefined') {
     window.refreshMonthlyAnalytics = refreshMonthlyAnalytics;
     window.calculateMonthlyTimesheet = calculateMonthlyTimesheet;
     window.renderDailyTimesheet = renderDailyTimesheet;
+    window.calculateWeeklyKpiScore = calculateWeeklyKpiScore;
     window.calculateMonthlyChartData = calculateMonthlyChartData;
     window.renderMonthlyCharts = renderMonthlyCharts;
     window.analyticsCharts = analyticsCharts;
@@ -4868,6 +4884,7 @@ if (typeof module !== 'undefined' && module.exports) {
         refreshMonthlyAnalytics,
         calculateMonthlyTimesheet,
         renderDailyTimesheet,
+        calculateWeeklyKpiScore,
         calculateMonthlyChartData,
         renderMonthlyCharts,
         analyticsCharts
