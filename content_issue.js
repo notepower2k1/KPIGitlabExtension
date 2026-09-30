@@ -136,6 +136,104 @@ function shouldBackfillParent(currentTasks, backfilledSet, lastTitle, currentTit
     return false;
 }
 
+function filterAndSortTasks(tasks, options = {}) {
+    if (!tasks || !Array.isArray(tasks)) return [];
+    const query = (options.query || '').trim().toLowerCase();
+    const sortKey = options.sortKey || null;
+    const sortOrder = options.sortOrder || null; // 'asc' | 'desc'
+
+    let result = tasks.filter(Boolean);
+
+    if (query) {
+        result = result.filter(task => {
+            const title = (task.title || '').toLowerCase();
+            const id = String(task.id || '').toLowerCase();
+            return title.includes(query) || id.includes(query);
+        });
+    }
+
+    if (sortKey && (sortOrder === 'asc' || sortOrder === 'desc')) {
+        result = [...result].sort((a, b) => {
+            let comp = 0;
+            if (sortKey === 'estimate') {
+                comp = (a.estimateHour || 0) - (b.estimateHour || 0);
+            } else if (sortKey === 'spent') {
+                comp = (a.spentHour || 0) - (b.spentHour || 0);
+            } else if (sortKey === 'diff') {
+                comp = (a.diffHour || 0) - (b.diffHour || 0);
+            } else if (sortKey === 'title') {
+                comp = (a.title || '').localeCompare(b.title || '');
+            }
+            return sortOrder === 'asc' ? comp : -comp;
+        });
+    }
+
+    return result;
+}
+
+function renderTaskTableRows(tasks, options = {}) {
+    const isSyncing = Boolean(options && options.isSyncing);
+    const isFiltered = options ? (options.isFiltered !== undefined ? options.isFiltered : true) : true;
+
+    if (!tasks || tasks.length === 0) {
+        const emptyMsg = isSyncing
+            ? '⏳ Đang quét danh sách task con và đồng bộ số liệu từ GitLab...'
+            : (isFiltered ? 'Không tìm thấy task con nào phù hợp' : 'Không tìm thấy task con nào thuộc về bạn trên trang này.');
+        return `
+            <tr>
+                <td colspan="7" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #64748b;">
+                    ${emptyMsg}
+                </td>
+            </tr>`;
+    }
+
+    return tasks.map(task => {
+        const id = escapeHtml(String(task.id || ''));
+        const title = escapeHtml(task.title || (task.id ? `Task #${task.id}` : 'Không có tiêu đề'));
+        const href = escapeHtml(task.href || '#');
+        const est = (task.estimateHour !== undefined && task.estimateHour !== null) ? `${task.estimateHour}h` : '-';
+        const spent = (task.spentHour !== undefined && task.spentHour !== null) ? `${task.spentHour}h` : '-';
+
+        let diffText = '-';
+        let diffClass = '';
+        if (task.diffHour !== undefined && task.diffHour !== null) {
+            const diffVal = Number(task.diffHour);
+            diffText = diffVal > 0 ? `+${diffVal}h` : `${diffVal}h`;
+            diffClass = diffVal >= 0 ? 'gl-text-success' : 'gl-text-danger';
+        } else if (task.estimateHour != null && task.spentHour != null) {
+            const diffVal = roundToOneDecimal(Number(task.estimateHour) - Number(task.spentHour));
+            diffText = diffVal > 0 ? `+${diffVal}h` : `${diffVal}h`;
+            diffClass = diffVal >= 0 ? 'gl-text-success' : 'gl-text-danger';
+        }
+
+        const state = (task.state || '').toLowerCase();
+        const stateBadge = state === 'closed'
+            ? '<span class="gl-badge gl-badge-closed">Đã đóng</span>'
+            : '<span class="gl-badge gl-badge-opened">Đang mở</span>';
+
+        const timelinessBadge = task.isLate
+            ? '<span class="gl-badge gl-badge-danger">Trễ hạn</span>'
+            : '<span class="gl-badge gl-badge-success">Đúng hạn</span>';
+
+        const planBadge = task.isUnplanned
+            ? '<span class="gl-badge gl-badge-warning">Phát sinh</span>'
+            : '<span class="gl-badge gl-badge-info">Kế hoạch</span>';
+
+        return `
+            <tr>
+                <td class="gl-kpi-task-title">
+                    <a href="${href}" target="_blank" rel="noopener noreferrer">${title}</a>
+                </td>
+                <td class="gl-kpi-num">${est}</td>
+                <td class="gl-kpi-num">${spent}</td>
+                <td class="gl-kpi-num ${diffClass}">${diffText}</td>
+                <td class="gl-kpi-status">${stateBadge}</td>
+                <td class="gl-kpi-status">${timelinessBadge}</td>
+                <td class="gl-kpi-status">${planBadge}</td>
+            </tr>`;
+    }).join('');
+}
+
 function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options = {}) {
     const isSyncing = Boolean(options && options.isSyncing);
     const safeParentTitle = escapeHtml(parentTitle);
@@ -144,60 +242,7 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options =
     const diffColorClass = safeMetrics.diffHours >= 0 ? 'gl-text-success' : 'gl-text-danger';
     const onTimeColorClass = safeMetrics.onTimeRate >= 80 ? 'gl-text-success' : (safeMetrics.onTimeRate >= 50 ? 'gl-text-warning' : 'gl-text-danger');
 
-    let tableRowsHtml = '';
-    if (!tasks || tasks.length === 0) {
-        tableRowsHtml = `
-            <tr>
-                <td colspan="7" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #666;">
-                    ${isSyncing ? '⏳ Đang quét danh sách task con và đồng bộ số liệu từ GitLab...' : 'Không tìm thấy task con nào thuộc về bạn trên trang này.'}
-                </td>
-            </tr>`;
-    } else {
-        tableRowsHtml = tasks.map(task => {
-            const title = escapeHtml(task.title || (task.id ? `Task #${task.id}` : 'Không có tiêu đề'));
-            const href = escapeHtml(task.href || '#');
-            const est = (task.estimateHour !== undefined && task.estimateHour !== null) ? `${task.estimateHour}h` : '-';
-            const spent = (task.spentHour !== undefined && task.spentHour !== null) ? `${task.spentHour}h` : '-';
-
-            let diffText = '-';
-            let diffClass = '';
-            if (task.diffHour !== undefined && task.diffHour !== null) {
-                const diffVal = Number(task.diffHour);
-                diffText = diffVal > 0 ? `+${diffVal}h` : `${diffVal}h`;
-                diffClass = diffVal >= 0 ? 'gl-text-success' : 'gl-text-danger';
-            } else if (task.estimateHour != null && task.spentHour != null) {
-                const diffVal = roundToOneDecimal(Number(task.estimateHour) - Number(task.spentHour));
-                diffText = diffVal > 0 ? `+${diffVal}h` : `${diffVal}h`;
-                diffClass = diffVal >= 0 ? 'gl-text-success' : 'gl-text-danger';
-            }
-
-            const state = (task.state || '').toLowerCase();
-            const stateBadge = state === 'closed'
-                ? '<span class="gl-badge gl-badge-closed">Đã đóng</span>'
-                : '<span class="gl-badge gl-badge-opened">Đang mở</span>';
-
-            const timelinessBadge = task.isLate
-                ? '<span class="gl-badge gl-badge-danger">Trễ hạn</span>'
-                : '<span class="gl-badge gl-badge-success">Đúng hạn</span>';
-
-            const planBadge = task.isUnplanned
-                ? '<span class="gl-badge gl-badge-warning">Phát sinh</span>'
-                : '<span class="gl-badge gl-badge-info">Kế hoạch</span>';
-
-            return `
-                <tr>
-                    <td class="gl-kpi-task-title">
-                        <a href="${href}" target="_blank" rel="noopener noreferrer">${title}</a>
-                    </td>
-                    <td class="gl-kpi-num">${est}</td>
-                    <td class="gl-kpi-num">${spent}</td>
-                    <td class="gl-kpi-num ${diffClass}">${diffText}</td>
-                    <td class="gl-kpi-status">${stateBadge}</td>
-                    <td class="gl-kpi-status">${timelinessBadge}</td>
-                    <td class="gl-kpi-status">${planBadge}</td>
-                </tr>`;
-        }).join('');
-    }
+    const tableRowsHtml = renderTaskTableRows(tasks, { isSyncing, isFiltered: false });
 
     return `
 <div id="gitlabKpiSummaryModal" class="gl-kpi-modal-overlay">
@@ -246,15 +291,24 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options =
                     <div class="gl-kpi-card-sub">${safeMetrics.lateTasks > 0 ? `${safeMetrics.lateTasks} task trễ` : '100% đúng hạn'}</div>
                 </div>
             </div>
+            <!-- Search & Count Toolbar -->
+            <div class="gl-kpi-toolbar">
+                <div class="gl-kpi-search-box">
+                    <input type="text" id="glKpiSearchInput" class="gl-kpi-search-input" placeholder="🔍 Tìm kiếm theo tên hoặc #id task...">
+                </div>
+                <div id="glKpiTaskCount" class="gl-kpi-task-count">
+                    Hiển thị <strong>${tasks ? tasks.length : 0}</strong> / ${tasks ? tasks.length : 0} task
+                </div>
+            </div>
             <!-- Detailed Task Table -->
             <div class="gl-kpi-table-wrapper">
                 <table class="gl-kpi-table">
                     <thead>
                         <tr>
-                            <th>Task</th>
-                            <th>Estimate</th>
-                            <th>Spent</th>
-                            <th>Chênh lệch</th>
+                            <th class="gl-kpi-sortable" data-sort-key="title" style="cursor: pointer; user-select: none;">Task <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="estimate" style="cursor: pointer; user-select: none;">Estimate <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="spent" style="cursor: pointer; user-select: none;">Spent <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="diff" style="cursor: pointer; user-select: none;">Chênh lệch <span class="gl-kpi-sort-icon">↕</span></th>
                             <th>Trạng thái</th>
                             <th>Tiến độ</th>
                             <th>Phân loại</th>
@@ -498,6 +552,68 @@ function getModalStyles() {
 
 #gitlabKpiSummaryModal .gl-text-warning {
     color: #d97706 !important;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    gap: 12px;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-search-box {
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-search-input {
+    padding: 6px 12px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    font-size: 13px;
+    width: 280px;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-search-input:focus {
+    border-color: #0969da;
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+}
+
+#gitlabKpiSummaryModal .gl-kpi-task-count {
+    font-size: 12px;
+    color: #64748b;
+    user-select: none;
+}
+
+#gitlabKpiSummaryModal th.gl-kpi-sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s;
+}
+
+#gitlabKpiSummaryModal th.gl-kpi-sortable:hover {
+    background-color: #f1f5f9;
+}
+
+#gitlabKpiSummaryModal th.gl-kpi-sort-active {
+    background-color: #e2e8f0;
+    color: #0969da;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-sort-icon {
+    font-size: 11px;
+    margin-left: 4px;
+    opacity: 0.6;
+}
+
+#gitlabKpiSummaryModal th.gl-kpi-sort-active .gl-kpi-sort-icon {
+    opacity: 1;
+    color: #0969da;
 }
 
 .custom-summary-button {
@@ -1186,6 +1302,75 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
         });
     }
 
+    // Search & Column Sorting State & Handlers
+    let currentSearchQuery = '';
+    let currentSortKey = null;
+    let currentSortOrder = null;
+
+    const updateTable = () => {
+        const filteredSorted = filterAndSortTasks(tasks, {
+            query: currentSearchQuery,
+            sortKey: currentSortKey,
+            sortOrder: currentSortOrder
+        });
+        const tableBody = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiTableBody') : null;
+        if (tableBody) {
+            tableBody.innerHTML = renderTaskTableRows(filteredSorted, {
+                isFiltered: Boolean(currentSearchQuery || currentSortKey)
+            });
+        }
+        const countEl = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiTaskCount') : null;
+        if (countEl) {
+            countEl.innerHTML = `Hiển thị <strong>${filteredSorted.length}</strong> / ${tasks ? tasks.length : 0} task`;
+        }
+        const headers = modalOverlay.querySelectorAll ? modalOverlay.querySelectorAll('th.gl-kpi-sortable') : [];
+        if (headers && headers.forEach) {
+            headers.forEach(th => {
+                const key = th.getAttribute ? th.getAttribute('data-sort-key') : null;
+                const icon = th.querySelector ? th.querySelector('.gl-kpi-sort-icon') : null;
+                if (key === currentSortKey && currentSortOrder) {
+                    if (th.classList && th.classList.add) th.classList.add('gl-kpi-sort-active');
+                    if (icon) icon.textContent = currentSortOrder === 'asc' ? '▲' : '▼';
+                } else {
+                    if (th.classList && th.classList.remove) th.classList.remove('gl-kpi-sort-active');
+                    if (icon) icon.textContent = '↕';
+                }
+            });
+        }
+    };
+
+    const searchInput = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiSearchInput') : null;
+    if (searchInput && typeof searchInput.addEventListener === 'function') {
+        searchInput.addEventListener('input', (e) => {
+            currentSearchQuery = (e.target && e.target.value) || '';
+            updateTable();
+        });
+    }
+
+    const sortHeaders = modalOverlay.querySelectorAll ? modalOverlay.querySelectorAll('th.gl-kpi-sortable') : [];
+    if (sortHeaders && sortHeaders.forEach) {
+        sortHeaders.forEach(th => {
+            if (typeof th.addEventListener === 'function') {
+                th.addEventListener('click', () => {
+                    const key = th.getAttribute ? th.getAttribute('data-sort-key') : null;
+                    if (!key) return;
+                    if (currentSortKey === key) {
+                        if (currentSortOrder === 'asc') {
+                            currentSortOrder = 'desc';
+                        } else if (currentSortOrder === 'desc') {
+                            currentSortKey = null;
+                            currentSortOrder = null;
+                        }
+                    } else {
+                        currentSortKey = key;
+                        currentSortOrder = 'asc';
+                    }
+                    updateTable();
+                });
+            }
+        });
+    }
+
     // Auto-refresh in background if requested
     if (isAutoRefreshing) {
         if (refreshBtn) {
@@ -1229,6 +1414,8 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.fetchTaskDetail = fetchTaskDetail;
     window.parseGraphQLChildrenNodes = parseGraphQLChildrenNodes;
     window.fetchParentTaskWithChildren = fetchParentTaskWithChildren;
+    window.filterAndSortTasks = filterAndSortTasks;
+    window.renderTaskTableRows = renderTaskTableRows;
     window.refreshSummaryModal = refreshSummaryModal;
     window.openSummaryModal = openSummaryModal;
     window.closeSummaryModal = closeSummaryModal;
@@ -1541,6 +1728,8 @@ if (typeof module !== 'undefined' && module.exports) {
         fetchTaskDetail,
         parseGraphQLChildrenNodes,
         fetchParentTaskWithChildren,
+        filterAndSortTasks,
+        renderTaskTableRows,
         refreshSummaryModal,
         openSummaryModal,
         closeSummaryModal

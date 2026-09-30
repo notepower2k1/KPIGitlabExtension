@@ -24,6 +24,8 @@ const {
     fetchTaskDetail,
     parseGraphQLChildrenNodes,
     fetchParentTaskWithChildren,
+    filterAndSortTasks,
+    renderTaskTableRows,
     refreshSummaryModal,
     openSummaryModal,
     closeSummaryModal,
@@ -45,6 +47,8 @@ assert.strictEqual(typeof batchAddTasksToStorage, 'function', 'batchAddTasksToSt
 assert.strictEqual(typeof fetchTaskDetail, 'function', 'fetchTaskDetail should be exported as a function');
 assert.strictEqual(typeof parseGraphQLChildrenNodes, 'function', 'parseGraphQLChildrenNodes should be exported as a function');
 assert.strictEqual(typeof fetchParentTaskWithChildren, 'function', 'fetchParentTaskWithChildren should be exported as a function');
+assert.strictEqual(typeof filterAndSortTasks, 'function', 'filterAndSortTasks should be exported as a function');
+assert.strictEqual(typeof renderTaskTableRows, 'function', 'renderTaskTableRows should be exported as a function');
 assert.strictEqual(typeof refreshSummaryModal, 'function', 'refreshSummaryModal should be exported as a function');
 assert.strictEqual(typeof openSummaryModal, 'function', 'openSummaryModal should be exported as a function');
 assert.strictEqual(typeof closeSummaryModal, 'function', 'closeSummaryModal should be exported as a function');
@@ -999,6 +1003,91 @@ class MockDocument {
         }
 
         console.log('✔ Passed: Multi-page Hierarchy WorkItem Children GraphQL extraction & parsing');
+    }
+
+    // 20. Search & Column Sorting for Child Tasks Table
+    {
+        const sampleTasks = [
+            { id: '101', title: 'Fix login button alignment', estimateHour: 2, spentHour: 1.5, diffHour: 0.5, state: 'opened' },
+            { id: '102', title: 'Implement OAuth refresh token', estimateHour: 6, spentHour: 8, diffHour: -2, state: 'closed' },
+            { id: '103', title: 'Refactor database schema for user profiles', estimateHour: 4, spentHour: 4, diffHour: 0, state: 'closed' },
+            { id: '104', title: 'Fix notification badge counter', estimateHour: 1, spentHour: 0.5, diffHour: 0.5, state: 'opened' }
+        ];
+
+        // 1. Search by name (case-insensitive substring)
+        const searchLogin = filterAndSortTasks(sampleTasks, { query: 'login' });
+        assert.strictEqual(searchLogin.length, 1);
+        assert.strictEqual(searchLogin[0].id, '101');
+
+        const searchFix = filterAndSortTasks(sampleTasks, { query: 'FIX' });
+        assert.strictEqual(searchFix.length, 2);
+        assert.deepStrictEqual(searchFix.map(t => t.id), ['101', '104']);
+
+        // Search by task ID
+        const searchById = filterAndSortTasks(sampleTasks, { query: '103' });
+        assert.strictEqual(searchById.length, 1);
+        assert.strictEqual(searchById[0].title, 'Refactor database schema for user profiles');
+
+        // Search with no match
+        const searchNoMatch = filterAndSortTasks(sampleTasks, { query: 'nonexistent-task-query' });
+        assert.strictEqual(searchNoMatch.length, 0);
+
+        // 2. Sorting by Estimate
+        const sortEstAsc = filterAndSortTasks(sampleTasks, { sortKey: 'estimate', sortOrder: 'asc' });
+        assert.deepStrictEqual(sortEstAsc.map(t => t.estimateHour), [1, 2, 4, 6]);
+
+        const sortEstDesc = filterAndSortTasks(sampleTasks, { sortKey: 'estimate', sortOrder: 'desc' });
+        assert.deepStrictEqual(sortEstDesc.map(t => t.estimateHour), [6, 4, 2, 1]);
+
+        // 3. Sorting by Spent time
+        const sortSpentAsc = filterAndSortTasks(sampleTasks, { sortKey: 'spent', sortOrder: 'asc' });
+        assert.deepStrictEqual(sortSpentAsc.map(t => t.spentHour), [0.5, 1.5, 4, 8]);
+
+        const sortSpentDesc = filterAndSortTasks(sampleTasks, { sortKey: 'spent', sortOrder: 'desc' });
+        assert.deepStrictEqual(sortSpentDesc.map(t => t.spentHour), [8, 4, 1.5, 0.5]);
+
+        // 4. Sorting by Difference (diff)
+        const sortDiffAsc = filterAndSortTasks(sampleTasks, { sortKey: 'diff', sortOrder: 'asc' });
+        assert.deepStrictEqual(sortDiffAsc.map(t => t.diffHour), [-2, 0, 0.5, 0.5]);
+
+        const sortDiffDesc = filterAndSortTasks(sampleTasks, { sortKey: 'diff', sortOrder: 'desc' });
+        assert.deepStrictEqual(sortDiffDesc.map(t => t.diffHour), [0.5, 0.5, 0, -2]);
+
+        // 5. Sorting by Title
+        const sortTitleAsc = filterAndSortTasks(sampleTasks, { sortKey: 'title', sortOrder: 'asc' });
+        assert.strictEqual(sortTitleAsc[0].title, 'Fix login button alignment');
+        assert.strictEqual(sortTitleAsc[3].title, 'Refactor database schema for user profiles');
+
+        // 6. Combined Search and Sort
+        const searchAndSort = filterAndSortTasks(sampleTasks, { query: 'fix', sortKey: 'estimate', sortOrder: 'desc' });
+        assert.strictEqual(searchAndSort.length, 2);
+        assert.deepStrictEqual(searchAndSort.map(t => t.id), ['101', '104']); // 2h then 1h
+
+        // 7. Edge cases
+        assert.deepStrictEqual(filterAndSortTasks(null), []);
+        assert.deepStrictEqual(filterAndSortTasks([], { query: 'test' }), []);
+        assert.deepStrictEqual(filterAndSortTasks(sampleTasks, {}).length, 4);
+
+        // 8. renderTaskTableRows
+        const emptyRowsHtml = renderTaskTableRows([]);
+        assert.ok(emptyRowsHtml.includes('Không tìm thấy task con nào phù hợp'), 'Should render empty message when tasks array is empty');
+
+        const populatedRowsHtml = renderTaskTableRows(sampleTasks.slice(0, 1));
+        assert.ok(populatedRowsHtml.includes('Fix login button alignment'), 'Should render task title link');
+        assert.ok(populatedRowsHtml.includes('2h'), 'Should render estimate hours');
+        assert.ok(populatedRowsHtml.includes('1.5h'), 'Should render spent hours');
+        assert.ok(populatedRowsHtml.includes('+0.5h'), 'Should render formatted positive diff');
+        assert.ok(populatedRowsHtml.includes('gl-text-success'), 'Should render positive diff with success class');
+
+        // 9. renderSummaryModalHtml includes search input & sortable headers
+        const modalHtml = renderSummaryModalHtml(null, sampleTasks, 'Parent Issue Title');
+        assert.ok(modalHtml.includes('id="glKpiSearchInput"'), 'Modal HTML must include search input');
+        assert.ok(modalHtml.includes('id="glKpiTaskCount"'), 'Modal HTML must include task counter');
+        assert.ok(modalHtml.includes('data-sort-key="estimate"'), 'Modal table header must include sort key estimate');
+        assert.ok(modalHtml.includes('data-sort-key="spent"'), 'Modal table header must include sort key spent');
+        assert.ok(modalHtml.includes('data-sort-key="diff"'), 'Modal table header must include sort key diff');
+
+        console.log('✔ Passed: Search & column sorting for child tasks table');
     }
 
     console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');
