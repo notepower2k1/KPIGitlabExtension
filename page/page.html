@@ -57,86 +57,183 @@
             </div>
         </div>
 
-        <!-- Quick Controls: Tìm kiếm nhanh, Lọc phát hiện lỗi & Mở nhanh GitLab -->
-        <div class="quick-controls-card" id="quickControlsCard">
-            <div class="collapse-header" id="toggleControlsBtn" role="button" tabindex="0" title="Bấm để mở rộng / thu gọn bộ lọc">
-                <div class="collapse-header-title">
-                    <span class="collapse-icon">⚡</span>
-                    <span class="collapse-text">Tìm kiếm & Lọc nhanh</span>
-                    <span id="controlsActiveSummary" class="collapse-summary-badge" style="display: none;"></span>
+        <!-- Navigation Tabs -->
+        <div class="tabs-nav-container">
+            <div class="tabs-nav">
+                <button class="tab-btn active" id="tabWorkItemsBtn" type="button">
+                    <span class="tab-icon">📋</span>
+                    <span>Chi tiết công việc</span>
+                </button>
+                <button class="tab-btn" id="tabAnalyticsBtn" type="button">
+                    <span class="tab-icon">📊</span>
+                    <span>Phân tích & Biểu đồ Tháng</span>
+                    <span class="tab-badge" id="tabAnalyticsMonthBadge">Tháng 09/2026</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab 1: Chi tiết công việc (Work Items) -->
+        <div id="workItemsTabContent">
+            <!-- Quick Controls: Tìm kiếm nhanh, Lọc phát hiện lỗi & Mở nhanh GitLab -->
+            <div class="quick-controls-card" id="quickControlsCard">
+                <div class="collapse-header" id="toggleControlsBtn" role="button" tabindex="0" title="Bấm để mở rộng / thu gọn bộ lọc">
+                    <div class="collapse-header-title">
+                        <span class="collapse-icon">⚡</span>
+                        <span class="collapse-text">Tìm kiếm & Lọc nhanh</span>
+                        <span id="controlsActiveSummary" class="collapse-summary-badge" style="display: none;"></span>
+                    </div>
+                    <div class="collapse-header-right">
+                        <span id="controlsCollapseArrow" class="collapse-arrow">▼</span>
+                    </div>
                 </div>
-                <div class="collapse-header-right">
-                    <span id="controlsCollapseArrow" class="collapse-arrow">▼</span>
+
+                <div class="collapse-body" id="controlsBody" style="display: none;">
+                    <div class="controls-top-row">
+                        <div class="search-bar-container">
+                            <div class="search-box-wrapper">
+                                <span class="search-icon">🔍</span>
+                                <input type="text" id="kpiSearchInput" placeholder="Tìm kiếm theo tên task, #iid, URL, issue cha, dự án..." autocomplete="off">
+                                <button id="clearSearchBtn" class="btn-clear-search" title="Xóa tìm kiếm" style="display: none;">✕</button>
+                            </div>
+                            <span id="searchResultCount" class="search-result-count" style="display: none;"></span>
+                        </div>
+                        <div class="quick-actions-wrapper">
+                            <button id="openFilteredTabsBtn" class="btn-secondary btn-quick-action" title="Mở các task đang lọc trong danh sách trên các tab mới">
+                                <span>🌐 Mở tab</span>
+                                <span id="openTabsCountBadge" class="filter-count-badge">0</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Filter Chips -->
+                    <div class="chips-container">
+                        <span class="chips-label">⚡ Lọc nhanh:</span>
+                        <div class="chips-list">
+                            <button class="filter-chip active" data-filter="all" title="Hiển thị tất cả công việc">
+                                <span>Tất cả</span>
+                                <span class="chip-badge" id="chipCountAll">0</span>
+                            </button>
+                            <button class="filter-chip chip-mr" data-filter="mr" title="Chỉ hiển thị Merge Requests">
+                                <span>🚀 Merge Requests</span>
+                                <span class="chip-badge" id="chipCountMR">0</span>
+                            </button>
+                            <button class="filter-chip chip-late" data-filter="late" title="Công việc trễ hạn">
+                                <span>🔴 Trễ hạn</span>
+                                <span class="chip-badge" id="chipCountLate">0</span>
+                            </button>
+                            <button class="filter-chip chip-missing-time" data-filter="missing_time" title="Thiếu Estimate hoặc Spent">
+                                <span>⚠️ Thiếu Est/Spent</span>
+                                <span class="chip-badge" id="chipCountMissingTime">0</span>
+                            </button>
+                            <button class="filter-chip chip-missing-date" data-filter="missing_date" title="Thiếu ngày bắt đầu hoặc hạn chót">
+                                <span>📅 Thiếu Ngày</span>
+                                <span class="chip-badge" id="chipCountMissingDate">0</span>
+                            </button>
+                            <button class="filter-chip chip-reopen" data-filter="reopen" title="Công việc bị reopen">
+                                <span>🔄 Bị Reopen</span>
+                                <span class="chip-badge" id="chipCountReopen">0</span>
+                            </button>
+                            <button class="filter-chip chip-unplanned" data-filter="unplanned" title="Công việc phát sinh ngoài kế hoạch">
+                                <span>⚡ Phát sinh</span>
+                                <span class="chip-badge" id="chipCountUnplanned">0</span>
+                            </button>
+                            <button class="filter-chip chip-open" data-filter="open" title="Công việc đang mở (chưa đóng)">
+                                <span>⏳ Đang mở</span>
+                                <span class="chip-badge" id="chipCountOpen">0</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="collapse-body" id="controlsBody" style="display: none;">
-                <div class="controls-top-row">
-                    <div class="search-bar-container">
-                        <div class="search-box-wrapper">
-                            <span class="search-icon">🔍</span>
-                            <input type="text" id="kpiSearchInput" placeholder="Tìm kiếm theo tên task, #iid, URL, issue cha, dự án..." autocomplete="off">
-                            <button id="clearSearchBtn" class="btn-clear-search" title="Xóa tìm kiếm" style="display: none;">✕</button>
+            <main class="report-area">
+                <!-- Widget Dự Báo Điểm KPI & Sức Khỏe -->
+                <div id="kpiHealthContainer"></div>
+                <div id="spinner" class="loading-spinner" style="display: none;"></div>
+                <div id="kpiContainer"></div>
+                <!-- KPI Stat is now a separate visual piece -->
+                <div id="kpiStatsContainer"></div>
+            </main>
+        </div>
+
+        <!-- Tab 2: Phân tích & Biểu đồ Tháng (Monthly Analytics & Charts) -->
+        <div id="analyticsTabContent" style="display: none;">
+            <!-- Khối 1: Thẻ Tóm Tắt Chỉ Số Tháng -->
+            <div id="monthlyKpiSummaryCards" class="analytics-summary-grid">
+                <!-- Rendered dynamically by page.js -->
+            </div>
+
+            <!-- Khối 2: Bảng Kiểm Tra Log Time Hàng Ngày (Daily Timesheet Audit) -->
+            <div id="dailyTimesheetSection" class="timesheet-audit-card">
+                <div class="timesheet-card-header">
+                    <div class="timesheet-header-title">
+                        <span class="timesheet-header-icon">⏱️</span>
+                        <div>
+                            <h3>Bảng Kiểm Tra Log Time Hàng Ngày</h3>
+                            <span class="timesheet-header-subtitle">Định mức chuẩn 8.0h/ngày làm việc (Thứ 2 - Thứ 6)</span>
                         </div>
-                        <span id="searchResultCount" class="search-result-count" style="display: none;"></span>
                     </div>
-                    <div class="quick-actions-wrapper">
-                        <button id="openFilteredTabsBtn" class="btn-secondary btn-quick-action" title="Mở các task đang lọc trong danh sách trên các tab mới">
-                            <span>🌐 Mở tab</span>
-                            <span id="openTabsCountBadge" class="filter-count-badge">0</span>
-                        </button>
+                    <div id="timesheetSummaryChips" class="timesheet-summary-chips">
+                        <!-- Summary chips rendered dynamically -->
                     </div>
                 </div>
+                <div id="timesheetCalendarGrid" class="timesheet-grid">
+                    <!-- Calendar day cells rendered dynamically -->
+                </div>
+            </div>
 
-                <!-- Quick Filter Chips -->
-                <div class="chips-container">
-                    <span class="chips-label">⚡ Lọc nhanh:</span>
-                    <div class="chips-list">
-                        <button class="filter-chip active" data-filter="all" title="Hiển thị tất cả công việc">
-                            <span>Tất cả</span>
-                            <span class="chip-badge" id="chipCountAll">0</span>
-                        </button>
-                        <button class="filter-chip chip-mr" data-filter="mr" title="Chỉ hiển thị Merge Requests">
-                            <span>🚀 Merge Requests</span>
-                            <span class="chip-badge" id="chipCountMR">0</span>
-                        </button>
-                        <button class="filter-chip chip-late" data-filter="late" title="Công việc trễ hạn">
-                            <span>🔴 Trễ hạn</span>
-                            <span class="chip-badge" id="chipCountLate">0</span>
-                        </button>
-                        <button class="filter-chip chip-missing-time" data-filter="missing_time" title="Thiếu Estimate hoặc Spent">
-                            <span>⚠️ Thiếu Est/Spent</span>
-                            <span class="chip-badge" id="chipCountMissingTime">0</span>
-                        </button>
-                        <button class="filter-chip chip-missing-date" data-filter="missing_date" title="Thiếu ngày bắt đầu hoặc hạn chót">
-                            <span>📅 Thiếu Ngày</span>
-                            <span class="chip-badge" id="chipCountMissingDate">0</span>
-                        </button>
-                        <button class="filter-chip chip-reopen" data-filter="reopen" title="Công việc bị reopen">
-                            <span>🔄 Bị Reopen</span>
-                            <span class="chip-badge" id="chipCountReopen">0</span>
-                        </button>
-                        <button class="filter-chip chip-unplanned" data-filter="unplanned" title="Công việc phát sinh ngoài kế hoạch">
-                            <span>⚡ Phát sinh</span>
-                            <span class="chip-badge" id="chipCountUnplanned">0</span>
-                        </button>
-                        <button class="filter-chip chip-open" data-filter="open" title="Công việc đang mở (chưa đóng)">
-                            <span>⏳ Đang mở</span>
-                            <span class="chip-badge" id="chipCountOpen">0</span>
-                        </button>
+            <!-- Khối 3: Cụm Biểu Đồ Trực Quan Tháng -->
+            <div id="monthlyChartsSection" class="charts-grid-container">
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <div class="chart-card-title">
+                            <span class="chart-icon">📊</span>
+                            <h4>Ước tính vs Thực tế theo Tuần (Estimate vs Spent)</h4>
+                        </div>
+                        <span class="chart-subtitle">So sánh tổng giờ kế hoạch và thực tế theo từng tuần</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chartWeeklyEstSpent"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <div class="chart-card-title">
+                            <span class="chart-icon">🎯</span>
+                            <h4>Cơ cấu Kế hoạch vs Phát sinh (Planned vs Unplanned)</h4>
+                        </div>
+                        <span class="chart-subtitle">Tỷ lệ công việc dự kiến và ngoài dự kiến</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chartTaskType"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <div class="chart-card-title">
+                            <span class="chart-icon">⏱️</span>
+                            <h4>Tình trạng Công việc (In-time / Late / Open)</h4>
+                        </div>
+                        <span class="chart-subtitle">Tỷ lệ công việc đúng hạn, trễ hạn và đang mở</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chartTaskStatus"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <div class="chart-card-title">
+                            <span class="chart-icon">📈</span>
+                            <h4>Xu hướng Điểm KPI qua các Tuần</h4>
+                        </div>
+                        <span class="chart-subtitle">Biến thiên điểm KPI trung bình tuần trong tháng</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chartKpiTrend"></canvas>
                     </div>
                 </div>
             </div>
         </div>
-
-        <main class="report-area">
-            <!-- Widget Dự Báo Điểm KPI & Sức Khỏe -->
-            <div id="kpiHealthContainer"></div>
-            <div id="spinner" class="loading-spinner" style="display: none;"></div>
-            <div id="kpiContainer"></div>
-            <!-- KPI Stat is now a separate visual piece -->
-            <div id="kpiStatsContainer"></div>
-        </main>
     </div>
 </body>
 
