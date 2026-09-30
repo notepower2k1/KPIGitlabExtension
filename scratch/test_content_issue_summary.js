@@ -31,6 +31,7 @@ const {
     openSummaryModal,
     closeSummaryModal,
     injectSummaryButton,
+    findWorkItemModal,
     extractWorkItemPageInfo,
     extractWorkItemModalInfo,
     findWorkItemEditPlacement,
@@ -60,6 +61,7 @@ assert.strictEqual(typeof refreshSummaryModal, 'function', 'refreshSummaryModal 
 assert.strictEqual(typeof openSummaryModal, 'function', 'openSummaryModal should be exported as a function');
 assert.strictEqual(typeof closeSummaryModal, 'function', 'closeSummaryModal should be exported as a function');
 assert.strictEqual(typeof injectSummaryButton, 'function', 'injectSummaryButton should be exported as a function');
+assert.strictEqual(typeof findWorkItemModal, 'function', 'findWorkItemModal should be exported as a function');
 assert.strictEqual(typeof extractWorkItemPageInfo, 'function', 'extractWorkItemPageInfo should be exported as a function');
 assert.strictEqual(typeof extractWorkItemModalInfo, 'function', 'extractWorkItemModalInfo should be exported as a function');
 assert.strictEqual(typeof findWorkItemEditPlacement, 'function', 'findWorkItemEditPlacement should be exported as a function');
@@ -409,6 +411,12 @@ class MockElement {
                     if (el.getAttribute('data-testid') === tid) return true;
                 }
                 if (s.toLowerCase() === el.tagName.toLowerCase()) return true;
+                if (s.includes('.') && !s.includes('>') && !s.includes('[')) {
+                    const dotParts = s.split('.');
+                    const tag = dotParts[0];
+                    const cls = dotParts[1];
+                    if ((!tag || el.tagName.toLowerCase() === tag.toLowerCase()) && el.classList.contains(cls)) return true;
+                }
                 if (s === 'button.js-issuable-edit') {
                     if (el.tagName === 'BUTTON' && el.classList.contains('js-issuable-edit')) return true;
                 }
@@ -1217,42 +1225,92 @@ class MockDocument {
         const notWorkItem = extractWorkItemPageInfo(mockDocPage, { location: { pathname: '/grp/prj/-/issues/50' } });
         assert.strictEqual(notWorkItem, null, 'Should return null when not on a work_items URL');
 
-        // 2. extractWorkItemModalInfo
-        const mockModal = new MockElement('div', { attributes: { 'data-testid': 'work-item-detail-modal' } });
-        const modalTitle = new MockElement('h1', { attributes: { 'data-testid': 'work-item-title' }, innerText: 'Modal Child Task' });
-        const modalLink = new MockElement('a', { attributes: { href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/502' } });
-        mockModal.appendChild(modalTitle);
-        mockModal.appendChild(modalLink);
+        // 2. findWorkItemModal
+        const docWithModal = new MockDocument();
+        const genericDialog = new MockElement('div', { attributes: { role: 'dialog' } });
+        docWithModal.body.appendChild(genericDialog);
+        assert.strictEqual(findWorkItemModal(docWithModal), null, 'Generic empty dialog should not match work item modal');
 
+        const kpiModal = new MockElement('div', { id: 'gitlabKpiSummaryModal' });
+        docWithModal.body.appendChild(kpiModal);
+        assert.strictEqual(findWorkItemModal(docWithModal), null, 'gitlabKpiSummaryModal should not match work item modal');
+
+        const realDrawer = new MockElement('aside', { className: 'gl-drawer' });
+        const drawerTitle = new MockElement('h1', { attributes: { 'data-testid': 'work-item-title' }, innerText: 'Drawer Task' });
+        realDrawer.appendChild(drawerTitle);
+        docWithModal.body.appendChild(realDrawer);
+        assert.strictEqual(findWorkItemModal(docWithModal), realDrawer, 'Should detect drawer containing work item title');
+
+        // 3. extractWorkItemModalInfo
+        // Case A: Info extracted via window.location.search (?work_item_iid=502)
+        const mockModalA = new MockElement('div', { attributes: { 'data-testid': 'work-item-drawer' } });
+        const modalTitleA = new MockElement('h1', { attributes: { 'data-testid': 'work-item-title' }, innerText: 'Modal Child Task' });
+        mockModalA.appendChild(modalTitleA);
+        const winWithSearch = { location: { origin: 'https://gitlab.widosoft.com', pathname: '/grp/prj/-/issues/100', search: '?work_item_iid=502' } };
         const currentParent = { parentTitle: 'Parent Issue Title', parentUrl: 'https://gitlab.widosoft.com/grp/prj/-/issues/100', parentIid: '100' };
-        const modalInfo = extractWorkItemModalInfo(mockModal, currentParent);
-        assert.ok(modalInfo, 'Should extract modal info');
-        assert.strictEqual(modalInfo.workItemId, '502');
-        assert.strictEqual(modalInfo.title, 'Modal Child Task');
-        assert.strictEqual(modalInfo.parentTitle, 'Parent Issue Title');
-        assert.strictEqual(modalInfo.parentIid, '100');
 
-        // 3. findWorkItemEditPlacement
-        const mockContainer = new MockElement('div');
+        const modalInfoA = extractWorkItemModalInfo(mockModalA, currentParent, winWithSearch);
+        assert.ok(modalInfoA, 'Should extract modal info via URL search param');
+        assert.strictEqual(modalInfoA.workItemId, '502');
+        assert.strictEqual(modalInfoA.title, 'Modal Child Task');
+        assert.strictEqual(modalInfoA.parentTitle, 'Parent Issue Title');
+        assert.strictEqual(modalInfoA.parentIid, '100');
+        assert.strictEqual(modalInfoA.href, 'https://gitlab.widosoft.com/grp/prj/-/work_items/502');
+
+        // Case B: Info extracted via data-testid="work-item-drawer-ref-link"
+        const mockModalB = new MockElement('div');
+        const refLink = new MockElement('a', { attributes: { 'data-testid': 'work-item-drawer-ref-link', href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/503' } });
+        mockModalB.appendChild(refLink);
+        const modalInfoB = extractWorkItemModalInfo(mockModalB, currentParent);
+        assert.ok(modalInfoB, 'Should extract modal info via ref link');
+        assert.strictEqual(modalInfoB.workItemId, '503');
+
+        // 4. findWorkItemEditPlacement
+        // Priority 1: Edit button
+        const container1 = new MockElement('div');
         const editBtn = new MockElement('button', { attributes: { 'data-testid': 'edit-title-button' } });
-        mockContainer.appendChild(editBtn);
+        container1.appendChild(editBtn);
+        const p1 = findWorkItemEditPlacement(container1);
+        assert.strictEqual(p1.target, editBtn);
+        assert.strictEqual(p1.position, 'after');
 
-        const placement = findWorkItemEditPlacement(mockContainer);
-        assert.ok(placement, 'Should find placement');
-        assert.strictEqual(placement.target, editBtn);
-        assert.strictEqual(placement.position, 'after');
+        // Priority 2: Actions dropdown
+        const container2 = new MockElement('div');
+        const actionsDropdown = new MockElement('button', { attributes: { 'data-testid': 'work-item-actions-dropdown' } });
+        container2.appendChild(actionsDropdown);
+        const p2 = findWorkItemEditPlacement(container2);
+        assert.strictEqual(p2.target, actionsDropdown);
+        assert.strictEqual(p2.position, 'before');
 
-        // 4. createWorkItemKpiButton
+        // Priority 3: Header actions container
+        const container3 = new MockElement('div');
+        const actionsContainer = new MockElement('div', { attributes: { 'data-testid': 'work-item-actions' } });
+        container3.appendChild(actionsContainer);
+        const p3 = findWorkItemEditPlacement(container3);
+        assert.strictEqual(p3.target, actionsContainer);
+        assert.strictEqual(p3.position, 'prepend');
+
+        // Priority 4: Drawer close button
+        const container4 = new MockElement('div');
+        const closeBtn = new MockElement('button', { className: 'gl-drawer-close-button' });
+        container4.appendChild(closeBtn);
+        const p4 = findWorkItemEditPlacement(container4);
+        assert.strictEqual(p4.target, closeBtn);
+        assert.strictEqual(p4.position, 'before');
+
+        // 5. createWorkItemKpiButton
         const mockDoc = new MockDocument();
         const addBtn = createWorkItemKpiButton({ workItemId: '501' }, false, null, mockDoc);
         assert.ok(addBtn.innerHTML.includes('Thêm vào KPI'));
-        assert.ok(addBtn.className.includes('btn-success') || addBtn.className.includes('btn-default'));
+        assert.strictEqual(addBtn.getAttribute('data-is-added'), 'false');
+        assert.strictEqual(addBtn.getAttribute('data-work-item-id'), '501');
 
         const removeBtn = createWorkItemKpiButton({ workItemId: '501' }, true, null, mockDoc);
         assert.ok(removeBtn.innerHTML.includes('Xóa khỏi KPI'));
+        assert.strictEqual(removeBtn.getAttribute('data-is-added'), 'true');
         assert.ok(removeBtn.className.includes('btn-danger'));
 
-        // 5. injectWorkItemButton
+        // 6. injectWorkItemButton with Anti-Infinite-Loop Guard
         const testContainer = new MockElement('div');
         const targetEdit = new MockElement('button', { attributes: { 'data-testid': 'work-item-edit-button' } });
         testContainer.appendChild(targetEdit);
@@ -1260,11 +1318,24 @@ class MockDocument {
         const injected = injectWorkItemButton(testContainer, { workItemId: '501' }, false, null, mockDoc);
         assert.ok(injected, 'Should inject button');
         assert.strictEqual(testContainer.querySelector('.custom-work-item-kpi-btn'), injected);
+        assert.strictEqual(injected.getAttribute('data-is-added'), 'false');
 
-        // Duplicate call updates existing button state
+        // Anti-loop guard test: Calling with same state returns existing button WITHOUT DOM changes
+        let innerHtmlTouched = false;
+        Object.defineProperty(injected, 'innerHTML', {
+            get() { return this._ih || '<span>➕</span><span>Thêm vào KPI</span>'; },
+            set(val) { innerHtmlTouched = true; this._ih = val; }
+        });
+        const idempotentCall = injectWorkItemButton(testContainer, { workItemId: '501' }, false, null, mockDoc);
+        assert.strictEqual(idempotentCall, injected);
+        assert.strictEqual(innerHtmlTouched, false, 'Anti-loop guard must not touch innerHTML if state is unchanged');
+
+        // State update test: Calling with isAdded=true updates text and class
         const reinjected = injectWorkItemButton(testContainer, { workItemId: '501' }, true, null, mockDoc);
         assert.strictEqual(reinjected, injected, 'Second injection should reuse existing button');
+        assert.strictEqual(reinjected.getAttribute('data-is-added'), 'true');
         assert.ok(reinjected.innerHTML.includes('Xóa khỏi KPI'), 'Should update text to remove');
+        assert.ok(reinjected.className.includes('btn-danger'), 'Should update class to danger');
 
         console.log('✔ Passed: Work item standalone page & modal popup KPI button injection');
     }

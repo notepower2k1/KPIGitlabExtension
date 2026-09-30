@@ -20,12 +20,19 @@
         {
             "matches": [
                 "*://gitlab.widosoft.com/*/-/issues/*",
-                "*://gitlab.widosoft.com/*/-/merge_requests/*",
                 "*://gitlab.widosoft.com/*/-/work_items/*"
             ],
             "js": [
                 "utils.js",
-                "content_issue.js",
+                "content_issue.js"
+            ]
+        },
+        {
+            "matches": [
+                "*://gitlab.widosoft.com/*/-/merge_requests/*"
+            ],
+            "js": [
+                "utils.js",
                 "content_request.js"
             ]
         }

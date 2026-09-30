@@ -656,9 +656,16 @@ function getModalStyles() {
 .custom-work-item-kpi-btn {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     margin-left: 6px;
+    margin-right: 6px;
     vertical-align: middle;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    z-index: 10;
 }
 
 @keyframes gl-spin {
@@ -752,6 +759,43 @@ function injectSummaryButton(doc = (typeof document !== 'undefined' ? document :
     return btn;
 }
 
+function findWorkItemModal(doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc || !doc.querySelectorAll) return null;
+
+    // 1. First try specific testids and classes
+    const directSelectors = [
+        '[data-testid="work-item-drawer"]',
+        '.work-item-drawer',
+        '[data-testid="work-item-detail-modal"]',
+        '.work-item-detail-modal',
+        '#work-item-detail-modal'
+    ];
+    for (const sel of directSelectors) {
+        const el = doc.querySelector ? doc.querySelector(sel) : null;
+        if (el) return el;
+    }
+
+    // 2. Try generic drawers, modals, or detail containers that contain work-item components
+    const candidates = doc.querySelectorAll(
+        'aside.gl-drawer, .gl-drawer, .gl-modal, [data-testid="work-item-detail"], .work-item-detail, .work-item-view, div[role="dialog"]'
+    );
+    for (const el of candidates) {
+        if (el.id === 'gitlabKpiSummaryModal') continue;
+
+        const hasWorkItemSignature = el.querySelector && el.querySelector(
+            '[data-testid="work-item-title"], #item-title, .work-item-title, ' +
+            '[data-testid="work-item-actions-dropdown"], [data-testid="work-item-actions"], ' +
+            '[data-testid="work-item-drawer-ref-link"], [data-testid="work-item-drawer-copy-button"], ' +
+            'a[href*="/work_items/"], [data-testid="work-item-header"], [data-testid="work-item-state-badge"]'
+        );
+        if (hasWorkItemSignature) {
+            return el;
+        }
+    }
+
+    return null;
+}
+
 function extractWorkItemPageInfo(doc = (typeof document !== 'undefined' ? document : null), win = (typeof window !== 'undefined' ? window : null)) {
     if (!doc || !win || !win.location) return null;
     const pathname = win.location.pathname || '';
@@ -761,8 +805,8 @@ function extractWorkItemPageInfo(doc = (typeof document !== 'undefined' ? docume
     const workItemId = match[1];
     const href = (win.location.origin || '') + pathname;
 
-    const titleEl = doc.querySelector ? doc.querySelector('[data-testid="work-item-title"], h1.title, h1') : null;
-    let title = titleEl ? titleEl.innerText?.trim() : '';
+    const titleEl = doc.querySelector ? doc.querySelector('[data-testid="work-item-title"], #item-title, h1.work-item-title, h1.title, h1') : null;
+    let title = titleEl ? (titleEl.innerText || titleEl.textContent || '').trim() : '';
     if (!title && doc.title) {
         title = doc.title.replace(/\s*·.*$/, '').trim();
     }
@@ -774,7 +818,7 @@ function extractWorkItemPageInfo(doc = (typeof document !== 'undefined' ? docume
         '[data-testid="work-item-parent-link"], [data-testid="work-item-parent"] a, [data-testid="work-item-ancestors"] a, a[href*="/issues/"]'
     ) : null;
 
-    let parentTitle = parentAnchor ? parentAnchor.innerText?.trim() : '';
+    let parentTitle = parentAnchor ? (parentAnchor.innerText || parentAnchor.textContent || '').trim() : '';
     let parentUrl = parentAnchor ? (parentAnchor.getAttribute('href') || parentAnchor.href || '') : '';
     let parentIid = parentUrl ? (parentUrl.match(/\/issues\/(\d+)/)?.[1] || '') : '';
 
@@ -788,50 +832,83 @@ function extractWorkItemPageInfo(doc = (typeof document !== 'undefined' ? docume
     };
 }
 
-function extractWorkItemModalInfo(modalEl, currentParentInfo = {}) {
+function extractWorkItemModalInfo(modalEl, currentParentInfo = {}, win = (typeof window !== 'undefined' ? window : null)) {
     if (!modalEl) return null;
 
     let workItemId = '';
-    if (typeof modalEl.getAttribute === 'function') {
-        workItemId = modalEl.getAttribute('data-work-item-id') || modalEl.getAttribute('data-work-item-iid') || '';
-    }
-
     let href = '';
-    const link = modalEl.querySelector ? modalEl.querySelector('a[href*="/work_items/"]') : null;
-    if (link) {
-        href = link.getAttribute('href') || link.href || '';
-        const match = href.match(/\/work_items\/(\d+)/);
-        if (match && !workItemId) {
-            workItemId = match[1];
+
+    // Check 1: query parameter in window.location (e.g. ?work_item_iid=2067)
+    if (win && win.location && win.location.search) {
+        const searchParams = new URLSearchParams(win.location.search);
+        const qIid = searchParams.get('work_item_iid') || searchParams.get('iid');
+        if (qIid && /^\d+$/.test(qIid)) {
+            workItemId = qIid;
         }
     }
 
-    if (!workItemId && modalEl.querySelectorAll) {
-        const anchors = modalEl.querySelectorAll('a');
-        for (const a of anchors) {
+    // Check 2: Attributes on modalEl
+    if (!workItemId && typeof modalEl.getAttribute === 'function') {
+        workItemId = modalEl.getAttribute('data-work-item-id') || modalEl.getAttribute('data-work-item-iid') || modalEl.getAttribute('data-iid') || '';
+    }
+
+    // Check 3: data-testid="work-item-drawer-ref-link" or other ref links
+    if (modalEl.querySelector) {
+        const refLink = modalEl.querySelector('[data-testid="work-item-drawer-ref-link"], [data-testid="work-item-link"], a.work-item-link');
+        if (refLink) {
+            const h = (typeof refLink.getAttribute === 'function' ? refLink.getAttribute('href') : refLink.href) || '';
+            const m = h.match(/\/work_items\/(\d+)/);
+            if (m) {
+                if (!workItemId) workItemId = m[1];
+                href = h;
+            }
+        }
+    }
+
+    // Check 4: Any link inside modal containing /work_items/
+    if (modalEl.querySelectorAll) {
+        const links = modalEl.querySelectorAll('a');
+        for (const a of links) {
             const h = (typeof a.getAttribute === 'function' ? a.getAttribute('href') : a.href) || '';
             const match = h.match(/\/work_items\/(\d+)/);
             if (match) {
-                workItemId = match[1];
-                href = h;
+                if (!workItemId) workItemId = match[1];
+                if (!href) href = h;
                 break;
             }
         }
     }
 
-    if (!workItemId && href) {
-        const match = href.match(/\/work_items\/(\d+)/);
-        if (match) workItemId = match[1];
+    // Check 5: Look for any child element with data-work-item-id
+    if (!workItemId && modalEl.querySelector) {
+        const childWithId = modalEl.querySelector('[data-work-item-id], [data-work-item-iid], [parent-work-item-id]');
+        if (childWithId && typeof childWithId.getAttribute === 'function') {
+            workItemId = childWithId.getAttribute('data-work-item-id') || childWithId.getAttribute('data-work-item-iid') || childWithId.getAttribute('parent-work-item-id') || '';
+        }
     }
 
+    // If still no workItemId, we cannot proceed
     if (!workItemId) return null;
 
-    const titleEl = modalEl.querySelector ? modalEl.querySelector('[data-testid="work-item-title"], h1.title, h1, .work-item-title') : null;
-    let title = titleEl ? titleEl.innerText?.trim() : '';
+    // Construct href if missing
+    if (!href) {
+        const origin = (win && win.location && win.location.origin) || '';
+        const pathname = (win && win.location && win.location.pathname) || '';
+        const projectBase = (origin + pathname).replace(/(?:\/-)?\/(issues|work_items)\/.*$/, '');
+        href = `${projectBase}/-/work_items/${workItemId}`;
+    }
+
+    // Extract title
+    let title = '';
+    const titleEl = modalEl.querySelector ? modalEl.querySelector('[data-testid="work-item-title"], #item-title, .work-item-title, h1, h2') : null;
+    if (titleEl) {
+        title = (titleEl.innerText || titleEl.textContent || '').trim();
+    }
     if (!title) {
         title = `Task #${workItemId}`;
     }
 
+    // Parent Issue info
     const safeParent = currentParentInfo || {};
     let parentTitle = safeParent.parentTitle || '';
     let parentUrl = safeParent.parentUrl || '';
@@ -839,10 +916,10 @@ function extractWorkItemModalInfo(modalEl, currentParentInfo = {}) {
 
     if (!parentTitle && modalEl.querySelector) {
         const parentAnchor = modalEl.querySelector(
-            '[data-testid="work-item-parent-link"], [data-testid="work-item-parent"] a, [data-testid="work-item-ancestors"] a, a[href*="/issues/"]'
+            '[data-testid="work-item-parent-link"], [data-testid="work-item-parent"] a, [data-testid="work-item-ancestors"] a'
         );
         if (parentAnchor) {
-            parentTitle = parentAnchor.innerText?.trim() || '';
+            parentTitle = (parentAnchor.innerText || parentAnchor.textContent || '').trim();
             parentUrl = parentAnchor.getAttribute('href') || parentAnchor.href || '';
             parentIid = parentUrl.match(/\/issues\/(\d+)/)?.[1] || '';
         }
@@ -861,18 +938,48 @@ function extractWorkItemModalInfo(modalEl, currentParentInfo = {}) {
 function findWorkItemEditPlacement(container = (typeof document !== 'undefined' ? document : null)) {
     if (!container || !container.querySelector) return null;
 
-    // Look for Edit button or actions dropdown in the work item header
+    // 1. Look for explicit Edit button in work item header
     const editBtn = container.querySelector(
-        '[data-testid="edit-title-button"], [data-testid="work-item-edit-button"], button.js-issuable-edit, [data-testid="work-item-actions-dropdown"], [data-testid="work-item-actions"]'
+        '[data-testid="edit-title-button"], [data-testid="work-item-edit-button"], .js-issuable-edit, button.js-issuable-edit, [data-testid="issue-edit-button"]'
     );
     if (editBtn) {
         return { target: editBtn, position: 'after' };
     }
 
-    // Fallback: title element
-    const titleEl = container.querySelector('[data-testid="work-item-title"], h1.title, h1');
+    // 2. Look for actions dropdown in work item header
+    const actionsDropdown = container.querySelector(
+        '[data-testid="work-item-actions-dropdown"], [data-testid="work-item-more-actions"]'
+    );
+    if (actionsDropdown) {
+        return { target: actionsDropdown, position: 'before' };
+    }
+
+    // 3. Look for header actions container
+    const actionsContainer = container.querySelector(
+        '[data-testid="work-item-actions"], .work-item-header-actions, .gl-drawer-actions'
+    );
+    if (actionsContainer) {
+        return { target: actionsContainer, position: 'prepend' };
+    }
+
+    // 4. Look for drawer close button
+    const closeBtn = container.querySelector(
+        '[data-testid="close-button"], .gl-drawer-close-button, button.gl-drawer-close-button'
+    );
+    if (closeBtn) {
+        return { target: closeBtn, position: 'before' };
+    }
+
+    // 5. Fallback: title element
+    const titleEl = container.querySelector('[data-testid="work-item-title"], #item-title, h1.work-item-title, h1.title, h1');
     if (titleEl) {
         return { target: titleEl, position: 'after' };
+    }
+
+    // 6. Fallback: work item header
+    const headerEl = container.querySelector('[data-testid="work-item-header"], .work-item-header, .gl-drawer-header');
+    if (headerEl) {
+        return { target: headerEl, position: 'append' };
     }
 
     return null;
@@ -887,6 +994,7 @@ function createWorkItemKpiButton(workItemInfo = {}, isAdded = false, onClickHand
         ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
         : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
     button.setAttribute('type', 'button');
+    button.setAttribute('data-is-added', String(isAdded));
     button.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
     button.innerHTML = isAdded
         ? '<span>➖</span><span>Xóa khỏi KPI</span>'
@@ -910,7 +1018,20 @@ function injectWorkItemButton(container, workItemInfo, isAdded, onClickHandler, 
 
     const existingBtn = container.querySelector ? (container.querySelector('#kpiWorkItemAddBtn') || container.querySelector('.custom-work-item-kpi-btn')) : null;
     if (existingBtn) {
-        // Update state and appearance
+        const prevId = existingBtn.getAttribute ? existingBtn.getAttribute('data-work-item-id') : null;
+        const prevAdded = existingBtn.getAttribute ? existingBtn.getAttribute('data-is-added') : null;
+        const isSameTask = (prevId === String(workItemInfo.workItemId));
+        const isSameState = (prevAdded === String(isAdded));
+
+        // GUARD: If already injected and unchanged, DO NOT TOUCH DOM AT ALL!
+        if (isSameTask && isSameState) {
+            return existingBtn;
+        }
+
+        if (existingBtn.setAttribute) {
+            existingBtn.setAttribute('data-work-item-id', String(workItemInfo.workItemId));
+            existingBtn.setAttribute('data-is-added', String(isAdded));
+        }
         existingBtn.className = isAdded
             ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
             : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
@@ -918,7 +1039,6 @@ function injectWorkItemButton(container, workItemInfo, isAdded, onClickHandler, 
         existingBtn.innerHTML = isAdded
             ? '<span>➖</span><span>Xóa khỏi KPI</span>'
             : '<span>➕</span><span>Thêm vào KPI</span>';
-        existingBtn.setAttribute('data-work-item-id', String(workItemInfo.workItemId));
         return existingBtn;
     }
 
@@ -934,10 +1054,24 @@ function injectWorkItemButton(container, workItemInfo, isAdded, onClickHandler, 
         } else if (placement.target.parentNode) {
             placement.target.parentNode.insertBefore(btn, placement.target.nextSibling);
         }
-    } else if (placement.position === 'append') {
-        placement.target.appendChild(btn);
+    } else if (placement.position === 'before') {
+        if (typeof placement.target.before === 'function') {
+            placement.target.before(btn);
+        } else if (placement.target.parentNode) {
+            placement.target.parentNode.insertBefore(btn, placement.target);
+        }
+    } else if (placement.position === 'prepend') {
+        if (typeof placement.target.prepend === 'function') {
+            placement.target.prepend(btn);
+        } else if (placement.target.firstChild) {
+            placement.target.insertBefore(btn, placement.target.firstChild);
+        } else {
+            placement.target.appendChild(btn);
+        }
     } else {
-        if (placement.target.parentNode) {
+        if (placement.target.appendChild) {
+            placement.target.appendChild(btn);
+        } else if (placement.target.parentNode) {
             placement.target.parentNode.appendChild(btn);
         }
     }
@@ -1676,6 +1810,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.refreshSummaryModal = refreshSummaryModal;
     window.openSummaryModal = openSummaryModal;
     window.closeSummaryModal = closeSummaryModal;
+    window.findWorkItemModal = findWorkItemModal;
     window.extractWorkItemPageInfo = extractWorkItemPageInfo;
     window.extractWorkItemModalInfo = extractWorkItemModalInfo;
     window.findWorkItemEditPlacement = findWorkItemEditPlacement;
@@ -1979,6 +2114,16 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             }
         }
 
+        let workItemTimer = null;
+        function debouncedProcessWorkItemButtons(delay = 150) {
+            if (workItemTimer) {
+                clearTimeout(workItemTimer);
+            }
+            workItemTimer = setTimeout(() => {
+                processWorkItemButtons();
+            }, delay);
+        }
+
         function processWorkItemButtons() {
             // Case 1: Standalone work item page (e.g. /-/work_items/123)
             if (window.location && window.location.pathname && window.location.pathname.includes('/work_items/')) {
@@ -1992,15 +2137,14 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
                         handleToggleWorkItem(pageInfo, btn);
                     });
                 }
+                return;
             }
 
             // Case 2: Work item modal or drawer popup (opened from any page)
-            const modal = document.querySelector(
-                '[data-testid="work-item-detail-modal"], .work-item-detail-modal, [data-testid="work-item-drawer"], .gl-drawer.work-item-drawer, .gl-drawer, [role="dialog"]'
-            );
+            const modal = findWorkItemModal(document);
             if (modal) {
                 const parentInfo = getParentIssueInfo();
-                const modalInfo = extractWorkItemModalInfo(modal, parentInfo);
+                const modalInfo = extractWorkItemModalInfo(modal, parentInfo, window);
                 if (modalInfo && modalInfo.workItemId) {
                     const isAdded = addedLinks.has(String(modalInfo.workItemId));
                     injectWorkItemButton(modal, modalInfo, isAdded, (e) => {
@@ -2013,14 +2157,32 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             }
         }
 
+        const isStandaloneWorkItem = Boolean(window.location && window.location.pathname && window.location.pathname.includes('/work_items/'));
+
         // Khởi tạo nút ban đầu
-        injectSummaryButton(document, handleSummaryButtonClick);
+        if (!isStandaloneWorkItem) {
+            injectSummaryButton(document, handleSummaryButtonClick);
+        }
         processWorkItemButtons();
 
         // Bắt đầu quan sát từ phần tử gốc (ví dụ: body)
-        const observer = new MutationObserver((mutations, obs) => {
-            injectSummaryButton(document, handleSummaryButtonClick);
-            processWorkItemButtons();
+        const observer = new MutationObserver((mutations) => {
+            // Lọc bỏ mutation do chính extension tạo ra để tránh loop
+            let hasRelevantMutation = false;
+            for (const m of mutations) {
+                const t = m.target;
+                if (t && t.closest && (t.closest('#gitlabKpiSummaryModal') || t.closest('.custom-work-item-kpi-btn') || t.closest('#kpiSummaryTasksBtn'))) {
+                    continue;
+                }
+                hasRelevantMutation = true;
+                break;
+            }
+            if (!hasRelevantMutation) return;
+
+            if (!isStandaloneWorkItem) {
+                injectSummaryButton(document, handleSummaryButtonClick);
+            }
+            debouncedProcessWorkItemButtons(150);
 
             const targetElement = document.querySelector("ul[data-testid='child-items-container']");
             if (targetElement) {
@@ -2100,6 +2262,7 @@ if (typeof module !== 'undefined' && module.exports) {
         refreshSummaryModal,
         openSummaryModal,
         closeSummaryModal,
+        findWorkItemModal,
         extractWorkItemPageInfo,
         extractWorkItemModalInfo,
         findWorkItemEditPlacement,
