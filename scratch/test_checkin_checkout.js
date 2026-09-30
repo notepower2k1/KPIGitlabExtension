@@ -9,7 +9,8 @@ const path = require('path');
 global.chrome = {
     runtime: {
         onInstalled: { addListener: () => {} },
-        onStartup: { addListener: () => {} }
+        onStartup: { addListener: () => {} },
+        getURL: (pathStr) => `chrome-extension://mock-id/${pathStr}`
     },
     alarms: {
         create: () => {},

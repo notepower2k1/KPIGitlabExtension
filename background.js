@@ -150,7 +150,7 @@ async function checkCheckInOutAlerts() {
 
         chrome.notifications.create('checkin-alert', {
             type: 'basic',
-            iconUrl: 'icon48.png',
+            iconUrl: chrome.runtime.getURL('icon48.png'),
             title: title,
             message: message,
             priority: 2,
@@ -175,7 +175,7 @@ async function checkCheckInOutAlerts() {
 
         chrome.notifications.create('checkout-alert', {
             type: 'basic',
-            iconUrl: 'icon48.png',
+            iconUrl: chrome.runtime.getURL('icon48.png'),
             title: title,
             message: message,
             priority: 2,
@@ -261,7 +261,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         ) {
             chrome.notifications.create(todo.id, {
                 type: "basic",
-                iconUrl: "icon48.png",
+                iconUrl: chrome.runtime.getURL('icon48.png'),
                 title: "🔔 Nhắc nhở công việc",
                 message: `👉 "${todo.title}" ${minutesLeft < 0 ? "đã quá hạn" : "sắp đến hạn"} lúc ${deadline.toLocaleTimeString()}`,
                 priority: 2

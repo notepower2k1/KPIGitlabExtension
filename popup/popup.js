@@ -209,7 +209,7 @@
                     const url = checkInOutUrlEl.value.trim();
                     chrome.notifications.create(notifId, {
                         type: "basic",
-                        iconUrl: "icon48.png",
+                        iconUrl: chrome.runtime.getURL("icon48.png"),
                         title: "🔔 Kiểm tra chuông nhắc việc",
                         message: url
                             ? "Thông báo hoạt động tốt! Nhấn vào đây để thử mở link chấm công."
