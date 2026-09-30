@@ -6,6 +6,10 @@ function generateTodoId() {
     return Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7);
 }
 
+function detectWindowMode(win) {
+    return (win && win.type === 'popup') ? 'window' : 'tab';
+}
+
 function addTodoItem(todos, title, deadline = '') {
     const list = Array.isArray(todos) ? [...todos] : [];
     const cleanTitle = typeof title === 'string' ? title.trim() : '';
@@ -125,6 +129,50 @@ if (typeof document !== 'undefined') {
 
         // Initial Render
         await renderKanban();
+
+        // Dual-Mode Window/Tab Switcher
+        const modeSwitchBtn = document.getElementById('modeSwitchBtn');
+        let currentWindowMode = 'tab';
+
+        if (typeof chrome !== 'undefined' && chrome.windows && chrome.windows.getCurrent) {
+            try {
+                const currentWin = await new Promise((resolve) => chrome.windows.getCurrent(resolve));
+                currentWindowMode = detectWindowMode(currentWin);
+            } catch (err) {
+                console.error('Failed to detect window mode:', err);
+            }
+        }
+
+        if (modeSwitchBtn) {
+            if (currentWindowMode === 'window') {
+                modeSwitchBtn.textContent = '🗖 Mở dạng Tab';
+                modeSwitchBtn.title = 'Chuyển sang mở trong Tab trình duyệt';
+            } else {
+                modeSwitchBtn.textContent = '🗗 Cửa sổ rời';
+                modeSwitchBtn.title = 'Tách thành cửa sổ riêng biệt';
+            }
+
+            modeSwitchBtn.addEventListener('click', () => {
+                if (currentWindowMode === 'tab') {
+                    if (typeof chrome !== 'undefined' && chrome.windows) {
+                        chrome.windows.create({
+                            url: chrome.runtime.getURL('todo/todo.html'),
+                            type: 'popup',
+                            width: 540,
+                            height: 680
+                        });
+                    }
+                    window.close();
+                } else {
+                    if (typeof chrome !== 'undefined' && chrome.tabs) {
+                        chrome.tabs.create({
+                            url: chrome.runtime.getURL('todo/todo.html')
+                        });
+                    }
+                    window.close();
+                }
+            });
+        }
 
         // --- EVENT LISTENERS ---
 
@@ -468,6 +516,7 @@ if (typeof window !== 'undefined') {
     window.changeTodoStatus = changeTodoStatus;
     window.deleteTodoItem = deleteTodoItem;
     window.resolveTargetStatusFromColumn = resolveTargetStatusFromColumn;
+    window.detectWindowMode = detectWindowMode;
 }
 
 // Export for Node unit tests
@@ -477,6 +526,7 @@ if (typeof module !== 'undefined' && module.exports) {
         updateTodoItem,
         changeTodoStatus,
         deleteTodoItem,
-        resolveTargetStatusFromColumn
+        resolveTargetStatusFromColumn,
+        detectWindowMode
     };
 }

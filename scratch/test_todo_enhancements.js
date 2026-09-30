@@ -264,6 +264,162 @@ check('JS: Implements dragstart, dragend, dragover, dragleave, and drop event ha
 });
 
 // ---------------------------------------------------------
+// 5. DUAL-MODE LAUNCHING & NOTIFICATION CLICK ROUTING (TASK 3)
+// ---------------------------------------------------------
+console.log('\n▶ Section 5: Dual-Mode Launching & Notification Click Routing');
+
+check('JS (todo.js): Exports detectWindowMode function', () => {
+    assert(typeof todoModule.detectWindowMode === 'function', 'detectWindowMode must be exported by todo/todo.js');
+});
+
+check('JS (todo.js): detectWindowMode identifies popup as window and others as tab', () => {
+    const { detectWindowMode } = todoModule;
+    assert.strictEqual(detectWindowMode({ type: 'popup' }), 'window', 'Popup window should be detected as window');
+    assert.strictEqual(detectWindowMode({ type: 'normal' }), 'tab', 'Normal window should be detected as tab');
+    assert.strictEqual(detectWindowMode({}), 'tab', 'Empty object should be detected as tab');
+    assert.strictEqual(detectWindowMode(null), 'tab', 'null should be detected as tab');
+    assert.strictEqual(detectWindowMode(undefined), 'tab', 'undefined should be detected as tab');
+});
+
+check('DOM (todo.html): Contains #modeSwitchBtn in .header-right', () => {
+    assert(todoHtml.includes('id="modeSwitchBtn"'), 'todo.html must contain #modeSwitchBtn');
+    const headerRightMatch = todoHtml.match(/<div class="header-right">([\s\S]*?)<\/div>/);
+    assert(headerRightMatch, 'todo.html must contain .header-right');
+    assert(headerRightMatch[1].includes('id="modeSwitchBtn"'), '#modeSwitchBtn must be inside .header-right');
+});
+
+const popupHtmlPath = path.resolve(ROOT_DIR, 'popup/popup.html');
+assert(fs.existsSync(popupHtmlPath), 'popup/popup.html must exist');
+const popupHtml = fs.readFileSync(popupHtmlPath, 'utf8');
+
+const popupCssPath = path.resolve(ROOT_DIR, 'popup/popup.css');
+assert(fs.existsSync(popupCssPath), 'popup/popup.css must exist');
+const popupCss = fs.readFileSync(popupCssPath, 'utf8');
+
+check('DOM (popup.html): Contains dual-mode To-Do buttons and structured grid', () => {
+    assert(popupHtml.includes('id="todo-btn"'), 'popup.html must contain #todo-btn');
+    assert(popupHtml.includes('id="todo-tab-btn"'), 'popup.html must contain #todo-tab-btn');
+    
+    // Verify button ordering in tools-grid:
+    const gridMatch = popupHtml.match(/<div class="tools-grid">([\s\S]*?)<\/div>/);
+    assert(gridMatch, 'popup.html must contain .tools-grid');
+    const gridContent = gridMatch[1];
+    const idxNote = gridContent.indexOf('id="note-btn"');
+    const idxNoteTab = gridContent.indexOf('id="note-tab-btn"');
+    const idxTodo = gridContent.indexOf('id="todo-btn"');
+    const idxTodoTab = gridContent.indexOf('id="todo-tab-btn"');
+    const idxExport = gridContent.indexOf('id="exportTask-btn"');
+    const idxImport = gridContent.indexOf('id="importTask-btn"');
+
+    assert(idxNote !== -1 && idxNoteTab !== -1, 'Note buttons must exist');
+    assert(idxTodo !== -1 && idxTodoTab !== -1, 'To-Do buttons must exist');
+    assert(idxExport !== -1 && idxImport !== -1, 'Export/Import buttons must exist');
+
+    assert(idxNote < idxNoteTab, 'Row 1: note-btn before note-tab-btn');
+    assert(idxNoteTab < idxTodo, 'Row 2 follows Row 1');
+    assert(idxTodo < idxTodoTab, 'Row 2: todo-btn before todo-tab-btn');
+    assert(idxTodoTab < idxExport, 'Row 3 follows Row 2');
+    assert(idxExport < idxImport, 'Row 3: exportTask-btn before importTask-btn');
+});
+
+check('CSS (popup.css): Balanced 2-column grid without todo span 2', () => {
+    assert(!popupCss.includes('#todo-btn {\n    grid-column: span 2;\n}') &&
+           !popupCss.includes('#todo-btn { grid-column: span 2; }') &&
+           !popupCss.includes('grid-column: span 2'),
+           'popup.css must not have grid-column: span 2 for todo-btn'
+    );
+});
+
+let popupModule;
+try {
+    popupModule = require('../popup/popup.js');
+} catch (err) {
+    console.error('Failed to import popup/popup.js:', err.message);
+}
+
+check('JS (popup.js): Exports openTodoWindow and openTodoTab helpers', () => {
+    assert(popupModule, 'popup/popup.js must be exportable');
+    assert.strictEqual(typeof popupModule.openTodoWindow, 'function', 'openTodoWindow must be exported');
+    assert.strictEqual(typeof popupModule.openTodoTab, 'function', 'openTodoTab must be exported');
+});
+
+check('JS (popup.js): openTodoWindow and openTodoTab invoke chrome APIs correctly', () => {
+    const originalChrome = global.chrome;
+    let windowCreated = null;
+    let tabCreated = null;
+
+    global.chrome = {
+        runtime: {
+            getURL: (rel) => `chrome-extension://mock-id/${rel}`
+        },
+        windows: {
+            create: (opts) => { windowCreated = opts; }
+        },
+        tabs: {
+            create: (opts) => { tabCreated = opts; }
+        }
+    };
+
+    try {
+        popupModule.openTodoWindow();
+        assert.ok(windowCreated, 'openTodoWindow must call chrome.windows.create');
+        assert.strictEqual(windowCreated.url, 'chrome-extension://mock-id/todo/todo.html');
+        assert.strictEqual(windowCreated.type, 'popup');
+        assert.strictEqual(windowCreated.width, 540);
+        assert.strictEqual(windowCreated.height, 680);
+
+        popupModule.openTodoTab();
+        assert.ok(tabCreated, 'openTodoTab must call chrome.tabs.create');
+        assert.strictEqual(tabCreated.url, 'chrome-extension://mock-id/todo/todo.html');
+    } finally {
+        global.chrome = originalChrome;
+    }
+});
+
+let backgroundModule;
+try {
+    backgroundModule = require('../background.js');
+} catch (err) {
+    console.error('Failed to import background.js:', err.message);
+}
+
+check('JS (background.js): Routes to-do reminder notification clicks to todo/todo.html', async () => {
+    assert(backgroundModule, 'background.js must be exportable');
+    assert(typeof backgroundModule.handleNotificationClick === 'function', 'handleNotificationClick must be exported by background.js');
+
+    const originalChrome = global.chrome;
+    let clearedNotif = null;
+    let openedTab = null;
+
+    global.chrome = {
+        runtime: {
+            getURL: (rel) => `chrome-extension://mock-id/${rel}`
+        },
+        notifications: {
+            clear: (id) => { clearedNotif = id; }
+        },
+        tabs: {
+            create: (opts) => { openedTab = opts; }
+        },
+        storage: {
+            local: {
+                get: async () => ({}),
+                set: async () => {}
+            }
+        }
+    };
+
+    try {
+        await backgroundModule.handleNotificationClick('todo-task-999');
+        assert.strictEqual(clearedNotif, 'todo-task-999', 'Notification must be cleared on click');
+        assert.ok(openedTab, 'A tab must be opened on to-do notification click');
+        assert.strictEqual(openedTab.url, 'chrome-extension://mock-id/todo/todo.html', 'Must open todo/todo.html');
+    } finally {
+        global.chrome = originalChrome;
+    }
+});
+
+// ---------------------------------------------------------
 // SUMMARY
 // ---------------------------------------------------------
 console.log('\n================================================================');
@@ -277,3 +433,4 @@ if (passedChecks === totalChecks) {
     console.error(`✖ ${totalChecks - passedChecks} tests failed.\n`);
     process.exit(1);
 }
+

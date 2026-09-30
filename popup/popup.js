@@ -17,6 +17,25 @@ function openNoteTab() {
     }
 }
 
+function openTodoWindow() {
+    if (typeof chrome !== 'undefined' && chrome.windows) {
+        chrome.windows.create({
+            url: chrome.runtime.getURL("todo/todo.html"),
+            type: "popup",
+            width: 540,
+            height: 680
+        });
+    }
+}
+
+function openTodoTab() {
+    if (typeof chrome !== 'undefined' && chrome.tabs) {
+        chrome.tabs.create({
+            url: chrome.runtime.getURL("todo/todo.html")
+        });
+    }
+}
+
 (async () => {
     if (typeof getUserProfile !== 'function' || typeof document === 'undefined') {
         return;
@@ -117,11 +136,10 @@ function openNoteTab() {
         if (noteTabBtn) noteTabBtn.onclick = openNoteTab;
 
         const todoBtn = document.getElementById("todo-btn");
-        if (todoBtn) {
-            todoBtn.onclick = () => {
-                chrome.tabs.create({ url: chrome.runtime.getURL("todo/todo.html") });
-            };
-        }
+        const todoTabBtn = document.getElementById("todo-tab-btn");
+
+        if (todoBtn) todoBtn.onclick = openTodoWindow;
+        if (todoTabBtn) todoTabBtn.onclick = openTodoTab;
 
         // Xử lý chuyển tab
         document.querySelectorAll(".tab-btn").forEach(btn => {
@@ -373,7 +391,9 @@ function openNoteTab() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         openNoteWindow,
-        openNoteTab
+        openNoteTab,
+        openTodoWindow,
+        openTodoTab
     };
 }
 

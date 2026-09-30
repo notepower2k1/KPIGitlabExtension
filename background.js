@@ -193,45 +193,50 @@ async function checkCheckInOutAlerts() {
 
 // --- Lifecycle Event Listeners ---
 
-chrome.runtime.onInstalled.addListener(async () => {
-    chrome.alarms.create("checkTodos", { periodInMinutes: 1 });
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalled) {
+    chrome.runtime.onInstalled.addListener(async () => {
+        chrome.alarms.create("checkTodos", { periodInMinutes: 1 });
 
-    // Cấu hình mặc định cho nhắc việc
-    const defaults = await chrome.storage.local.get(['reminderMinutesBefore', 'reminderRepeatMinutes']);
-    if (!defaults.reminderMinutesBefore) {
-        await chrome.storage.local.set({
-            reminderMinutesBefore: 30,
-            reminderRepeatMinutes: 10,
-            lastNotifiedMap: {}
-        });
-    }
+        // Cấu hình mặc định cho nhắc việc
+        const defaults = await chrome.storage.local.get(['reminderMinutesBefore', 'reminderRepeatMinutes']);
+        if (!defaults.reminderMinutesBefore) {
+            await chrome.storage.local.set({
+                reminderMinutesBefore: 30,
+                reminderRepeatMinutes: 10,
+                lastNotifiedMap: {}
+            });
+        }
 
-    // Cấu hình mặc định cho Check-in & Check-out
-    const checkInOutDefaults = await chrome.storage.local.get([
-        'checkInEnabled',
-        'checkInTime',
-        'checkOutEnabled',
-        'checkOutTime',
-        'checkInOutSnoozeMinutes',
-        'checkInOutUrl'
-    ]);
-    const toSet = {};
-    if (checkInOutDefaults.checkInEnabled === undefined) toSet.checkInEnabled = true;
-    if (!checkInOutDefaults.checkInTime) toSet.checkInTime = '08:30';
-    if (checkInOutDefaults.checkOutEnabled === undefined) toSet.checkOutEnabled = true;
-    if (!checkInOutDefaults.checkOutTime) toSet.checkOutTime = '18:00';
-    if (checkInOutDefaults.checkInOutSnoozeMinutes === undefined) toSet.checkInOutSnoozeMinutes = 5;
-    if (checkInOutDefaults.checkInOutUrl === undefined) toSet.checkInOutUrl = '';
-    if (Object.keys(toSet).length > 0) {
-        await chrome.storage.local.set(toSet);
-    }
-});
+        // Cấu hình mặc định cho Check-in & Check-out
+        const checkInOutDefaults = await chrome.storage.local.get([
+            'checkInEnabled',
+            'checkInTime',
+            'checkOutEnabled',
+            'checkOutTime',
+            'checkInOutSnoozeMinutes',
+            'checkInOutUrl'
+        ]);
+        const toSet = {};
+        if (checkInOutDefaults.checkInEnabled === undefined) toSet.checkInEnabled = true;
+        if (!checkInOutDefaults.checkInTime) toSet.checkInTime = '08:30';
+        if (checkInOutDefaults.checkOutEnabled === undefined) toSet.checkOutEnabled = true;
+        if (!checkInOutDefaults.checkOutTime) toSet.checkOutTime = '18:00';
+        if (checkInOutDefaults.checkInOutSnoozeMinutes === undefined) toSet.checkInOutSnoozeMinutes = 5;
+        if (checkInOutDefaults.checkInOutUrl === undefined) toSet.checkInOutUrl = '';
+        if (Object.keys(toSet).length > 0) {
+            await chrome.storage.local.set(toSet);
+        }
+    });
+}
 
-chrome.runtime.onStartup.addListener(() => {
-    chrome.alarms.create("checkTodos", { periodInMinutes: 1 });
-});
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onStartup) {
+    chrome.runtime.onStartup.addListener(() => {
+        chrome.alarms.create("checkTodos", { periodInMinutes: 1 });
+    });
+}
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
+if (typeof chrome !== 'undefined' && chrome.alarms && chrome.alarms.onAlarm) {
+    chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name !== "checkTodos") return;
 
     // 1. Check To-Do Reminders
@@ -275,10 +280,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
     // 2. Check Workday Check-in & Check-out Alerts
     await checkCheckInOutAlerts();
-});
+    });
+}
 
-// Notification click handler: opens attendance URL and marks alert done
-chrome.notifications.onClicked.addListener(async (notifId) => {
+// Notification click handler: opens attendance URL or to-do page
+async function handleNotificationClick(notifId) {
     if (notifId === 'checkin-alert' || notifId === 'checkout-alert' || notifId.startsWith('test-checkin-alert')) {
         const stateKey = notifId === 'checkin-alert' ? 'checkInState' : (notifId === 'checkout-alert' ? 'checkOutState' : null);
         const data = await chrome.storage.local.get(['checkInOutUrl', ...(stateKey ? [stateKey] : [])]);
@@ -297,8 +303,16 @@ chrome.notifications.onClicked.addListener(async (notifId) => {
                 chrome.tabs.create({ url });
             }
         }
+    } else {
+        // To-do reminder notification clicked:
+        chrome.notifications.clear(notifId);
+        chrome.tabs.create({ url: chrome.runtime.getURL("todo/todo.html") });
     }
-});
+}
+
+if (typeof chrome !== 'undefined' && chrome.notifications && chrome.notifications.onClicked) {
+    chrome.notifications.onClicked.addListener(handleNotificationClick);
+}
 
 // Exports for Node testing
 if (typeof module !== 'undefined' && module.exports) {
@@ -306,6 +320,7 @@ if (typeof module !== 'undefined' && module.exports) {
         isWorkday,
         sanitizeAttendanceUrl,
         evaluateAlertState,
-        checkCheckInOutAlerts
+        checkCheckInOutAlerts,
+        handleNotificationClick
     };
 }
