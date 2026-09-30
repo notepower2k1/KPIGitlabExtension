@@ -5,9 +5,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GitLab Productivity - Kanban Board</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="todo.css" />
 </head>
 
@@ -29,25 +26,28 @@
                 <div class="input-row">
                     <input type="text" id="todo-input" placeholder="Việc cần làm là gì?" />
                     <input type="datetime-local" id="deadline-input" title="Hạn chót" />
+                    <button id="toggleReminderBtn" class="btn-icon btn-toggle-reminder" type="button" title="Cài đặt nhắc việc">⚙️</button>
                 </div>
 
-                <div class="reminder-settings">
-                    <div class="setting-item">
-                        <label>⏰ Trước (phút):</label>
-                        <input type="number" id="reminder-before" min="1" value="30">
+                <div id="reminder-settings-panel" class="reminder-settings-panel collapsed" style="display: none;">
+                    <div class="reminder-settings">
+                        <div class="setting-item">
+                            <label>⏰ Trước (phút):</label>
+                            <input type="number" id="reminder-before" min="1" value="30">
+                        </div>
+                        <div class="setting-item">
+                            <label>🔁 Lặp (phút):</label>
+                            <input type="number" id="reminder-repeat" min="1" value="10">
+                        </div>
+                        <button id="save-settings" class="btn-icon" title="Lưu cài đặt nhắc việc">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                <polyline points="17 21 17 13 7 13 7 21" />
+                                <polyline points="7 3 7 8 15 8" />
+                            </svg>
+                        </button>
                     </div>
-                    <div class="setting-item">
-                        <label>🔁 Lặp (phút):</label>
-                        <input type="number" id="reminder-repeat" min="1" value="10">
-                    </div>
-                    <button id="save-settings" class="btn-icon" title="Lưu cài đặt nhắc việc">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                            <polyline points="17 21 17 13 7 13 7 21" />
-                            <polyline points="7 3 7 8 15 8" />
-                        </svg>
-                    </button>
                 </div>
 
                 <button id="add-btn" class="btn-primary full-width">➕ Thêm công việc</button>
@@ -86,6 +86,30 @@
                 <div class="task-list" id="list-done"></div>
             </div>
         </main>
+    </div>
+ 
+    <!-- Task Edit Modal -->
+    <div id="editModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Chỉnh sửa công việc</h3>
+                <span id="close-edit-btn" class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="edit-task-title">Tên công việc:</label>
+                    <input type="text" id="edit-task-title" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label for="edit-task-deadline">Hạn chót:</label>
+                    <input type="datetime-local" id="edit-task-deadline" class="form-control" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-edit-btn" class="btn-secondary">Hủy</button>
+                <button id="save-edit-btn" class="btn-primary">Lưu thay đổi</button>
+            </div>
+        </div>
     </div>
 
     <script src="../utils.js"></script>
