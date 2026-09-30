@@ -1,3 +1,4 @@
+if (typeof document !== 'undefined') {
 (async () => {
     const STORAGE_KEY = 'Notes';
     let pastedImageData = null;
@@ -215,3 +216,178 @@
     };
 
 })();
+}
+
+// ==========================================
+// Notepad Multi-Tab Pure Data Model & Helpers
+// ==========================================
+
+function generateTabId() {
+    return 'tab-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+}
+
+function createInitialState() {
+    const id = generateTabId();
+    return {
+        activeTabId: id,
+        tabs: [
+            {
+                id: id,
+                title: 'Ghi chú 1',
+                content: '',
+                updatedAt: Date.now()
+            }
+        ]
+    };
+}
+
+function addTab(state, title, content = '') {
+    const existingTabs = (state && Array.isArray(state.tabs)) ? state.tabs : [];
+    const tabNum = existingTabs.length + 1;
+    const tabTitle = (typeof title === 'string' && title.trim()) ? title.trim() : `Ghi chú ${tabNum}`;
+    const newTab = {
+        id: generateTabId(),
+        title: tabTitle,
+        content: typeof content === 'string' ? content : '',
+        updatedAt: Date.now()
+    };
+    return {
+        ...(state || {}),
+        activeTabId: newTab.id,
+        tabs: [...existingTabs, newTab]
+    };
+}
+
+function removeTab(state, tabId) {
+    if (!state || !Array.isArray(state.tabs)) return createInitialState();
+    const tabIndex = state.tabs.findIndex(t => t.id === tabId);
+    if (tabIndex === -1) return { ...state };
+
+    const remainingTabs = state.tabs.filter(t => t.id !== tabId);
+    if (remainingTabs.length === 0) {
+        return createInitialState();
+    }
+
+    let nextActiveId = state.activeTabId;
+    if (state.activeTabId === tabId) {
+        const nextIndex = Math.min(tabIndex, remainingTabs.length - 1);
+        nextActiveId = remainingTabs[nextIndex].id;
+    }
+
+    return {
+        ...state,
+        activeTabId: nextActiveId,
+        tabs: remainingTabs
+    };
+}
+
+function renameTab(state, tabId, newTitle) {
+    if (!state || !Array.isArray(state.tabs)) return state;
+    const trimmedTitle = (typeof newTitle === 'string' && newTitle.trim()) ? newTitle.trim() : 'Ghi chú';
+    const tabs = state.tabs.map(tab => {
+        if (tab.id === tabId) {
+            return {
+                ...tab,
+                title: trimmedTitle,
+                updatedAt: Date.now()
+            };
+        }
+        return tab;
+    });
+    return {
+        ...state,
+        tabs
+    };
+}
+
+function updateTabContent(state, tabId, content) {
+    if (!state || !Array.isArray(state.tabs)) return state;
+    const newContent = typeof content === 'string' ? content : '';
+    const tabs = state.tabs.map(tab => {
+        if (tab.id === tabId) {
+            return {
+                ...tab,
+                content: newContent,
+                updatedAt: Date.now()
+            };
+        }
+        return tab;
+    });
+    return {
+        ...state,
+        tabs
+    };
+}
+
+function selectTab(state, tabId) {
+    if (!state || !Array.isArray(state.tabs)) return state;
+    const tabExists = state.tabs.some(tab => tab.id === tabId);
+    if (!tabExists) return { ...state };
+    return {
+        ...state,
+        activeTabId: tabId
+    };
+}
+
+function calculateWordAndCharCount(text) {
+    if (!text || typeof text !== 'string') {
+        return { words: 0, chars: 0 };
+    }
+    const trimmed = text.trim();
+    const words = trimmed.length > 0 ? trimmed.split(/\s+/).length : 0;
+    const chars = text.length;
+    return { words, chars };
+}
+
+function migrateLegacyNotes(legacyNotes) {
+    if (!Array.isArray(legacyNotes) || legacyNotes.length === 0) {
+        return createInitialState();
+    }
+    const tabs = legacyNotes.map((note, index) => {
+        const text = (note && typeof note.text === 'string') ? note.text : '';
+        let title = '';
+        if (text) {
+            const firstLine = text.split('\n')[0].trim();
+            title = firstLine.slice(0, 20);
+        }
+        title = title || 'Ghi chú cũ';
+        const tabId = (note && note.id != null) ? `tab-${note.id}` : `tab-${Date.now()}-${index}`;
+        const updatedAt = (note && note.timestamp) ? new Date(note.timestamp).getTime() : Date.now();
+        return {
+            id: tabId,
+            title: title,
+            content: text,
+            updatedAt: isNaN(updatedAt) ? Date.now() : updatedAt
+        };
+    });
+
+    return {
+        activeTabId: tabs[0].id,
+        tabs
+    };
+}
+
+if (typeof window !== 'undefined') {
+    window.createInitialState = createInitialState;
+    window.addTab = addTab;
+    window.removeTab = removeTab;
+    window.renameTab = renameTab;
+    window.updateTabContent = updateTabContent;
+    window.selectTab = selectTab;
+    window.calculateWordAndCharCount = calculateWordAndCharCount;
+    window.migrateLegacyNotes = migrateLegacyNotes;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        createInitialState,
+        addTab,
+        removeTab,
+        renameTab,
+        updateTabContent,
+        selectTab,
+        calculateWordAndCharCount,
+        migrateLegacyNotes
+    };
+}
+
