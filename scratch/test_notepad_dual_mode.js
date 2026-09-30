@@ -336,3 +336,91 @@ assert.strictEqual(mockEditorElement.classList.contains('privacy-blur'), false);
 
 console.log('✔ All Task 3 editor interactions, auto-save & dual-mode tests passed!');
 
+console.log('\n--- Testing Popup Extension Dual-Mode Launch Integration (Task 4) ---');
+
+// 16. Verify popup/popup.html DOM structure
+console.log('Testing popup/popup.html dual-mode buttons...');
+const popupHtmlPath = path.join(__dirname, '../popup/popup.html');
+assert.ok(fs.existsSync(popupHtmlPath), 'popup/popup.html should exist');
+const popupHtml = fs.readFileSync(popupHtmlPath, 'utf8');
+
+// Must contain #note-btn (or #note-window-btn) and #note-tab-btn
+const hasWindowBtn = popupHtml.includes('id="note-btn"') || popupHtml.includes('id="note-window-btn"');
+assert.ok(hasWindowBtn, 'popup/popup.html must contain #note-btn or #note-window-btn');
+assert.ok(popupHtml.includes('id="note-tab-btn"'), 'popup/popup.html must contain #note-tab-btn');
+
+// Must preserve existing tools buttons
+assert.ok(popupHtml.includes('id="todo-btn"'), 'popup/popup.html must preserve #todo-btn');
+assert.ok(popupHtml.includes('id="exportTask-btn"'), 'popup/popup.html must preserve #exportTask-btn');
+assert.ok(popupHtml.includes('id="importTask-btn"'), 'popup/popup.html must preserve #importTask-btn');
+
+// Must have clear dual-mode labels
+assert.ok(
+    /Ghi chú\s*\((Cửa sổ|Cửa sổ rời)\)/i.test(popupHtml),
+    'popup/popup.html window button should indicate window mode ("Ghi chú (Cửa sổ) 🗗" or "Ghi chú (Cửa sổ rời) 🗗")'
+);
+assert.ok(
+    /Ghi chú\s*\(Tab\)/i.test(popupHtml),
+    'popup/popup.html tab button should indicate tab mode ("Ghi chú (Tab) 📑")'
+);
+console.log('✔ All required buttons and labels exist in popup/popup.html');
+
+// 17. Verify popup/popup.css styling
+console.log('Testing popup/popup.css grid accommodation...');
+const popupCssPath = path.join(__dirname, '../popup/popup.css');
+assert.ok(fs.existsSync(popupCssPath), 'popup/popup.css should exist');
+const popupCss = fs.readFileSync(popupCssPath, 'utf8');
+assert.ok(popupCss.includes('.tools-grid'), 'popup/popup.css must contain .tools-grid');
+console.log('✔ .tools-grid styling exists in popup/popup.css');
+
+// 18. Verify popup/popup.js handler source code
+console.log('Testing popup/popup.js wiring...');
+const popupJsPath = path.join(__dirname, '../popup/popup.js');
+assert.ok(fs.existsSync(popupJsPath), 'popup/popup.js should exist');
+const popupJs = fs.readFileSync(popupJsPath, 'utf8');
+
+assert.ok(popupJs.includes('note-tab-btn'), 'popup/popup.js must reference note-tab-btn');
+assert.ok(
+    popupJs.includes('chrome.windows.create'),
+    'popup/popup.js must use chrome.windows.create for popup window'
+);
+assert.ok(
+    popupJs.includes('chrome.tabs.create'),
+    'popup/popup.js must use chrome.tabs.create for tab mode'
+);
+
+// 19. Verify popup launch handlers functionality
+console.log('Testing popup launch handler functions...');
+let openedWindowConfig = null;
+let openedTabConfig = null;
+global.chrome = {
+    runtime: {
+        getURL: (p) => `chrome-extension://mock-id/${p}`
+    },
+    windows: {
+        create: (config) => { openedWindowConfig = config; }
+    },
+    tabs: {
+        create: (config) => { openedTabConfig = config; }
+    }
+};
+
+const popup = require('../popup/popup.js');
+assert.strictEqual(typeof popup.openNoteWindow, 'function', 'popup.openNoteWindow should be exported function');
+assert.strictEqual(typeof popup.openNoteTab, 'function', 'popup.openNoteTab should be exported function');
+
+popup.openNoteWindow();
+assert.ok(openedWindowConfig, 'openNoteWindow must invoke chrome.windows.create');
+assert.strictEqual(openedWindowConfig.type, 'popup', 'Window type must be popup');
+assert.strictEqual(openedWindowConfig.width, 520, 'Window width must be 520');
+assert.strictEqual(openedWindowConfig.height, 640, 'Window height must be 640');
+assert.ok(openedWindowConfig.url.includes('note/note.html'), 'Window url must point to note/note.html');
+
+popup.openNoteTab();
+assert.ok(openedTabConfig, 'openNoteTab must invoke chrome.tabs.create');
+assert.ok(openedTabConfig.url.includes('note/note.html'), 'Tab url must point to note/note.html');
+
+console.log('✔ popup.openNoteWindow and popup.openNoteTab correctly invoke chrome APIs with exact parameters');
+console.log('✔ All Task 4 popup integration tests passed!');
+
+

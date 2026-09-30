@@ -1,4 +1,26 @@
+function openNoteWindow() {
+    if (typeof chrome !== 'undefined' && chrome.windows) {
+        chrome.windows.create({
+            url: chrome.runtime.getURL("note/note.html"),
+            type: "popup",
+            width: 520,
+            height: 640
+        });
+    }
+}
+
+function openNoteTab() {
+    if (typeof chrome !== 'undefined' && chrome.tabs) {
+        chrome.tabs.create({
+            url: chrome.runtime.getURL("note/note.html")
+        });
+    }
+}
+
 (async () => {
+    if (typeof getUserProfile !== 'function' || typeof document === 'undefined') {
+        return;
+    }
     const userProfile = await getUserProfile();
 
     if (userProfile) {
@@ -86,13 +108,20 @@
             };
         }
 
-        document.getElementById("note-btn").onclick = () => {
-            chrome.tabs.create({ url: chrome.runtime.getURL("../note/note.html") });
-        };
+        const noteBtn = document.getElementById("note-btn");
+        const noteWindowBtn = document.getElementById("note-window-btn");
+        const noteTabBtn = document.getElementById("note-tab-btn");
 
-        document.getElementById("todo-btn").onclick = () => {
-            chrome.tabs.create({ url: chrome.runtime.getURL("../todo/todo.html") });
-        };
+        if (noteBtn) noteBtn.onclick = openNoteWindow;
+        if (noteWindowBtn) noteWindowBtn.onclick = openNoteWindow;
+        if (noteTabBtn) noteTabBtn.onclick = openNoteTab;
+
+        const todoBtn = document.getElementById("todo-btn");
+        if (todoBtn) {
+            todoBtn.onclick = () => {
+                chrome.tabs.create({ url: chrome.runtime.getURL("../todo/todo.html") });
+            };
+        }
 
         // Xử lý chuyển tab
         document.querySelectorAll(".tab-btn").forEach(btn => {
@@ -340,3 +369,11 @@
         if (storageFill) storageFill.style.width = `${storageProgress}%`;
     });
 })();
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        openNoteWindow,
+        openNoteTab
+    };
+}
+
