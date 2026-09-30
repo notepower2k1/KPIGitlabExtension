@@ -188,9 +188,147 @@ function filterAndSortTasks(tasks, options = {}) {
     return result;
 }
 
+function extractTaskIdentifier(itemOrHref) {
+    if (!itemOrHref) return { id: '', iid: '', href: '', normalizedHref: '' };
+    let id = '';
+    let href = '';
+    if (typeof itemOrHref === 'string' || typeof itemOrHref === 'number') {
+        const str = String(itemOrHref).trim();
+        if (str.includes('/') || str.startsWith('http')) {
+            href = str;
+        } else {
+            id = str;
+        }
+    } else if (typeof itemOrHref === 'object') {
+        id = String(itemOrHref.id || itemOrHref.workItemId || itemOrHref.iid || '').trim();
+        href = String(itemOrHref.href || itemOrHref.taskUrl || itemOrHref.webUrl || '').trim();
+        if (!href && id && (id.includes('/') || id.startsWith('http'))) {
+            href = id;
+            id = '';
+        }
+    }
+
+    let iid = '';
+    if (href) {
+        const m = href.match(/(?:work_items|issues)\/(\d+)/);
+        if (m) iid = m[1];
+    }
+    if (!iid && id && /^\d+$/.test(id)) {
+        iid = id;
+    }
+
+    const normalizedHref = href ? href.replace(/\/+$/, '').toLowerCase() : '';
+    return { id, iid, href, normalizedHref };
+}
+
+function isTaskInList(list, taskOrId, href = '') {
+    if (!list) return false;
+    const target = extractTaskIdentifier(
+        typeof taskOrId === 'object' && taskOrId !== null
+            ? taskOrId
+            : (String(taskOrId || '').includes('/') ? taskOrId : { id: taskOrId, href })
+    );
+    if (!target.id && !target.iid && !target.normalizedHref) return false;
+
+    const items = Array.isArray(list) ? list : (list instanceof Set ? Array.from(list) : []);
+    return items.some(item => {
+        if (!item) return false;
+        const current = extractTaskIdentifier(item);
+        if (target.normalizedHref && current.normalizedHref && target.normalizedHref === current.normalizedHref) {
+            return true;
+        }
+        if (target.iid && current.iid && target.iid === current.iid) {
+            return true;
+        }
+        if (target.id && current.id && target.id === current.id) {
+            return true;
+        }
+        return false;
+    });
+}
+
+const kpiWorkItemPlusSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-2px;"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+const kpiWorkItemMinusSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-2px;"><path d="M1 8h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+const svgAdd = `
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="green" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    `;
+const svgRemove = `
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="red" xmlns="http://www.w3.org/2000/svg">
+    <path d="M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    `;
+
+function syncAllButtonsOnPage(doc = (typeof document !== 'undefined' ? document : null), storedList = (typeof window !== 'undefined' ? window._storedWorkItemIds : [])) {
+    if (!doc || !doc.querySelectorAll) return;
+    const safeStoredList = Array.isArray(storedList) ? storedList : [];
+
+    // 1. Đồng bộ trạng thái các nút ở danh sách child items trên trang task cha
+    const allAddButtons = doc.querySelectorAll('.custom-add-button');
+    allAddButtons.forEach(btn => {
+        const li = btn.closest ? btn.closest('li.tree-item') : null;
+        const anchor = li ? (li.querySelector('a[href*="/work_items/"], a[href*="/issues/"]') || li.querySelector('a')) : null;
+        const container = btn.closest ? btn.closest('div[data-testid="links-child"]') : null;
+        const href = (btn.getAttribute ? btn.getAttribute('data-task-href') : null) || (anchor ? (anchor.getAttribute('href') || anchor.href) : '') || '';
+        const hrefMatch = href.match(/(?:work_items|issues)\/(\d+)/);
+        const childIid = hrefMatch ? (hrefMatch[1] || hrefMatch[2]) : '';
+        const wid = (btn.getAttribute ? btn.getAttribute('data-work-item-id') : null) || childIid || (container && container.getAttribute ? container.getAttribute('parent-work-item-id') : '') || '';
+
+        const isAdded = isTaskInList(safeStoredList, { id: wid, iid: childIid, href });
+        btn.innerHTML = isAdded ? svgRemove : svgAdd;
+        if (btn.classList) {
+            if (isAdded) {
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-danger');
+            } else {
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-success');
+            }
+        }
+    });
+
+    // 2. Đồng bộ trạng thái nút trên trang work item riêng hoặc modal work item
+    const workItemBtns = doc.querySelectorAll('.custom-work-item-kpi-btn');
+    workItemBtns.forEach(btn => {
+        const wid = btn.getAttribute ? btn.getAttribute('data-work-item-id') : null;
+        const href = (btn.getAttribute ? btn.getAttribute('data-href') : null) || (typeof window !== 'undefined' && window.location ? window.location.href : '');
+        const isAdded = isTaskInList(safeStoredList, { id: wid, href });
+        btn.className = isAdded
+            ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
+            : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
+        btn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+        btn.innerHTML = isAdded
+            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
+            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
+        if (btn.setAttribute) {
+            btn.setAttribute('data-is-added', String(isAdded));
+        }
+    });
+
+    // 3. Đồng bộ trạng thái các nút từng hàng trong modal Tổng hợp task con nếu đang mở
+    const modalRowBtns = doc.querySelectorAll('.gl-kpi-row-add-btn');
+    modalRowBtns.forEach(btn => {
+        const taskId = btn.getAttribute ? btn.getAttribute('data-task-id') : null;
+        const taskHref = btn.getAttribute ? btn.getAttribute('data-task-href') : null;
+        const isAdded = isTaskInList(safeStoredList, { id: taskId, href: taskHref });
+        btn.className = isAdded
+            ? 'btn btn-sm btn-danger gl-button gl-kpi-row-add-btn'
+            : 'btn btn-sm btn-default gl-button gl-kpi-row-add-btn';
+        if (btn.setAttribute) {
+            btn.setAttribute('data-is-added', String(isAdded));
+        }
+        btn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+        btn.innerHTML = isAdded
+            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa</span>`
+            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm</span>`;
+    });
+}
+
 function renderTaskTableRows(tasks, options = {}) {
     const isSyncing = Boolean(options && options.isSyncing);
     const isFiltered = options ? (options.isFiltered !== undefined ? options.isFiltered : true) : true;
+    const storedWorkItemIds = (options && (options.storedWorkItemIds || options.storedItems)) || [];
 
     if (!tasks || tasks.length === 0) {
         const emptyMsg = isSyncing
@@ -198,7 +336,7 @@ function renderTaskTableRows(tasks, options = {}) {
             : (isFiltered ? 'Không tìm thấy task con nào phù hợp' : 'Không tìm thấy task con nào thuộc về bạn trên trang này.');
         return `
             <tr>
-                <td colspan="11" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #64748b;">
+                <td colspan="12" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #64748b;">
                     ${emptyMsg}
                 </td>
             </tr>`;
@@ -241,6 +379,11 @@ function renderTaskTableRows(tasks, options = {}) {
             ? '<span class="gl-badge gl-badge-warning">Phát sinh</span>'
             : '<span class="gl-badge gl-badge-info">Kế hoạch</span>';
 
+        const isAdded = isTaskInList(storedWorkItemIds, task);
+        const actionBtnClass = isAdded ? 'btn-danger' : 'btn-default';
+        const actionBtnText = isAdded ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa</span>` : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm</span>`;
+        const actionBtnTitle = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+
         return `
             <tr>
                 <td class="gl-kpi-task-title">
@@ -256,6 +399,16 @@ function renderTaskTableRows(tasks, options = {}) {
                 <td class="gl-kpi-status">${stateBadge}</td>
                 <td class="gl-kpi-status">${timelinessBadge}</td>
                 <td class="gl-kpi-status">${planBadge}</td>
+                <td class="gl-kpi-action-cell" style="text-align: center; white-space: nowrap;">
+                    <button type="button" class="btn btn-sm gl-button gl-kpi-row-add-btn ${actionBtnClass}"
+                        data-task-id="${id}"
+                        data-task-href="${href}"
+                        data-task-title="${title}"
+                        data-is-added="${String(isAdded)}"
+                        title="${actionBtnTitle}">
+                        ${actionBtnText}
+                    </button>
+                </td>
             </tr>`;
     }).join('');
 }
@@ -268,7 +421,11 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options =
     const diffColorClass = safeMetrics.diffHours >= 0 ? 'gl-text-success' : 'gl-text-danger';
     const onTimeColorClass = safeMetrics.onTimeRate >= 80 ? 'gl-text-success' : (safeMetrics.onTimeRate >= 50 ? 'gl-text-warning' : 'gl-text-danger');
 
-    const tableRowsHtml = renderTaskTableRows(tasks, { isSyncing, isFiltered: false });
+    const tableRowsHtml = renderTaskTableRows(tasks, {
+        isSyncing,
+        isFiltered: false,
+        storedWorkItemIds: (options && (options.storedWorkItemIds || options.storedItems)) || []
+    });
 
     return `
 <div id="gitlabKpiSummaryModal" class="gl-kpi-modal-overlay">
@@ -342,6 +499,7 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options =
                             <th>Trạng thái</th>
                             <th>Tiến độ</th>
                             <th>Phân loại</th>
+                            <th style="text-align: center; min-width: 90px;">KPI</th>
                         </tr>
                     </thead>
                     <tbody id="glKpiTableBody">
@@ -712,6 +870,56 @@ function getModalStyles() {
     line-height: 20px !important;
 }
 
+#gitlabKpiSummaryModal .gl-kpi-row-add-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 8px !important;
+    font-size: 12px !important;
+    line-height: 24px !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
+    border-radius: 4px !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out !important;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-row-add-btn.btn-default {
+    color: #108548 !important;
+    border: 1px solid #108548 !important;
+    background-color: #ffffff !important;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-row-add-btn.btn-default:hover {
+    background-color: #f1fbf5 !important;
+    color: #0d6d3b !important;
+    border-color: #0d6d3b !important;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-row-add-btn.btn-danger {
+    color: #ffffff !important;
+    border: 1px solid #dd2b0e !important;
+    background-color: #dd2b0e !important;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-row-add-btn.btn-danger:hover {
+    background-color: #c92509 !important;
+    border-color: #c92509 !important;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-row-add-btn svg {
+    flex-shrink: 0 !important;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-row-add-btn .gl-button-text {
+    line-height: 24px !important;
+}
+
 @keyframes gl-spin {
     to { transform: rotate(360deg); }
 }
@@ -979,9 +1187,6 @@ function extractWorkItemModalInfo(modalEl, currentParentInfo = {}, win = (typeof
     };
 }
 
-const kpiWorkItemPlusSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-2px;"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`;
-const kpiWorkItemMinusSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-2px;"><path d="M1 8h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`;
-
 function findWorkItemEditPlacement(container = (typeof document !== 'undefined' ? document : null)) {
     if (!container || !container.querySelector) return null;
 
@@ -1141,14 +1346,12 @@ function extractChildTasksFromDom(container = (typeof document !== 'undefined' ?
     const extracted = [];
     items.forEach(li => {
         const linkChild = li.querySelector('div[data-testid="links-child"]');
-        let id = linkChild?.getAttribute('parent-work-item-id');
         const anchor = li.querySelector('a[href*="/work_items/"], a[href*="/issues/"]') || li.querySelector('a');
         const href = anchor ? (anchor.getAttribute('href') || anchor.href || '') : '';
-
-        if (!id && href) {
-            const match = href.match(/work_items\/(\d+)|issues\/(\d+)/);
-            if (match) id = match[1] || match[2];
-        }
+        const hrefMatch = href.match(/(?:work_items|issues)\/(\d+)/);
+        const childIid = hrefMatch ? (hrefMatch[1] || hrefMatch[2]) : '';
+        const containerId = linkChild?.getAttribute('parent-work-item-id') || '';
+        const id = childIid || containerId;
 
         if (!id && !href) return;
 
@@ -1651,9 +1854,13 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
         tasks = enrichChildTasks(rawTasks, userProfile, storedKpi);
     }
 
+    let currentStoredWorkItemIds = (options && (options.storedWorkItemIds || options.storedItems)) || (typeof window !== 'undefined' ? window._storedWorkItemIds : null) || [];
     const isAutoRefreshing = Boolean(options.autoRefresh && !preloadedTasks);
     const metrics = calculateChildTaskMetrics(tasks);
-    const modalHtml = renderSummaryModalHtml(metrics, tasks, parentTitle, { isSyncing: isAutoRefreshing });
+    const modalHtml = renderSummaryModalHtml(metrics, tasks, parentTitle, {
+        isSyncing: isAutoRefreshing,
+        storedWorkItemIds: currentStoredWorkItemIds
+    });
 
     let modalOverlay = null;
     if (typeof doc.createElement === 'function') {
@@ -1705,6 +1912,10 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                     const currentStored = (typeof getStoredIds === 'function') ? await getStoredIds('WorkItemIds') : [];
                     const { updatedList } = batchAddTasksToStorage(tasks, safeParentInfo, currentStored);
                     await chrome.storage.local.set({ ['WorkItemIds']: updatedList });
+                    currentStoredWorkItemIds = updatedList;
+                    if (typeof window !== 'undefined') {
+                        window._storedWorkItemIds = updatedList;
+                    }
                 }
                 addAllBtn.innerText = '✔ Đã thêm tất cả vào KPI';
                 if (addAllBtn.classList) {
@@ -1712,6 +1923,17 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                     addAllBtn.classList.add('btn-default');
                 }
                 addAllBtn.disabled = true;
+
+                // Cập nhật tất cả các nút hàng trong bảng modal thành đã thêm
+                const rowButtons = modalOverlay.querySelectorAll ? modalOverlay.querySelectorAll('.gl-kpi-row-add-btn') : [];
+                rowButtons.forEach(btn => {
+                    btn.className = 'btn btn-sm btn-danger gl-button gl-kpi-row-add-btn';
+                    if (btn.setAttribute) {
+                        btn.setAttribute('data-is-added', 'true');
+                    }
+                    btn.title = 'Xóa task này khỏi KPI';
+                    btn.innerHTML = `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa</span>`;
+                });
 
                 if (typeof window !== 'undefined' && typeof window._onChildTasksAddedAll === 'function') {
                     window._onChildTasksAddedAll(tasks);
@@ -1733,6 +1955,7 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                     userProfile: options.userProfile,
                     storedKpi: options.storedKpi,
                     token: options.token,
+                    storedWorkItemIds: currentStoredWorkItemIds,
                     waitForDom: false
                 });
             } catch (err) {
@@ -1757,7 +1980,8 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
         const tableBody = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiTableBody') : null;
         if (tableBody) {
             tableBody.innerHTML = renderTaskTableRows(filteredSorted, {
-                isFiltered: Boolean(currentSearchQuery || currentSortKey)
+                isFiltered: Boolean(currentSearchQuery || currentSortKey),
+                storedWorkItemIds: currentStoredWorkItemIds
             });
         }
         const countEl = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiTaskCount') : null;
@@ -1779,6 +2003,53 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
             });
         }
     };
+
+    // Attach row button click delegation on tableBody
+    const tableBodyEl = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiTableBody') : null;
+    if (tableBodyEl && typeof tableBodyEl.addEventListener === 'function') {
+        tableBodyEl.addEventListener('click', async (e) => {
+            const btn = (e.target && e.target.closest) ? e.target.closest('.gl-kpi-row-add-btn') : null;
+            if (!btn) return;
+            e.stopPropagation();
+            e.preventDefault();
+            btn.disabled = true;
+
+            try {
+                const taskId = btn.getAttribute('data-task-id') || '';
+                const taskHref = btn.getAttribute('data-task-href') || '';
+                const taskTitle = btn.getAttribute('data-task-title') || '';
+
+                if (typeof window !== 'undefined' && typeof window._onToggleTaskFromRow === 'function') {
+                    const res = await window._onToggleTaskFromRow({
+                        id: taskId,
+                        href: taskHref,
+                        title: taskTitle,
+                        parentTitle: safeParentInfo.parentTitle,
+                        parentUrl: safeParentInfo.parentUrl,
+                        parentIid: safeParentInfo.parentIid
+                    });
+                    const isNowAdded = typeof res === 'boolean' ? res : (res && res.isAdded);
+                    if (res && res.storedList) {
+                        currentStoredWorkItemIds = res.storedList;
+                    }
+                    btn.className = isNowAdded
+                        ? 'btn btn-sm btn-danger gl-button gl-kpi-row-add-btn'
+                        : 'btn btn-sm btn-default gl-button gl-kpi-row-add-btn';
+                    if (btn.setAttribute) {
+                        btn.setAttribute('data-is-added', String(isNowAdded));
+                    }
+                    btn.title = isNowAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+                    btn.innerHTML = isNowAdded
+                        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa</span>`
+                        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm</span>`;
+                }
+            } catch (err) {
+                console.error('Error toggling task from summary modal row:', err);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    }
 
     const searchInput = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiSearchInput') : null;
     if (searchInput && typeof searchInput.addEventListener === 'function') {
@@ -1837,11 +2108,59 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
     return modalOverlay;
 }
 
+async function removeTaskFromStorage(key, taskOrId, href = '') {
+    const target = extractTaskIdentifier(typeof taskOrId === 'object' ? taskOrId : { id: taskOrId, href });
+    const items = (typeof getStoredIds === 'function') ? await getStoredIds(key) : [];
+    const filtered = items.filter(item => {
+        const current = extractTaskIdentifier(item);
+        if (target.normalizedHref && current.normalizedHref && target.normalizedHref === current.normalizedHref) {
+            return false;
+        }
+        if (target.iid && current.iid && target.iid === current.iid) {
+            return false;
+        }
+        if (target.id && current.id && target.id === current.id) {
+            return false;
+        }
+        return true;
+    });
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.set({ [key]: filtered });
+    }
+    return filtered;
+}
+
+async function addIdToStorage(key, id, href, createAt, extra = {}) {
+    const items = (typeof getStoredIds === 'function') ? await getStoredIds(key) : [];
+    const target = extractTaskIdentifier({ id, href });
+    const existingIdx = items.findIndex(item => {
+        const current = extractTaskIdentifier(item);
+        if (target.normalizedHref && current.normalizedHref && target.normalizedHref === current.normalizedHref) return true;
+        if (target.iid && current.iid && target.iid === current.iid) return true;
+        if (target.id && current.id && target.id === current.id) return true;
+        return false;
+    });
+    if (existingIdx === -1) {
+        items.push({ id: String(id || ''), href: String(href || ''), createAt, ...extra });
+    } else {
+        items[existingIdx] = { ...items[existingIdx], ...extra, href: href || items[existingIdx].href };
+    }
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.set({ [key]: items });
+    }
+    return items;
+}
+
 // --- Browser Content Script Initialization ---
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.calculateChildTaskMetrics = calculateChildTaskMetrics;
     window.filterMyChildTasks = filterMyChildTasks;
     window.resolveTaskIid = resolveTaskIid;
+    window.extractTaskIdentifier = extractTaskIdentifier;
+    window.isTaskInList = isTaskInList;
+    window.removeTaskFromStorage = removeTaskFromStorage;
+    window.addIdToStorage = addIdToStorage;
+    window.syncAllButtonsOnPage = syncAllButtonsOnPage;
     window.shouldBackfillParent = shouldBackfillParent;
     window.renderSummaryModalHtml = renderSummaryModalHtml;
     window.getModalStyles = getModalStyles;
@@ -1873,74 +2192,112 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
         let loadingSuccess = false;
         const WORK_ITEM_KEY = 'WorkItemIds';
-        const addedLinks = new Set();
-        const svgAdd = `
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="green" xmlns="http://www.w3.org/2000/svg">
-            <path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            `;
 
-        const svgRemove = `
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="red" xmlns="http://www.w3.org/2000/svg">
-            <path d="M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            `;
-
-        // Sử dụng hàm từ utils.js
-        const storedItems = await getStoredIds(WORK_ITEM_KEY);
-        storedItems.forEach(item => addedLinks.add(item.id));
-        const userProfile = await getUserProfile();
+        // Cache danh sách task đã thêm vào KPI
+        let storedItemsCache = (typeof getStoredIds === 'function') ? await getStoredIds(WORK_ITEM_KEY) : [];
+        if (typeof window !== 'undefined') {
+            window._storedWorkItemIds = storedItemsCache;
+        }
+        const userProfile = (typeof getUserProfile === 'function') ? await getUserProfile() : null;
 
         ensureModalStyles(document);
+
+        // Lắng nghe thay đổi storage từ bất kỳ tab hoặc window nào để tự động đồng bộ ngay lập tức
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+            chrome.storage.onChanged.addListener((changes, areaName) => {
+                if (areaName === 'local' && changes[WORK_ITEM_KEY]) {
+                    storedItemsCache = changes[WORK_ITEM_KEY].newValue || [];
+                    if (typeof window !== 'undefined') {
+                        window._storedWorkItemIds = storedItemsCache;
+                    }
+                    syncAllButtonsOnPage(document, storedItemsCache);
+                }
+            });
+        }
 
         async function handleSummaryButtonClick() {
             const parentInfo = getParentIssueInfo();
             const storedKpi = (typeof getStoredIds === 'function') ? await getStoredIds('KpiInfo') : [];
             const profile = (typeof getUserProfile === 'function') ? await getUserProfile() : userProfile;
             const token = (typeof getAccessToken === 'function') ? await getAccessToken() : null;
+            const storedTasks = (typeof getStoredIds === 'function') ? await getStoredIds(WORK_ITEM_KEY) : storedItemsCache;
+            storedItemsCache = storedTasks;
+            if (typeof window !== 'undefined') {
+                window._storedWorkItemIds = storedTasks;
+            }
 
             const existingCache = cachedChildTasks || (typeof window !== 'undefined' ? window._cachedChildTasks : null);
             if (existingCache && existingCache.length > 0) {
-                // Đã có dữ liệu từ lần lấy trước -> hiển thị ngay lập tức, không gọi lại API
                 openSummaryModal(parentInfo, existingCache, document, {
                     userProfile: profile,
                     storedKpi,
                     token,
+                    storedWorkItemIds: storedTasks,
                     autoRefresh: false
                 });
             } else {
-                // Lần đầu tiên mở modal -> gọi API 1 lần để lấy số liệu mới nhất
                 openSummaryModal(parentInfo, null, document, {
                     userProfile: profile,
                     storedKpi,
                     token,
+                    storedWorkItemIds: storedTasks,
                     autoRefresh: true
                 });
             }
         }
 
-        window._onChildTasksAddedAll = (tasks) => {
+        window._onToggleTaskFromRow = async (task) => {
+            if (!task) return { isAdded: false, storedList: storedItemsCache };
+            const isCurrentlyAdded = isTaskInList(storedItemsCache, task);
+            if (isCurrentlyAdded) {
+                storedItemsCache = await removeTaskFromStorage(WORK_ITEM_KEY, task);
+            } else {
+                const today = new Date().toLocaleString();
+                storedItemsCache = await addIdToStorage(WORK_ITEM_KEY, task.id, task.href, today, {
+                    parentTitle: task.parentTitle || '',
+                    parentUrl: task.parentUrl || '',
+                    parentIid: task.parentIid || '',
+                    taskTitle: task.title || ''
+                });
+            }
+            if (typeof window !== 'undefined') {
+                window._storedWorkItemIds = storedItemsCache;
+            }
+            syncAllButtonsOnPage();
+            return { isAdded: !isCurrentlyAdded, storedList: storedItemsCache };
+        };
+
+        window._onChildTasksAddedAll = async (tasks) => {
             if (!Array.isArray(tasks)) return;
-            tasks.forEach(t => addedLinks.add(String(t.id)));
-            const allAddButtons = document.querySelectorAll('.custom-add-button');
-            allAddButtons.forEach(btn => {
-                const container = btn.closest('div[data-testid="links-child"]');
-                const wid = container?.getAttribute('parent-work-item-id');
-                if (wid && addedLinks.has(wid)) {
-                    btn.innerHTML = svgRemove;
-                    btn.classList.remove('btn-success');
-                    btn.classList.add('btn-danger');
+            if (typeof getStoredIds === 'function') {
+                storedItemsCache = await getStoredIds(WORK_ITEM_KEY);
+                if (typeof window !== 'undefined') {
+                    window._storedWorkItemIds = storedItemsCache;
                 }
-            });
+            }
+            syncAllButtonsOnPage();
         };
 
         function getParentIssueInfo() {
             const pageUrl = (window.location.origin + window.location.pathname).replace(/\/+$/, '');
             const issueIidMatch = pageUrl.match(/\/issues\/(\d+)/);
-            const parentIid = issueIidMatch ? issueIidMatch[1] : '';
-            const parentUrl = issueIidMatch ? pageUrl : '';
+            let parentIid = issueIidMatch ? issueIidMatch[1] : '';
+            let parentUrl = issueIidMatch ? pageUrl : '';
             const titleEl = document.querySelector('h1.title, [data-testid="issue-title"], .issue-details .title');
             let parentTitle = titleEl ? titleEl.innerText.trim() : '';
+
+            // Nếu đang ở trang work item riêng, kiểm tra link cha (ancestors / parent link)
+            if (!parentUrl) {
+                const parentAnchor = document.querySelector(
+                    '[data-testid="work-item-parent-link"], [data-testid="work-item-parent"] a, [data-testid="work-item-ancestors"] a, a[href*="/issues/"]'
+                );
+                if (parentAnchor) {
+                    parentTitle = parentTitle || (parentAnchor.innerText || parentAnchor.textContent || '').trim();
+                    parentUrl = parentAnchor.getAttribute('href') || parentAnchor.href || '';
+                    parentIid = parentUrl.match(/\/issues\/(\d+)/)?.[1] || '';
+                }
+            }
+
             if (!parentTitle && document.title) {
                 parentTitle = document.title.replace(/\s*·.*$/, '').trim();
             }
@@ -1954,8 +2311,12 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             const button = document.createElement('button');
             button.className = 'btn btn-default btn-sm gl-button';
 
+            const hrefMatch = href.match(/(?:work_items|issues)\/(\d+)/);
+            const childIid = hrefMatch ? (hrefMatch[1] || hrefMatch[2]) : '';
+
             const updateButtonAppearance = () => {
-                if (addedLinks.has(workItemId)) {
+                const isAdded = isTaskInList(storedItemsCache, { id: workItemId, iid: childIid, href });
+                if (isAdded) {
                     button.innerHTML = svgRemove;
                     button.classList.remove('btn-success');
                     button.classList.add('btn-danger');
@@ -1969,50 +2330,32 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             updateButtonAppearance();
 
             button.addEventListener('click', async (e) => {
-                e.stopPropagation(); // chặn sự kiện lan lên DOM gốc
-                e.preventDefault();  // tránh hành vi mặc định
-                // Ngăn spam nút bằng cách vô hiệu hóa nó ngay khi nhấn
+                e.stopPropagation();
+                e.preventDefault();
                 button.disabled = true;
 
                 try {
-                    // Get group name
-                    if (addedLinks.has(workItemId)) {
-                        await removeIdFromStorage(WORK_ITEM_KEY, workItemId);
-                        addedLinks.delete(workItemId);
+                    const isCurrentlyAdded = isTaskInList(storedItemsCache, { id: workItemId, iid: childIid, href });
+                    if (isCurrentlyAdded) {
+                        storedItemsCache = await removeTaskFromStorage(WORK_ITEM_KEY, { id: workItemId, iid: childIid, href });
                     } else {
                         const today = new Date().toLocaleString();
                         const parentInfo = getParentIssueInfo();
-                        await addIdToStorage(WORK_ITEM_KEY, workItemId, href, today, {
+                        storedItemsCache = await addIdToStorage(WORK_ITEM_KEY, workItemId, href, today, {
                             parentTitle: parentInfo.parentTitle,
                             parentUrl: parentInfo.parentUrl,
                             parentIid: parentInfo.parentIid,
                             taskTitle: taskTitle
                         });
-                        addedLinks.add(workItemId);
                     }
+                    if (typeof window !== 'undefined') {
+                        window._storedWorkItemIds = storedItemsCache;
+                    }
+                    syncAllButtonsOnPage();
                 } catch (error) {
                     console.error('Error handling button click:', error);
                 } finally {
-                    // Cho phép người dùng nhấn lại sau khi xử lý xong
                     button.disabled = false;
-                }
-
-                updateButtonAppearance();
-
-                // Cập nhật nút trong popup/page work item nếu có
-                const workItemBtn = document.querySelector(`.custom-work-item-kpi-btn[data-work-item-id="${workItemId}"]`);
-                if (workItemBtn) {
-                    const isAdded = addedLinks.has(workItemId);
-                    workItemBtn.className = isAdded
-                        ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
-                        : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
-                    workItemBtn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
-                    workItemBtn.innerHTML = isAdded
-                        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
-                        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
-                    if (workItemBtn.setAttribute) {
-                        workItemBtn.setAttribute('data-is-added', String(isAdded));
-                    }
                 }
             });
 
@@ -2023,15 +2366,13 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             const taskHeader = document.querySelector('#tasks > .crud-header');
             if (!taskHeader) return;
 
-            // Tạo nút
             const button = document.createElement('button');
             button.className = 'btn btn-sm btn-default gl-button';
             button.title = 'Refresh';
             button.style.display = 'flex';
             button.style.alignItems = 'center';
-
             button.style.justifyContent = 'center';
-            // SVG icon (biểu tượng refresh)
+
             button.innerHTML = `
             <svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
                 viewBox="0 0 32 32" enable-background="new 0 0 32 32" xml:space="preserve">
@@ -2044,12 +2385,10 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             </svg>
         `;
 
-            // Gán sự kiện click
             button.addEventListener('click', () => {
                 processTasks();
             });
 
-            // Gắn nút vào header (nếu chưa có)
             if (!taskHeader.querySelector('button[title="Refresh"]')) {
                 taskHeader.append(button);
             }
@@ -2069,7 +2408,6 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         let lastBackfilledParentTitle = '';
 
         function processTasks() {
-            // Handle for issue
             const taskSection = document.querySelector('#tasks > .crud-body');
             if (!taskSection) return;
 
@@ -2079,31 +2417,55 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
             taskItems.forEach(li => {
                 const container = li.querySelector('div[data-testid="links-child"]');
-                const workItemId = container?.getAttribute('parent-work-item-id');
-                const anchor = li.querySelector('a');
+                const anchor = li.querySelector('a[href*="/work_items/"], a[href*="/issues/"]') || li.querySelector('a');
 
-                if (!workItemId || !anchor) return;
+                if (!anchor) return;
 
-                const avatarUrl = li.querySelector('div.gl-avatars-inline-child > a')?.getAttribute('href');
+                const href = anchor.getAttribute('href') || anchor.href || '';
+                const hrefMatch = href.match(/(?:work_items|issues)\/(\d+)/);
+                const childIid = hrefMatch ? (hrefMatch[1] || hrefMatch[2]) : '';
+                const containerId = container?.getAttribute('parent-work-item-id') || '';
+                const workItemId = childIid || containerId;
 
-                if (userProfile && avatarUrl != userProfile.web_url) return;
+                if (!workItemId) return;
+
+                const avatarUrl = li.querySelector('div.gl-avatars-inline-child > a, [data-testid="avatar-link"], .gl-avatar-link')?.getAttribute('href');
+
+                if (userProfile && avatarUrl && userProfile.web_url && avatarUrl != userProfile.web_url) return;
 
                 const taskTitle = anchor.innerText?.trim() || anchor.title?.trim() || '';
-                currentTasks.set(workItemId, { href: anchor.href, title: taskTitle });
+                currentTasks.set(workItemId, { href: anchor.href, title: taskTitle, id: workItemId, iid: childIid });
 
-                const position = li.querySelector('div[data-testid="child-contents-container"] > div[data-testid="links-child"]');
+                const position = li.querySelector('div[data-testid="child-contents-container"] > div[data-testid="links-child"]') || container;
                 if (!position) return;
 
-                // Kiểm tra nếu đã có nút thì bỏ qua
-                if (position.querySelector('.custom-add-button')) return;
+                const existingBtn = position.querySelector('.custom-add-button');
+                const isAdded = isTaskInList(storedItemsCache, { id: workItemId, iid: childIid, href: anchor.href });
+
+                if (existingBtn) {
+                    existingBtn.setAttribute('data-work-item-id', workItemId);
+                    existingBtn.setAttribute('data-task-href', anchor.href);
+                    existingBtn.innerHTML = isAdded ? svgRemove : svgAdd;
+                    if (existingBtn.classList) {
+                        if (isAdded) {
+                            existingBtn.classList.remove('btn-success');
+                            existingBtn.classList.add('btn-danger');
+                        } else {
+                            existingBtn.classList.remove('btn-danger');
+                            existingBtn.classList.add('btn-success');
+                        }
+                    }
+                    return;
+                }
 
                 const addButton = createAddButton(workItemId, anchor.href, taskTitle);
-                addButton.classList.add('custom-add-button'); // Gắn class để kiểm tra sau này
+                addButton.classList.add('custom-add-button');
+                addButton.setAttribute('data-work-item-id', workItemId);
+                addButton.setAttribute('data-task-href', anchor.href);
 
                 position.prepend(addButton);
             });
 
-            // Tự động bổ sung thông tin Issue cha cho các task đang mở trên trang này nếu trước đó chưa có
             if (shouldBackfillParent(currentTasks, backfilledTaskIds, lastBackfilledParentTitle, parentInfo.parentTitle)) {
                 for (const taskId of currentTasks.keys()) {
                     backfilledTaskIds.add(taskId);
@@ -2118,52 +2480,22 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             const wid = String(info.workItemId);
             if (btn) btn.disabled = true;
             try {
-                if (addedLinks.has(wid)) {
-                    await removeIdFromStorage(WORK_ITEM_KEY, wid);
-                    addedLinks.delete(wid);
+                const isCurrentlyAdded = isTaskInList(storedItemsCache, { id: wid, href: info.href });
+                if (isCurrentlyAdded) {
+                    storedItemsCache = await removeTaskFromStorage(WORK_ITEM_KEY, { id: wid, href: info.href });
                 } else {
                     const today = new Date().toLocaleString();
-                    await addIdToStorage(WORK_ITEM_KEY, wid, info.href, today, {
+                    storedItemsCache = await addIdToStorage(WORK_ITEM_KEY, wid, info.href, today, {
                         parentTitle: info.parentTitle || '',
                         parentUrl: info.parentUrl || '',
                         parentIid: info.parentIid || '',
                         taskTitle: info.title || ''
                     });
-                    addedLinks.add(wid);
                 }
-
-                // Update work item button appearance
-                const isAdded = addedLinks.has(wid);
-                if (btn) {
-                    btn.className = isAdded
-                        ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
-                        : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
-                    btn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
-                    btn.innerHTML = isAdded
-                        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
-                        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
-                    if (btn.setAttribute) {
-                        btn.setAttribute('data-is-added', String(isAdded));
-                    }
+                if (typeof window !== 'undefined') {
+                    window._storedWorkItemIds = storedItemsCache;
                 }
-
-                // Synchronize child item buttons on the page if present
-                const allAddButtons = document.querySelectorAll('.custom-add-button');
-                allAddButtons.forEach(b => {
-                    const container = b.closest('div[data-testid="links-child"]');
-                    const cId = container?.getAttribute('parent-work-item-id');
-                    if (cId === wid) {
-                        if (isAdded) {
-                            b.innerHTML = svgRemove;
-                            b.classList.remove('btn-success');
-                            b.classList.add('btn-danger');
-                        } else {
-                            b.innerHTML = svgAdd;
-                            b.classList.remove('btn-danger');
-                            b.classList.add('btn-success');
-                        }
-                    }
-                });
+                syncAllButtonsOnPage();
             } catch (err) {
                 console.error('Error toggling work item in KPI:', err);
             } finally {
@@ -2186,13 +2518,17 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             if (window.location && window.location.pathname && window.location.pathname.includes('/work_items/')) {
                 const pageInfo = extractWorkItemPageInfo(document, window);
                 if (pageInfo && pageInfo.workItemId) {
-                    const isAdded = addedLinks.has(String(pageInfo.workItemId));
-                    injectWorkItemButton(document, pageInfo, isAdded, (e) => {
+                    const isAdded = isTaskInList(storedItemsCache, pageInfo);
+                    const btn = injectWorkItemButton(document, pageInfo, isAdded, (e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        const btn = e.currentTarget || document.getElementById('kpiWorkItemAddBtn');
-                        handleToggleWorkItem(pageInfo, btn);
+                        const targetBtn = e.currentTarget || document.getElementById('kpiWorkItemAddBtn');
+                        handleToggleWorkItem(pageInfo, targetBtn);
                     });
+                    if (btn && btn.setAttribute) {
+                        btn.setAttribute('data-work-item-id', String(pageInfo.workItemId));
+                        btn.setAttribute('data-href', String(pageInfo.href));
+                    }
                 }
                 return;
             }
@@ -2203,13 +2539,17 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
                 const parentInfo = getParentIssueInfo();
                 const modalInfo = extractWorkItemModalInfo(modal, parentInfo, window);
                 if (modalInfo && modalInfo.workItemId) {
-                    const isAdded = addedLinks.has(String(modalInfo.workItemId));
-                    injectWorkItemButton(modal, modalInfo, isAdded, (e) => {
+                    const isAdded = isTaskInList(storedItemsCache, modalInfo);
+                    const btn = injectWorkItemButton(modal, modalInfo, isAdded, (e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        const btn = e.currentTarget || modal.querySelector('.custom-work-item-kpi-btn');
-                        handleToggleWorkItem(modalInfo, btn);
+                        const targetBtn = e.currentTarget || modal.querySelector('.custom-work-item-kpi-btn');
+                        handleToggleWorkItem(modalInfo, targetBtn);
                     });
+                    if (btn && btn.setAttribute) {
+                        btn.setAttribute('data-work-item-id', String(modalInfo.workItemId));
+                        btn.setAttribute('data-href', String(modalInfo.href));
+                    }
                 }
             }
         }
@@ -2224,7 +2564,6 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
         // Bắt đầu quan sát từ phần tử gốc (ví dụ: body)
         const observer = new MutationObserver((mutations) => {
-            // Lọc bỏ mutation do chính extension tạo ra để tránh loop
             let hasRelevantMutation = false;
             for (const m of mutations) {
                 const t = m.target;
@@ -2248,7 +2587,6 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             }
         });
 
-        // Cấu hình observer
         observer.observe(document.body, {
             childList: true,
             subtree: true,
@@ -2278,17 +2616,6 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             }
         }
 
-        async function addIdToStorage(key, id, href, createAt, extra = {}) {
-            const items = await getStoredIds(key);
-            const existingIdx = items.findIndex(item => item.id === id);
-            if (existingIdx === -1) {
-                items.push({ id, href, createAt, ...extra });
-            } else {
-                items[existingIdx] = { ...items[existingIdx], ...extra };
-            }
-            await chrome.storage.local.set({ [key]: items });
-        }
-
     })();
 }
 
@@ -2300,6 +2627,11 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateChildTaskMetrics,
         filterMyChildTasks,
         resolveTaskIid,
+        extractTaskIdentifier,
+        isTaskInList,
+        removeTaskFromStorage,
+        addIdToStorage,
+        syncAllButtonsOnPage,
         shouldBackfillParent,
         renderSummaryModalHtml,
         getModalStyles,

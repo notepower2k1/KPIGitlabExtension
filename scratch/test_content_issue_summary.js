@@ -36,7 +36,12 @@ const {
     extractWorkItemModalInfo,
     findWorkItemEditPlacement,
     createWorkItemKpiButton,
-    injectWorkItemButton
+    injectWorkItemButton,
+    extractTaskIdentifier,
+    isTaskInList,
+    removeTaskFromStorage,
+    addIdToStorage,
+    syncAllButtonsOnPage
 } = contentIssueModule || {};
 
 // 1. Function existence tests
@@ -67,6 +72,11 @@ assert.strictEqual(typeof extractWorkItemModalInfo, 'function', 'extractWorkItem
 assert.strictEqual(typeof findWorkItemEditPlacement, 'function', 'findWorkItemEditPlacement should be exported as a function');
 assert.strictEqual(typeof createWorkItemKpiButton, 'function', 'createWorkItemKpiButton should be exported as a function');
 assert.strictEqual(typeof injectWorkItemButton, 'function', 'injectWorkItemButton should be exported as a function');
+assert.strictEqual(typeof extractTaskIdentifier, 'function', 'extractTaskIdentifier should be exported as a function');
+assert.strictEqual(typeof isTaskInList, 'function', 'isTaskInList should be exported as a function');
+assert.strictEqual(typeof removeTaskFromStorage, 'function', 'removeTaskFromStorage should be exported as a function');
+assert.strictEqual(typeof addIdToStorage, 'function', 'addIdToStorage should be exported as a function');
+assert.strictEqual(typeof syncAllButtonsOnPage, 'function', 'syncAllButtonsOnPage should be exported as a function');
 console.log('✔ Passed: Exported functions existence check');
 
 // 2. Metric calculation: standard scenarios
@@ -302,13 +312,41 @@ class MockElement {
 
     set innerHTML(val) {
         this._innerHTML = val;
-        const idMatches = [...val.matchAll(/id="([^"]+)"/g)];
         this.children = [];
+
+        if (typeof val !== 'string') return;
+
+        // If val contains #gitlabKpiSummaryModal, make it the root child
+        if (val.includes('id="gitlabKpiSummaryModal"') && this.id !== 'gitlabKpiSummaryModal') {
+            const modalRoot = new MockElement('div', { id: 'gitlabKpiSummaryModal' });
+            modalRoot.parentNode = this;
+            this.children.push(modalRoot);
+            modalRoot.innerHTML = val;
+            return;
+        }
+
+        const idMatches = [...val.matchAll(/id="([^"]+)"/g)];
         for (const m of idMatches) {
             const childId = m[1];
-            const child = new MockElement('div', { id: childId });
-            child.parentNode = this;
-            this.children.push(child);
+            if (childId !== this.id) {
+                const child = new MockElement('div', { id: childId });
+                child.parentNode = this;
+                this.children.push(child);
+            }
+        }
+
+        const rowBtnMatches = [...val.matchAll(/<button[^>]*class="([^"]*gl-kpi-row-add-btn[^"]*)"[^>]*data-task-id="([^"]+)"[^>]*data-task-href="([^"]*)"[^>]*data-is-added="([^"]+)"/g)];
+        for (const m of rowBtnMatches) {
+            const btn = new MockElement('button', {
+                className: m[1],
+                attributes: {
+                    'data-task-id': m[2],
+                    'data-task-href': m[3],
+                    'data-is-added': m[4]
+                }
+            });
+            btn.parentNode = this;
+            this.children.push(btn);
         }
     }
 
@@ -336,6 +374,29 @@ class MockElement {
                 this.className = this.className.split(/\s+/).filter(c => c !== cls).join(' ');
             }
         };
+    }
+
+    closest(selector) {
+        let curr = this;
+        while (curr) {
+            if (selector.startsWith('.') && curr.classList && curr.classList.contains(selector.slice(1))) {
+                return curr;
+            }
+            if (selector.startsWith('#') && curr.id === selector.slice(1)) {
+                return curr;
+            }
+            if (selector.includes('data-testid="')) {
+                const m = selector.match(/data-testid="([^"]+)"/);
+                if (m && curr.getAttribute && curr.getAttribute('data-testid') === m[1]) {
+                    return curr;
+                }
+            }
+            if (curr.tagName && curr.tagName.toLowerCase() === selector.toLowerCase()) {
+                return curr;
+            }
+            curr = curr.parentNode;
+        }
+        return null;
     }
 
     appendChild(child) {
@@ -388,10 +449,10 @@ class MockElement {
         }
     }
 
-    dispatchEvent(event) {
+    async dispatchEvent(event) {
         const list = this.eventListeners[event.type || event] || [];
         for (const fn of list) {
-            fn(event);
+            await fn(event);
         }
     }
 
@@ -1338,6 +1399,215 @@ class MockDocument {
         assert.ok(reinjected.className.includes('btn-danger'), 'Should update class to danger');
 
         console.log('✔ Passed: Work item standalone page & modal popup KPI button injection');
+    }
+
+    // 23. Individual Task KPI Toggle in Summary Modal & Cross-Page State Synchronization
+    {
+        // 1. extractTaskIdentifier
+        assert.deepStrictEqual(extractTaskIdentifier('2067'), { id: '2067', iid: '2067', href: '', normalizedHref: '' });
+        assert.deepStrictEqual(extractTaskIdentifier(2067), { id: '2067', iid: '2067', href: '', normalizedHref: '' });
+        assert.deepStrictEqual(
+            extractTaskIdentifier('https://gitlab.widosoft.com/group/proj/-/work_items/2067'),
+            { id: '', iid: '2067', href: 'https://gitlab.widosoft.com/group/proj/-/work_items/2067', normalizedHref: 'https://gitlab.widosoft.com/group/proj/-/work_items/2067' }
+        );
+        assert.deepStrictEqual(
+            extractTaskIdentifier({ id: 'legacy-12345', href: 'https://gitlab.widosoft.com/group/proj/-/work_items/2067' }),
+            { id: 'legacy-12345', iid: '2067', href: 'https://gitlab.widosoft.com/group/proj/-/work_items/2067', normalizedHref: 'https://gitlab.widosoft.com/group/proj/-/work_items/2067' }
+        );
+        assert.deepStrictEqual(
+            extractTaskIdentifier({ id: '2067', iid: '2067' }),
+            { id: '2067', iid: '2067', href: '', normalizedHref: '' }
+        );
+        assert.deepStrictEqual(extractTaskIdentifier(null), { id: '', iid: '', href: '', normalizedHref: '' });
+
+        // 2. isTaskInList robust matching
+        const storedList = [
+            {
+                id: '2067',
+                href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067',
+                taskTitle: 'Feature Auth'
+            },
+            {
+                id: 'legacy-parent-id-888',
+                href: 'https://gitlab.widosoft.com/grp/prj/-/issues/100',
+                taskTitle: 'Issue Task'
+            }
+        ];
+
+        // Direct ID match
+        assert.strictEqual(isTaskInList(storedList, '2067'), true);
+        assert.strictEqual(isTaskInList(storedList, 2067), true);
+
+        // Matching work_item standalone page format against child item format
+        assert.strictEqual(
+            isTaskInList(storedList, {
+                id: 'legacy-child-id-44621',
+                href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067'
+            }),
+            true,
+            'Should match by extracted work_items IID even if stored id format differed'
+        );
+
+        // Matching by normalized path
+        assert.strictEqual(
+            isTaskInList(storedList, 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067'),
+            true
+        );
+
+        // Negative match
+        assert.strictEqual(isTaskInList(storedList, '9999'), false);
+        assert.strictEqual(isTaskInList([], '2067'), false);
+        assert.strictEqual(isTaskInList(null, '2067'), false);
+
+        // 3. Storage add and remove helpers (mocking chrome.storage.local)
+        let mockStorage = {};
+        const originalChrome = global.chrome;
+        global.chrome = {
+            storage: {
+                local: {
+                    get: async (key) => ({ [key]: mockStorage[key] || [] }),
+                    set: async (obj) => { Object.assign(mockStorage, obj); }
+                }
+            }
+        };
+
+        try {
+            // Add new item
+            const afterAdd = await addIdToStorage('WorkItemIds', '2067', 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067', '2026-10-01', {
+                parentTitle: 'Parent Epic',
+                parentUrl: 'https://gitlab.widosoft.com/grp/prj/-/issues/50'
+            });
+            assert.strictEqual(afterAdd.length, 1);
+            assert.strictEqual(afterAdd[0].id, '2067');
+            assert.strictEqual(afterAdd[0].parentTitle, 'Parent Epic');
+
+            // Add duplicate item updates metadata without duplicating
+            const afterUpdate = await addIdToStorage('WorkItemIds', '2067', 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067', '2026-10-01', {
+                taskTitle: 'Updated Title'
+            });
+            assert.strictEqual(afterUpdate.length, 1);
+            assert.strictEqual(afterUpdate[0].taskTitle, 'Updated Title');
+
+            // Remove item by matching href/iid even if id differs
+            const afterRemove = await removeTaskFromStorage('WorkItemIds', {
+                id: 'diff-id-44621',
+                href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067'
+            });
+            assert.strictEqual(afterRemove.length, 0);
+        } finally {
+            global.chrome = originalChrome;
+        }
+
+        // 4. renderTaskTableRows with storedWorkItemIds
+        const sampleTasksForRows = [
+            { id: '2067', href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067', title: 'Task Added', estimateHour: 4, spentHour: 2, state: 'opened' },
+            { id: '2068', href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/2068', title: 'Task Not Added', estimateHour: 2, spentHour: 1, state: 'opened' }
+        ];
+
+        const rowsHtml = renderTaskTableRows(sampleTasksForRows, {
+            storedWorkItemIds: [{ id: '2067', href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067' }]
+        });
+
+        // Column count check: empty row should have colspan="12"
+        const emptyRowsHtml = renderTaskTableRows([], { isFiltered: true });
+        assert.ok(emptyRowsHtml.includes('colspan="12"'), 'Empty state must span 12 columns including KPI column');
+
+        // Added row check
+        assert.ok(rowsHtml.includes('data-task-id="2067"'));
+        assert.ok(rowsHtml.includes('btn-danger'), 'Added row must have btn-danger');
+        assert.ok(rowsHtml.includes('data-is-added="true"'));
+        assert.ok(rowsHtml.includes('Xóa'));
+
+        // Not-added row check
+        assert.ok(rowsHtml.includes('data-task-id="2068"'));
+        assert.ok(rowsHtml.includes('btn-default'), 'Not added row must have btn-default');
+        assert.ok(rowsHtml.includes('data-is-added="false"'));
+        assert.ok(rowsHtml.includes('Thêm'));
+
+        // 5. openSummaryModal row button delegation & Add All button
+        const mockDocModal = new MockDocument();
+        const testParent = { parentTitle: 'Parent Epic Issue', parentUrl: 'https://gitlab.widosoft.com/grp/prj/-/issues/10', parentIid: '10' };
+        let toggledTaskPayload = null;
+        global.window = global.window || {};
+        window._onToggleTaskFromRow = async (taskPayload) => {
+            toggledTaskPayload = taskPayload;
+            return { isAdded: true, storedList: [{ id: taskPayload.id, href: taskPayload.href }] };
+        };
+
+        let childTasksAddedAllPayload = null;
+        window._onChildTasksAddedAll = (tasks) => {
+            childTasksAddedAllPayload = tasks;
+        };
+
+        const modalEl = openSummaryModal(testParent, sampleTasksForRows, mockDocModal, {
+            storedWorkItemIds: []
+        });
+        assert.ok(modalEl, 'Modal element must be created');
+
+        // Test row button click delegation
+        const tableBody = modalEl.querySelector('#glKpiTableBody');
+        assert.ok(tableBody, 'Table body must exist');
+        const firstRowBtn = modalEl.querySelector('.gl-kpi-row-add-btn');
+        assert.ok(firstRowBtn, 'Row add button must exist');
+
+        // Simulate click on row button
+        await tableBody.dispatchEvent({
+            type: 'click',
+            target: firstRowBtn,
+            stopPropagation: () => {},
+            preventDefault: () => {}
+        });
+
+        assert.ok(toggledTaskPayload, '_onToggleTaskFromRow must have been triggered');
+        assert.strictEqual(toggledTaskPayload.id, '2067');
+        assert.strictEqual(firstRowBtn.getAttribute('data-is-added'), 'true');
+        assert.ok(firstRowBtn.className.includes('btn-danger'));
+
+        // Test Add All button click
+        const addAllBtn = modalEl.querySelector('#glKpiAddAllBtn');
+        assert.ok(addAllBtn, 'Add All button must exist');
+        await addAllBtn.dispatchEvent({ type: 'click' });
+        assert.strictEqual(addAllBtn.innerText, '✔ Đã thêm tất cả vào KPI');
+        assert.ok(childTasksAddedAllPayload, '_onChildTasksAddedAll must have been called');
+
+        // 6. syncAllButtonsOnPage across child items, work item pages, and summary modal
+        const syncDoc = new MockDocument();
+        
+        // Child item button in tree list
+        const treeLi = new MockElement('li', { className: 'tree-item' });
+        const treeLinkChild = new MockElement('div', { attributes: { 'data-testid': 'links-child', 'parent-work-item-id': 'legacy-child-id-123' } });
+        const treeAnchor = new MockElement('a', { attributes: { href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067' }, innerText: 'Child Task 2067' });
+        const treeAddBtn = new MockElement('button', { className: 'btn btn-default btn-sm custom-add-button', attributes: { 'data-task-href': 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067', 'data-work-item-id': '2067' } });
+        treeLinkChild.appendChild(treeAddBtn);
+        treeLi.appendChild(treeAnchor);
+        treeLi.appendChild(treeLinkChild);
+        syncDoc.body.appendChild(treeLi);
+
+        // Work item page button
+        const standaloneBtn = new MockElement('button', { className: 'btn btn-default btn-sm custom-work-item-kpi-btn', attributes: { 'data-work-item-id': '2067', 'data-href': 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067' } });
+        syncDoc.body.appendChild(standaloneBtn);
+
+        // Modal row button
+        const rowSyncBtn = new MockElement('button', { className: 'btn btn-sm btn-default gl-button gl-kpi-row-add-btn', attributes: { 'data-task-id': '2067', 'data-task-href': 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067' } });
+        syncDoc.body.appendChild(rowSyncBtn);
+
+        // Initial sync when task is added
+        syncAllButtonsOnPage(syncDoc, [{ id: '2067', href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/2067' }]);
+        assert.ok(treeAddBtn.classList.contains('btn-danger'), 'Tree button should be danger when added');
+        assert.ok(standaloneBtn.classList.contains('btn-danger'), 'Standalone button should be danger when added');
+        assert.ok(standaloneBtn.innerHTML.includes('Xóa khỏi KPI'));
+        assert.ok(rowSyncBtn.classList.contains('btn-danger'), 'Row button should be danger when added');
+        assert.strictEqual(rowSyncBtn.getAttribute('data-is-added'), 'true');
+
+        // Sync when task is removed
+        syncAllButtonsOnPage(syncDoc, []);
+        assert.ok(treeAddBtn.classList.contains('btn-success'), 'Tree button should be success when not added');
+        assert.ok(standaloneBtn.classList.contains('btn-default'), 'Standalone button should be default when not added');
+        assert.ok(standaloneBtn.innerHTML.includes('Thêm vào KPI'));
+        assert.ok(rowSyncBtn.classList.contains('btn-default'), 'Row button should be default when not added');
+        assert.strictEqual(rowSyncBtn.getAttribute('data-is-added'), 'false');
+
+        console.log('✔ Passed: Individual task KPI toggle in summary modal & cross-page state synchronization');
     }
 
     console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');
