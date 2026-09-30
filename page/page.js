@@ -1,3 +1,4 @@
+if (typeof document !== 'undefined') {
 (async () => {
     console.log('Loading page.js');
     const today = new Date();
@@ -3736,3 +3737,307 @@ fragment TimelogFragment on Timelog {
     }
 
 })();
+}
+
+// Daily Timesheet Audit Calculation & Rendering functions
+function normalizeDateToIso(dateVal) {
+    if (!dateVal) return '';
+    if (dateVal instanceof Date) {
+        if (isNaN(dateVal.getTime())) return '';
+        const y = dateVal.getFullYear();
+        const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+        const d = String(dateVal.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    const str = String(dateVal).trim();
+    const isoMatch = str.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (isoMatch) {
+        return `${isoMatch[1]}-${String(isoMatch[2]).padStart(2, '0')}-${String(isoMatch[3]).padStart(2, '0')}`;
+    }
+    const dmyMatch = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmyMatch) {
+        const first = parseInt(dmyMatch[1], 10);
+        const second = parseInt(dmyMatch[2], 10);
+        const y = dmyMatch[3];
+        if (first <= 12 && second > 12) {
+            return `${y}-${String(first).padStart(2, '0')}-${String(second).padStart(2, '0')}`;
+        }
+        return `${y}-${String(second).padStart(2, '0')}-${String(first).padStart(2, '0')}`;
+    }
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+        const y = parsed.getFullYear();
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const d = String(parsed.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    return '';
+}
+
+function calculateMonthlyTimesheet(items = [], selYear, selMonth, refDate = new Date()) {
+    const year = Number(selYear);
+    const month = Number(selMonth);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const refIso = normalizeDateToIso(refDate || new Date());
+
+    // Index items by date
+    const itemsByDate = new Map();
+    (items || []).forEach(item => {
+        if (!item) return;
+        const rawDate = item.dateIso || item.addedAt || item.createAt || item.spentAt;
+        const dateIso = normalizeDateToIso(rawDate);
+        if (!dateIso) return;
+        if (!itemsByDate.has(dateIso)) {
+            itemsByDate.set(dateIso, []);
+        }
+        itemsByDate.get(dateIso).push(item);
+    });
+
+    const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    const days = [];
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(year, month - 1, d);
+        const dateIso = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const dayOfWeek = dateObj.getDay();
+        const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+        const dayName = dayNames[dayOfWeek];
+        const isFuture = dateIso > refIso;
+        const isPastOrToday = !isFuture;
+        const targetHours = isWeekend ? 0 : 8.0;
+
+        const dayTasks = itemsByDate.get(dateIso) || [];
+        let totalSpentOnDay = 0;
+        dayTasks.forEach(task => {
+            const val = typeof task.spent === 'number'
+                ? task.spent
+                : (typeof task.spentTime === 'number'
+                    ? task.spentTime
+                    : (parseFloat(task.spent || task.spentTime || task.totalSpentTime) || 0));
+            totalSpentOnDay += val;
+        });
+        const spentHours = Math.round(totalSpentOnDay * 10) / 10;
+
+        let status;
+        let diffHours = 0;
+
+        if (isFuture) {
+            status = 'future';
+            diffHours = 0;
+        } else if (isWeekend) {
+            status = 'weekend';
+            diffHours = Math.round(spentHours * 10) / 10;
+        } else {
+            diffHours = Math.round((spentHours - 8.0) * 10) / 10;
+            if (spentHours >= 8.0) {
+                status = 'success';
+            } else if (spentHours > 0) {
+                status = 'warning';
+            } else {
+                status = 'danger';
+            }
+        }
+        if (Object.is(diffHours, -0)) diffHours = 0;
+
+        days.push({
+            dateIso,
+            dayNum: d,
+            dayOfWeek,
+            dayName,
+            spentHours,
+            targetHours,
+            isWeekend,
+            isFuture,
+            isPastOrToday,
+            status,
+            diffHours,
+            taskItems: dayTasks
+        });
+    }
+
+    const totalWorkingDays = days.filter(d => !d.isWeekend).length;
+    const totalTargetHours = totalWorkingDays * 8;
+    const totalSpentHours = Math.round(days.reduce((sum, d) => sum + d.spentHours, 0) * 10) / 10;
+    const deficitDaysCount = days.filter(d => d.isPastOrToday && !d.isWeekend && d.spentHours < 8.0).length;
+    const achievementRate = totalTargetHours > 0
+        ? Math.round((totalSpentHours / totalTargetHours) * 1000) / 10
+        : 0;
+
+    return {
+        days,
+        totalWorkingDays,
+        totalTargetHours,
+        totalSpentHours,
+        deficitDaysCount,
+        achievementRate
+    };
+}
+
+function renderDailyTimesheet(timesheetData) {
+    if (!timesheetData || typeof document === 'undefined') return;
+
+    const chipsContainer = document.getElementById('timesheetSummaryChips');
+    const gridContainer = document.getElementById('timesheetCalendarGrid');
+
+    if (chipsContainer) {
+        chipsContainer.innerHTML = '';
+        const { totalWorkingDays, totalTargetHours, totalSpentHours, deficitDaysCount, achievementRate } = timesheetData;
+
+        // 1. Ngày làm việc
+        const chipDays = document.createElement('div');
+        chipDays.className = 'timesheet-chip chip-info';
+        chipDays.innerHTML = `📅 Ngày làm việc: <strong>${totalWorkingDays} ngày</strong>`;
+        chipsContainer.appendChild(chipDays);
+
+        // 2. Tổng giờ / Chỉ tiêu
+        const chipHours = document.createElement('div');
+        chipHours.className = 'timesheet-chip chip-info';
+        chipHours.innerHTML = `⏱️ Tổng giờ: <strong>${totalSpentHours}h / ${totalTargetHours}h</strong>`;
+        chipsContainer.appendChild(chipHours);
+
+        // 3. Tỷ lệ đạt
+        const chipRate = document.createElement('div');
+        let rateClass = 'chip-success';
+        if (achievementRate < 80) rateClass = 'chip-danger';
+        else if (achievementRate < 100) rateClass = 'chip-warning';
+        chipRate.className = `timesheet-chip ${rateClass}`;
+        chipRate.innerHTML = `🎯 Tỷ lệ đạt: <strong>${achievementRate}%</strong>`;
+        chipsContainer.appendChild(chipRate);
+
+        // 4. Số ngày thiếu giờ
+        const chipDeficit = document.createElement('div');
+        if (deficitDaysCount === 0) {
+            chipDeficit.className = 'timesheet-chip chip-success';
+            chipDeficit.innerHTML = `✅ Không thiếu giờ`;
+        } else {
+            chipDeficit.className = 'timesheet-chip chip-danger';
+            chipDeficit.innerHTML = `⚠️ Thiếu giờ: <strong>${deficitDaysCount} ngày</strong>`;
+        }
+        chipsContainer.appendChild(chipDeficit);
+    }
+
+    if (gridContainer) {
+        gridContainer.innerHTML = '';
+        (timesheetData.days || []).forEach(day => {
+            const cell = document.createElement('div');
+            cell.className = `timesheet-day-cell day-${day.status}`;
+            cell.setAttribute('data-date', day.dateIso);
+
+            const header = document.createElement('div');
+            header.className = 'timesheet-day-cell-header';
+
+            const numSpan = document.createElement('span');
+            numSpan.className = 'timesheet-day-num';
+            numSpan.textContent = String(day.dayNum);
+
+            const weekdaySpan = document.createElement('span');
+            weekdaySpan.className = 'timesheet-day-weekday';
+            weekdaySpan.textContent = day.dayName;
+
+            header.appendChild(numSpan);
+            header.appendChild(weekdaySpan);
+            cell.appendChild(header);
+
+            const body = document.createElement('div');
+            body.className = 'timesheet-day-body';
+
+            const spentDiv = document.createElement('div');
+            spentDiv.className = 'timesheet-day-spent';
+            spentDiv.textContent = day.isFuture ? '—' : `${day.spentHours}h`;
+
+            const diffDiv = document.createElement('div');
+            diffDiv.className = 'timesheet-day-diff';
+            if (day.isFuture) {
+                diffDiv.textContent = '';
+            } else if (day.isWeekend) {
+                diffDiv.textContent = day.spentHours > 0 ? `+${day.spentHours}h` : '';
+            } else {
+                if (day.diffHours > 0) {
+                    diffDiv.textContent = `+${day.diffHours}h`;
+                } else if (day.diffHours < 0) {
+                    diffDiv.textContent = `${day.diffHours}h`;
+                } else {
+                    diffDiv.textContent = `+0h`;
+                }
+            }
+
+            body.appendChild(spentDiv);
+            body.appendChild(diffDiv);
+            cell.appendChild(body);
+
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'timesheet-day-status';
+
+            let statusIcon = '';
+            let statusLabel = '';
+            switch (day.status) {
+                case 'success':
+                    statusIcon = '✅';
+                    statusLabel = 'Đạt chuẩn';
+                    break;
+                case 'warning':
+                    statusIcon = '⚠️';
+                    statusLabel = `Thiếu ${Math.abs(day.diffHours)}h`;
+                    break;
+                case 'danger':
+                    statusIcon = '❌';
+                    statusLabel = 'Chưa log (-8h)';
+                    break;
+                case 'weekend':
+                    statusIcon = '☕';
+                    statusLabel = day.spentHours > 0 ? `+${day.spentHours}h` : 'Cuối tuần';
+                    break;
+                case 'future':
+                default:
+                    statusIcon = '⏳';
+                    statusLabel = 'Chưa tới';
+                    break;
+            }
+
+            statusDiv.innerHTML = `<span>${statusIcon}</span> <span>${statusLabel}</span>`;
+            cell.appendChild(statusDiv);
+
+            if (day.taskItems && day.taskItems.length > 0) {
+                const tooltipLines = [
+                    `${day.dayName}, ngày ${day.dayNum}/${day.dateIso.slice(5, 7)} - Đã log: ${day.spentHours}h (${day.taskItems.length} công việc):`,
+                    '─────────────────────────',
+                    ...day.taskItems.map((it, idx) => {
+                        const title = it.title || it.taskUrl || `Công việc #${idx + 1}`;
+                        const sp = typeof it.spent === 'number' ? it.spent : (parseFloat(it.spent) || 0);
+                        return `• [${sp}h] ${title}`;
+                    })
+                ];
+                cell.title = tooltipLines.join('\n');
+            } else if (!day.isFuture && !day.isWeekend) {
+                cell.title = `${day.dayName}, ngày ${day.dayNum}/${day.dateIso.slice(5, 7)}: Chưa có giờ log nào!`;
+            }
+
+            cell.addEventListener('click', () => {
+                if (day.taskItems && day.taskItems.length > 0) {
+                    const taskLines = day.taskItems.map(it => {
+                        const sp = typeof it.spent === 'number' ? it.spent : (parseFloat(it.spent) || 0);
+                        return `• [${sp}h] ${it.title || it.taskUrl || 'Công việc'}`;
+                    }).join('\n');
+                    alert(`📋 Chi tiết Log Time ngày ${day.dateIso} (${day.dayName}):\nTổng đã log: ${day.spentHours}h / Chỉ tiêu: ${day.targetHours}h\n\nDanh sách công việc:\n${taskLines}`);
+                } else if (!day.isFuture && !day.isWeekend) {
+                    alert(`⚠️ Ngày ${day.dateIso} (${day.dayName}) chưa có giờ log nào (0h / 8h)!`);
+                }
+            });
+
+            gridContainer.appendChild(cell);
+        });
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.calculateMonthlyTimesheet = calculateMonthlyTimesheet;
+    window.renderDailyTimesheet = renderDailyTimesheet;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        calculateMonthlyTimesheet,
+        renderDailyTimesheet,
+    };
+}
+
