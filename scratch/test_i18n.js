@@ -668,6 +668,25 @@ const mockStorage = {
         'Add single task button in VI should show "+ Thêm"'
     );
 
+    // Render without language argument when active language is English
+    i18n.setLanguage('en');
+    popupModule.renderUnaddedKpiBanner(
+        [
+            { id: '1', iid: '1', title: 'Task A' }
+        ],
+        testMockDoc
+    );
+    assert.ok(
+        testMockDoc.elements.unaddedKpiTitle.textContent.includes('task(s) created today not yet added') ||
+        testMockDoc.elements.unaddedKpiTitle.textContent.includes('not yet added to KPI'),
+        'Unadded KPI banner should resolve to English via getLanguage() when lang argument is omitted'
+    );
+    assert.strictEqual(
+        testMockDoc.elements.unaddedKpiItemsList.children[0].children[1].textContent,
+        '+ Add',
+        'Add single task button should show "+ Add" when lang argument is omitted and current language is EN'
+    );
+
     console.log('✔ Passed: popup.js initializes i18n, handles language switching, and localizes dynamic elements');
 
     console.log('\n🎉 ALL TASK 1 & TASK 2 TESTS PASSED SUCCESSFULLY! 🎉\n');

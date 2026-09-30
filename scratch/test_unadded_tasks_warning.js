@@ -583,7 +583,10 @@ const mockFetch = async (url, opts) => {
     actionBadge = { text: '!' };
     popupModule.renderUnaddedKpiBanner([], mockDoc);
     assert.strictEqual(mockBanner.style.display, 'none', 'Banner should be hidden when empty');
-    assert.strictEqual(mockToggleBtn.textContent, 'Chi tiết ▼', 'Toggle button text should reset when empty');
+    assert.ok(
+        mockToggleBtn.textContent === 'Chi tiết ▼' || mockToggleBtn.textContent === 'Details ▼',
+        'Toggle button text should reset when empty'
+    );
     assert.strictEqual(mockList.style.display, 'none', 'List display should reset to none when empty');
     assert.strictEqual(actionBadge.text, '', 'Badge should be cleared when empty');
     console.log('✔ Passed: renderUnaddedKpiBanner properly updates DOM, reset states, and badge');

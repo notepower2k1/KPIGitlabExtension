@@ -104,10 +104,10 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
     let currentLang = 'vi';
     if (lang === 'vi' || lang === 'en') {
         currentLang = lang;
+    } else if (typeof getLanguage === 'function') {
+        currentLang = getLanguage();
     } else if (doc && doc.documentElement && typeof doc.documentElement.lang === 'string') {
         currentLang = doc.documentElement.lang.startsWith('en') ? 'en' : 'vi';
-    } else if (typeof chrome !== 'undefined' && chrome.i18n && typeof chrome.i18n.getUILanguage === 'function' && typeof getLanguage === 'function') {
-        currentLang = getLanguage();
     }
 
     const _tr = (typeof t === 'function')
@@ -175,9 +175,13 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
         const storageLocal = (typeof chrome !== 'undefined' && chrome.storage) ? chrome.storage.local : null;
         currentLang = await initLanguage(storageLocal);
     }
+    if (typeof document !== 'undefined' && document.documentElement) {
+        document.documentElement.lang = currentLang;
+    }
     if (typeof applyI18n === 'function' && typeof document !== 'undefined') {
         applyI18n(document, currentLang);
     }
+    syncLanguageUI(currentLang);
 
     function syncLanguageUI(lang) {
         document.querySelectorAll('.login-lang-switch .lang-btn').forEach(btn => {
