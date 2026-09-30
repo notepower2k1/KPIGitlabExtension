@@ -1044,8 +1044,11 @@
             });
         });
 
-        // Ghép thành định dạng daily 3 phần theo yêu cầu
-        const dailyTask = `What did I do today?\n${taskListStr}What will I do Tomorrow?\n${taskListStr}What problems are hindering my progress?\n- None\n`;
+        // Ghép thành định dạng daily theo yêu cầu
+        const filterVal = (typeof timeFilterSelect !== 'undefined' && timeFilterSelect) ? timeFilterSelect.value : '';
+        const dayIso = (filterVal && filterVal.startsWith('day:')) ? filterVal.replace('day:', '') : (typeof parseToIsoDate === 'function' ? parseToIsoDate(new Date()) : '');
+        const reportDate = (typeof formatDate === 'function' ? formatDate(dayIso || new Date()) : new Date().toLocaleDateString('vi-VN'));
+        const dailyTask = `Daily report ${reportDate}\nWhat did I do today?\n${taskListStr}What will I do Tomorrow?\n${taskListStr}What problems are hindering my progress?\n- None\n`;
 
         // copy to clipboard and show alert
         navigator.clipboard.writeText(dailyTask);
