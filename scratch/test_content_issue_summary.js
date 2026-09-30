@@ -22,6 +22,8 @@ const {
     enrichChildTasks,
     batchAddTasksToStorage,
     fetchTaskDetail,
+    parseGraphQLChildrenNodes,
+    fetchParentTaskWithChildren,
     refreshSummaryModal,
     openSummaryModal,
     closeSummaryModal,
@@ -41,6 +43,8 @@ assert.strictEqual(typeof extractChildTasksFromDom, 'function', 'extractChildTas
 assert.strictEqual(typeof enrichChildTasks, 'function', 'enrichChildTasks should be exported as a function');
 assert.strictEqual(typeof batchAddTasksToStorage, 'function', 'batchAddTasksToStorage should be exported as a function');
 assert.strictEqual(typeof fetchTaskDetail, 'function', 'fetchTaskDetail should be exported as a function');
+assert.strictEqual(typeof parseGraphQLChildrenNodes, 'function', 'parseGraphQLChildrenNodes should be exported as a function');
+assert.strictEqual(typeof fetchParentTaskWithChildren, 'function', 'fetchParentTaskWithChildren should be exported as a function');
 assert.strictEqual(typeof refreshSummaryModal, 'function', 'refreshSummaryModal should be exported as a function');
 assert.strictEqual(typeof openSummaryModal, 'function', 'openSummaryModal should be exported as a function');
 assert.strictEqual(typeof closeSummaryModal, 'function', 'closeSummaryModal should be exported as a function');
@@ -828,6 +832,173 @@ class MockDocument {
         assert.strictEqual(closedResult, null, 'Should return null if modal is not currently in DOM');
 
         console.log('✔ Passed: Auto-sync status rendering and refreshSummaryModal lifecycle');
+    }
+
+    // 19. Multi-page Hierarchy WorkItem Children GraphQL Extraction & Parsing
+    {
+        // Test 1: parseGraphQLChildrenNodes with various widgets, assignees, dates, unplanned labels
+        const mockChildrenNodes = [
+            {
+                id: 'gid://gitlab/WorkItem/301',
+                iid: '301',
+                title: 'Child Task One',
+                state: 'closed',
+                closedAt: '2026-10-02T10:00:00Z',
+                webUrl: 'https://gitlab.widosoft.com/grp/prj/-/work_items/301',
+                widgets: [
+                    {
+                        type: 'TIME_TRACKING',
+                        timeEstimate: 14400, // 4 hours
+                        totalTimeSpent: 10800 // 3 hours
+                    },
+                    {
+                        type: 'START_AND_DUE_DATE',
+                        dueDate: '2026-10-01' // closedAt is 2026-10-02 > dueDate -> isLate = true
+                    },
+                    {
+                        type: 'LABELS',
+                        labels: {
+                            nodes: [
+                                { title: 'Bug' },
+                                { title: 'UNPLANNED' }
+                            ]
+                        }
+                    },
+                    {
+                        type: 'ASSIGNEES',
+                        assignees: {
+                            nodes: [
+                                { id: 'gid://gitlab/User/1', name: 'Alice', username: 'alice', webUrl: 'https://gitlab.widosoft.com/alice' }
+                            ]
+                        }
+                    }
+                ]
+            },
+            {
+                id: 'gid://gitlab/WorkItem/302',
+                iid: '302',
+                title: 'Child Task Two',
+                state: 'opened',
+                closedAt: null,
+                webUrl: 'https://gitlab.widosoft.com/grp/prj/-/work_items/302',
+                widgets: [
+                    {
+                        type: 'TIME_TRACKING',
+                        timeEstimate: 7200, // 2 hours
+                        totalTimeSpent: 7200 // 2 hours
+                    },
+                    {
+                        type: 'START_AND_DUE_DATE',
+                        dueDate: '2026-10-05'
+                    },
+                    {
+                        type: 'LABELS',
+                        labels: {
+                            nodes: [
+                                { title: 'Feature' }
+                            ]
+                        }
+                    },
+                    {
+                        type: 'ASSIGNEES',
+                        assignees: {
+                            nodes: [
+                                { id: 'gid://gitlab/User/2', name: 'Bob', username: 'bob', webUrl: 'https://gitlab.widosoft.com/bob' }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ];
+
+        const parsed = parseGraphQLChildrenNodes(mockChildrenNodes);
+        assert.strictEqual(parsed.length, 2, 'Should parse 2 child items');
+
+        // Check task 1
+        assert.strictEqual(parsed[0].id, '301');
+        assert.strictEqual(parsed[0].title, 'Child Task One');
+        assert.strictEqual(parsed[0].estimateHour, 4);
+        assert.strictEqual(parsed[0].spentHour, 3);
+        assert.strictEqual(parsed[0].diffHour, 1);
+        assert.strictEqual(parsed[0].state, 'closed');
+        assert.strictEqual(parsed[0].isLate, true, 'Task 1 closed after due date should be late');
+        assert.strictEqual(parsed[0].isUnplanned, true, 'Task 1 with UNPLANNED label should be unplanned');
+        assert.strictEqual(parsed[0].assigneeUrl, 'https://gitlab.widosoft.com/alice');
+
+        // Check task 2
+        assert.strictEqual(parsed[1].id, '302');
+        assert.strictEqual(parsed[1].title, 'Child Task Two');
+        assert.strictEqual(parsed[1].estimateHour, 2);
+        assert.strictEqual(parsed[1].spentHour, 2);
+        assert.strictEqual(parsed[1].diffHour, 0);
+        assert.strictEqual(parsed[1].state, 'opened');
+        assert.strictEqual(parsed[1].isLate, false);
+        assert.strictEqual(parsed[1].isUnplanned, false);
+        assert.strictEqual(parsed[1].assigneeUrl, 'https://gitlab.widosoft.com/bob');
+
+        // Test 2: Edge cases for parseGraphQLChildrenNodes
+        assert.deepStrictEqual(parseGraphQLChildrenNodes(null), []);
+        assert.deepStrictEqual(parseGraphQLChildrenNodes([]), []);
+        assert.deepStrictEqual(parseGraphQLChildrenNodes([null, undefined]), []);
+
+        // Test 3: fetchParentTaskWithChildren network mock
+        let parentFetchCalls = [];
+        const originalFetch = global.fetch;
+        global.fetch = async (url, options) => {
+            parentFetchCalls.push({ url, options });
+            return {
+                json: async () => ({
+                    data: {
+                        workspace: {
+                            id: 'gid://gitlab/Project/123',
+                            workItem: {
+                                id: 'gid://gitlab/WorkItem/100',
+                                iid: '100',
+                                title: 'Parent Epic Issue',
+                                widgets: [
+                                    {
+                                        type: 'HIERARCHY',
+                                        children: {
+                                            nodes: mockChildrenNodes
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                })
+            };
+        };
+
+        try {
+            const result = await fetchParentTaskWithChildren('my-group/my-project', '100', 'mock-token', 'https://mock-gitlab.com/api/graphql');
+            assert.strictEqual(parentFetchCalls.length, 1);
+            assert.strictEqual(parentFetchCalls[0].url, 'https://mock-gitlab.com/api/graphql');
+            const reqBody = JSON.parse(parentFetchCalls[0].options.body);
+            assert.strictEqual(reqBody.operationName, 'namespaceWorkItemWithChildren');
+            assert.strictEqual(reqBody.variables.fullPath, 'my-group/my-project');
+            assert.strictEqual(reqBody.variables.iid, '100');
+            assert.strictEqual(result.length, 2, 'Should fetch and parse children from hierarchy query');
+            assert.strictEqual(result[0].id, '301');
+
+            // Test 4: Missing arguments or invalid response
+            const emptyRes = await fetchParentTaskWithChildren('', '', '');
+            assert.strictEqual(emptyRes, null, 'Should return null for missing parameters');
+
+            // Test 5: Error handling
+            global.fetch = async () => {
+                throw new Error('GraphQL query failure');
+            };
+            const originalWarn = console.warn;
+            console.warn = () => {};
+            const errorRes = await fetchParentTaskWithChildren('prj', '100', 'token');
+            console.warn = originalWarn;
+            assert.strictEqual(errorRes, null, 'Should handle network exceptions gracefully and return null');
+        } finally {
+            global.fetch = originalFetch;
+        }
+
+        console.log('✔ Passed: Multi-page Hierarchy WorkItem Children GraphQL extraction & parsing');
     }
 
     console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');

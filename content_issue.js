@@ -814,6 +814,141 @@ async function fetchTaskDetail(projectPath, iidOrTask, token, customEndpoint = n
     }
 }
 
+function parseGraphQLChildrenNodes(childrenNodes = []) {
+    if (!Array.isArray(childrenNodes)) return [];
+    return childrenNodes.map(node => {
+        if (!node) return null;
+        const widgets = node.widgets || [];
+        const timeTracking = widgets.find(w => w.type === 'TIME_TRACKING');
+        const labels = widgets.find(w => w.type === 'LABELS');
+        const startAndDueDate = widgets.find(w => w.type === 'START_AND_DUE_DATE');
+        const assignees = widgets.find(w => w.type === 'ASSIGNEES');
+
+        const est = timeTracking?.timeEstimate ? parseFloat((timeTracking.timeEstimate / 3600).toFixed(2)) : 0;
+        const spent = timeTracking?.totalTimeSpent ? parseFloat((timeTracking.totalTimeSpent / 3600).toFixed(2)) : 0;
+        const diff = roundToOneDecimal(est - spent);
+        const isUnplanned = labels?.labels?.nodes?.some(l => l.title?.toLowerCase() === 'unplanned') || false;
+        const isLate = (node.state === 'closed' && node.closedAt && startAndDueDate?.dueDate)
+            ? (node.closedAt.slice(0, 10) > startAndDueDate.dueDate)
+            : false;
+
+        const assigneeUrl = assignees?.assignees?.nodes?.[0]?.webUrl || '';
+
+        return {
+            id: String(node.iid || node.id || ''),
+            href: node.webUrl || '',
+            title: node.title || (node.iid ? `Task #${node.iid}` : ''),
+            assigneeUrl,
+            estimateHour: est,
+            spentHour: spent,
+            diffHour: diff,
+            state: (node.state || 'opened').toLowerCase(),
+            isLate,
+            isUnplanned
+        };
+    }).filter(Boolean);
+}
+
+async function fetchParentTaskWithChildren(projectPath, parentIid, token, customEndpoint = null) {
+    if (!projectPath || !parentIid || !token) return null;
+    const iid = String(parentIid);
+
+    const queryData = {
+        operationName: "namespaceWorkItemWithChildren",
+        variables: {
+            fullPath: projectPath,
+            iid: iid,
+        },
+        query: `
+        query namespaceWorkItemWithChildren($fullPath: ID!, $iid: String!) {
+          workspace: namespace(fullPath: $fullPath) {
+            id
+            workItem(iid: $iid) {
+              id
+              iid
+              title
+              widgets {
+                type
+                ... on WorkItemWidgetHierarchy {
+                  hasChildren
+                  children(first: 100) {
+                    pageInfo {
+                      hasNextPage
+                      endCursor
+                    }
+                    nodes {
+                      id
+                      iid
+                      title
+                      state
+                      closedAt
+                      webUrl
+                      widgets {
+                        type
+                        ... on WorkItemWidgetTimeTracking {
+                          timeEstimate
+                          totalTimeSpent
+                        }
+                        ... on WorkItemWidgetStartAndDueDate {
+                          dueDate
+                          startDate
+                        }
+                        ... on WorkItemWidgetLabels {
+                          labels {
+                            nodes {
+                              title
+                            }
+                          }
+                        }
+                        ... on WorkItemWidgetAssignees {
+                          assignees {
+                            nodes {
+                              id
+                              name
+                              username
+                              webUrl
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        `
+    };
+
+    const endpoint = customEndpoint || (
+        (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null')
+            ? `${window.location.origin}/api/graphql`
+            : 'https://gitlab.widosoft.com/api/graphql'
+    );
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(queryData),
+        });
+        const res = await response.json();
+        const workItem = res?.data?.workspace?.workItem;
+        if (!workItem) return null;
+
+        const hierarchyWidget = workItem.widgets?.find(w => w.type === 'HIERARCHY' || w.__typename === 'WorkItemWidgetHierarchy');
+        const childrenNodes = hierarchyWidget?.children?.nodes || [];
+        return parseGraphQLChildrenNodes(childrenNodes);
+    } catch (err) {
+        console.warn('Error fetching parent task with children for iid ' + iid + ':', err);
+        return null;
+    }
+}
+
 function closeSummaryModal(doc = (typeof document !== 'undefined' ? document : null)) {
     if (!doc) return;
     const existing = doc.getElementById('gitlabKpiSummaryModal');
@@ -846,56 +981,81 @@ async function refreshSummaryModal(doc = (typeof document !== 'undefined' ? docu
         if ((!storedKpi || storedKpi.length === 0) && typeof getStoredIds === 'function') storedKpi = await getStoredIds('KpiInfo');
     }
 
-    // Wait for child tasks in DOM if empty and waitForDom is true
-    let rawTasks = extractChildTasksFromDom(doc);
-    if (rawTasks.length === 0 && options.waitForDom !== false) {
-        const startTime = Date.now();
-        while (Date.now() - startTime < 1600) {
-            await new Promise(r => setTimeout(r, 200));
-            rawTasks = extractChildTasksFromDom(doc);
-            if (rawTasks.length > 0) break;
-        }
-    }
+    const userUrl = userProfile?.web_url;
+    let refreshedTasks = [];
+    let usedGraphQLChildren = false;
 
-    let refreshedTasks = enrichChildTasks(rawTasks, userProfile, storedKpi);
-
+    // Strategy 1: Direct GraphQL query to parent work item for all children (fetches up to 100 children without DOM pagination issues)
     if (token && typeof window !== 'undefined' && window.location) {
         const pathname = window.location.pathname || '';
         const matchProject = pathname.replace(/(?:\/-)?\/(issues|work_items)\/.*$/, '').replace(/^\//, '');
-        if (matchProject && refreshedTasks.length > 0) {
-            const livePromises = refreshedTasks.map(async (t) => {
-                try {
-                    const childIid = resolveTaskIid(t);
-                    const detail = await fetchTaskDetail(matchProject, childIid, token);
-                    if (detail) {
-                        const timeTracking = detail.widgets?.find(w => w.type === 'TIME_TRACKING');
-                        const labels = detail.widgets?.find(w => w.type === 'LABELS');
-                        const startAndDueDate = detail.widgets?.find(w => w.type === 'START_AND_DUE_DATE');
+        const parentIid = safeParentInfo.parentIid || (pathname.match(/(?:issues|work_items)\/(\d+)/)?.[1]);
 
-                        const est = timeTracking?.timeEstimate ? parseFloat((timeTracking.timeEstimate / 3600).toFixed(2)) : t.estimateHour;
-                        const spent = timeTracking?.totalTimeSpent ? parseFloat((timeTracking.totalTimeSpent / 3600).toFixed(2)) : t.spentHour;
-                        const diff = roundToOneDecimal(est - spent);
-                        const isUnplanned = labels?.labels?.nodes?.some(l => l.title?.toLowerCase() === 'unplanned') || t.isUnplanned;
-                        const isLate = (detail.state === 'closed' && detail.closedAt && startAndDueDate?.dueDate)
-                            ? (detail.closedAt.slice(0, 10) > startAndDueDate.dueDate)
-                            : t.isLate;
-
-                        return {
-                            ...t,
-                            estimateHour: est,
-                            spentHour: spent,
-                            diffHour: diff,
-                            state: detail.state || t.state,
-                            isLate,
-                            isUnplanned
-                        };
-                    }
-                } catch (e) {
-                    console.warn('GraphQL enrichment failed for task', t.id, e);
+        if (matchProject && parentIid) {
+            try {
+                const apiChildren = await fetchParentTaskWithChildren(matchProject, parentIid, token);
+                if (Array.isArray(apiChildren) && apiChildren.length > 0) {
+                    refreshedTasks = filterMyChildTasks(apiChildren, userUrl);
+                    usedGraphQLChildren = true;
                 }
-                return t;
-            });
-            refreshedTasks = await Promise.all(livePromises);
+            } catch (err) {
+                console.warn('Direct children query failed, falling back to DOM extraction:', err);
+            }
+        }
+    }
+
+    // Strategy 2: Fallback to DOM extraction if direct children query was not available or empty
+    if (!usedGraphQLChildren) {
+        let rawTasks = extractChildTasksFromDom(doc);
+        if (rawTasks.length === 0 && options.waitForDom !== false) {
+            const startTime = Date.now();
+            while (Date.now() - startTime < 1600) {
+                await new Promise(r => setTimeout(r, 200));
+                rawTasks = extractChildTasksFromDom(doc);
+                if (rawTasks.length > 0) break;
+            }
+        }
+
+        refreshedTasks = enrichChildTasks(rawTasks, userProfile, storedKpi);
+
+        if (token && typeof window !== 'undefined' && window.location) {
+            const pathname = window.location.pathname || '';
+            const matchProject = pathname.replace(/(?:\/-)?\/(issues|work_items)\/.*$/, '').replace(/^\//, '');
+            if (matchProject && refreshedTasks.length > 0) {
+                const livePromises = refreshedTasks.map(async (t) => {
+                    try {
+                        const childIid = resolveTaskIid(t);
+                        const detail = await fetchTaskDetail(matchProject, childIid, token);
+                        if (detail) {
+                            const timeTracking = detail.widgets?.find(w => w.type === 'TIME_TRACKING');
+                            const labels = detail.widgets?.find(w => w.type === 'LABELS');
+                            const startAndDueDate = detail.widgets?.find(w => w.type === 'START_AND_DUE_DATE');
+
+                            const est = timeTracking?.timeEstimate ? parseFloat((timeTracking.timeEstimate / 3600).toFixed(2)) : t.estimateHour;
+                            const spent = timeTracking?.totalTimeSpent ? parseFloat((timeTracking.totalTimeSpent / 3600).toFixed(2)) : t.spentHour;
+                            const diff = roundToOneDecimal(est - spent);
+                            const isUnplanned = labels?.labels?.nodes?.some(l => l.title?.toLowerCase() === 'unplanned') || t.isUnplanned;
+                            const isLate = (detail.state === 'closed' && detail.closedAt && startAndDueDate?.dueDate)
+                                ? (detail.closedAt.slice(0, 10) > startAndDueDate.dueDate)
+                                : t.isLate;
+
+                            return {
+                                ...t,
+                                estimateHour: est,
+                                spentHour: spent,
+                                diffHour: diff,
+                                state: detail.state || t.state,
+                                isLate,
+                                isUnplanned
+                            };
+                        }
+                    } catch (e) {
+                        console.warn('GraphQL enrichment failed for task', t.id, e);
+                    }
+                    return t;
+                });
+                refreshedTasks = await Promise.all(livePromises);
+            }
         }
     }
 
@@ -1067,6 +1227,8 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.enrichChildTasks = enrichChildTasks;
     window.batchAddTasksToStorage = batchAddTasksToStorage;
     window.fetchTaskDetail = fetchTaskDetail;
+    window.parseGraphQLChildrenNodes = parseGraphQLChildrenNodes;
+    window.fetchParentTaskWithChildren = fetchParentTaskWithChildren;
     window.refreshSummaryModal = refreshSummaryModal;
     window.openSummaryModal = openSummaryModal;
     window.closeSummaryModal = closeSummaryModal;
@@ -1377,6 +1539,8 @@ if (typeof module !== 'undefined' && module.exports) {
         enrichChildTasks,
         batchAddTasksToStorage,
         fetchTaskDetail,
+        parseGraphQLChildrenNodes,
+        fetchParentTaskWithChildren,
         refreshSummaryModal,
         openSummaryModal,
         closeSummaryModal
