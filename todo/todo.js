@@ -10,6 +10,38 @@ function detectWindowMode(win) {
     return (win && win.type === 'popup') ? 'window' : 'tab';
 }
 
+function switchMode(currentMode = 'tab', chromeApi = (typeof chrome !== 'undefined' ? chrome : null), winApi = (typeof window !== 'undefined' ? window : null)) {
+    if (!chromeApi) return;
+    const targetUrl = (chromeApi.runtime && typeof chromeApi.runtime.getURL === 'function')
+        ? chromeApi.runtime.getURL('todo/todo.html')
+        : 'todo.html';
+
+    if (currentMode === 'tab') {
+        if (chromeApi.windows && typeof chromeApi.windows.create === 'function') {
+            chromeApi.windows.create({
+                url: targetUrl,
+                type: 'popup',
+                width: 540,
+                height: 680
+            }, () => {
+                if (winApi && typeof winApi.close === 'function') {
+                    winApi.close();
+                }
+            });
+        }
+    } else {
+        if (chromeApi.tabs && typeof chromeApi.tabs.create === 'function') {
+            chromeApi.tabs.create({
+                url: targetUrl
+            }, () => {
+                if (winApi && typeof winApi.close === 'function') {
+                    winApi.close();
+                }
+            });
+        }
+    }
+}
+
 function addTodoItem(todos, title, deadline = '') {
     const list = Array.isArray(todos) ? [...todos] : [];
     const cleanTitle = typeof title === 'string' ? title.trim() : '';
@@ -153,24 +185,7 @@ if (typeof document !== 'undefined') {
             }
 
             modeSwitchBtn.addEventListener('click', () => {
-                if (currentWindowMode === 'tab') {
-                    if (typeof chrome !== 'undefined' && chrome.windows) {
-                        chrome.windows.create({
-                            url: chrome.runtime.getURL('todo/todo.html'),
-                            type: 'popup',
-                            width: 540,
-                            height: 680
-                        });
-                    }
-                    window.close();
-                } else {
-                    if (typeof chrome !== 'undefined' && chrome.tabs) {
-                        chrome.tabs.create({
-                            url: chrome.runtime.getURL('todo/todo.html')
-                        });
-                    }
-                    window.close();
-                }
+                switchMode(currentWindowMode, typeof chrome !== 'undefined' ? chrome : null, typeof window !== 'undefined' ? window : null);
             });
         }
 
@@ -517,6 +532,7 @@ if (typeof window !== 'undefined') {
     window.deleteTodoItem = deleteTodoItem;
     window.resolveTargetStatusFromColumn = resolveTargetStatusFromColumn;
     window.detectWindowMode = detectWindowMode;
+    window.switchMode = switchMode;
 }
 
 // Export for Node unit tests
@@ -527,6 +543,7 @@ if (typeof module !== 'undefined' && module.exports) {
         changeTodoStatus,
         deleteTodoItem,
         resolveTargetStatusFromColumn,
-        detectWindowMode
+        detectWindowMode,
+        switchMode
     };
 }

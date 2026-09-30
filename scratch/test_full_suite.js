@@ -75,6 +75,7 @@ runSubSuite('Tab Controller & Monthly Synchronization', 'scratch/test_tab_contro
 runSubSuite('Leave Days (1-day & 0.5-day) Subsystem', 'scratch/test_leave_days.js');
 runSubSuite('Check-in & Check-out Alert Subsystem', 'scratch/test_checkin_checkout.js');
 runSubSuite('Notepad Multi-Tab Dual-Mode Subsystem', 'scratch/test_notepad_dual_mode.js');
+runSubSuite('Kanban To-Do Enhancements Subsystem', 'scratch/test_todo_enhancements.js');
 
 // --- 2. EXTENSION-WIDE JS SYNTAX VALIDATION ---
 printHeader('EXTENSION-WIDE JAVASCRIPT SYNTAX VALIDATION');
@@ -86,7 +87,8 @@ const jsFilesToValidate = [
     'content_issue.js',
     'content_request.js',
     'popup/popup.js',
-    'note/note.js'
+    'note/note.js',
+    'todo/todo.js'
 ];
 
 jsFilesToValidate.forEach(relPath => {
@@ -158,6 +160,34 @@ check('Security: No external CDN or remote script references in note/note.html',
         
         // Ensure local relative script file exists
         const localScriptPath = path.resolve(path.dirname(noteHtmlPath), src);
+        assert(fs.existsSync(localScriptPath), `Script target file must exist on disk: ${localScriptPath}`);
+    });
+});
+
+const todoHtmlPath = path.resolve(ROOT_DIR, 'todo/todo.html');
+
+check('todo/todo.html exists and is readable', () => {
+    assert(fs.existsSync(todoHtmlPath), 'todo/todo.html must exist');
+});
+
+const todoHtmlContent = fs.readFileSync(todoHtmlPath, 'utf8');
+
+check('Security: No external CDN or remote script references in todo/todo.html', () => {
+    const scriptRegex = /<script\b[^>]*src=["']([^"']+)["'][^>]*>/gi;
+    let match;
+    const foundScripts = [];
+    while ((match = scriptRegex.exec(todoHtmlContent)) !== null) {
+        foundScripts.push(match[1]);
+    }
+    assert(foundScripts.length > 0, 'Should find at least 1 script tag in todo.html');
+    foundScripts.forEach(src => {
+        assert(!src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('//'),
+            `Remote/CDN script not allowed under MV3 CSP: ${src}`);
+        assert(!src.includes('cdn.jsdelivr.net') && !src.includes('cdnjs.cloudflare.com') && !src.includes('unpkg.com'),
+            `CDN script not allowed: ${src}`);
+        
+        // Ensure local relative script file exists
+        const localScriptPath = path.resolve(path.dirname(todoHtmlPath), src);
         assert(fs.existsSync(localScriptPath), `Script target file must exist on disk: ${localScriptPath}`);
     });
 });

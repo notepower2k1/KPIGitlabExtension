@@ -281,6 +281,65 @@ check('JS (todo.js): detectWindowMode identifies popup as window and others as t
     assert.strictEqual(detectWindowMode(undefined), 'tab', 'undefined should be detected as tab');
 });
 
+check('JS (todo.js): switchMode creates popup window or tab and closes window inside callback', () => {
+    assert.strictEqual(typeof todoModule.switchMode, 'function', 'switchMode must be exported');
+
+    // Case 1: currentMode is 'tab' -> open popup window
+    let windowOpts = null;
+    let windowCallback = null;
+    let windowClosed = false;
+
+    const mockChromeTab = {
+        runtime: { getURL: (p) => `chrome-extension://mock/${p}` },
+        windows: {
+            create: (opts, cb) => {
+                windowOpts = opts;
+                windowCallback = cb;
+            }
+        }
+    };
+    const mockWinTab = {
+        close: () => { windowClosed = true; }
+    };
+
+    todoModule.switchMode('tab', mockChromeTab, mockWinTab);
+    assert.ok(windowOpts, 'chrome.windows.create should be called');
+    assert.strictEqual(windowOpts.url, 'chrome-extension://mock/todo/todo.html');
+    assert.strictEqual(windowOpts.type, 'popup');
+    assert.strictEqual(windowClosed, false, 'window.close must NOT be called before callback');
+
+    // Trigger callback
+    windowCallback();
+    assert.strictEqual(windowClosed, true, 'window.close must be called inside callback');
+
+    // Case 2: currentMode is 'window' -> open browser tab
+    let tabOpts = null;
+    let tabCallback = null;
+    let tabWindowClosed = false;
+
+    const mockChromeWin = {
+        runtime: { getURL: (p) => `chrome-extension://mock/${p}` },
+        tabs: {
+            create: (opts, cb) => {
+                tabOpts = opts;
+                tabCallback = cb;
+            }
+        }
+    };
+    const mockWinWin = {
+        close: () => { tabWindowClosed = true; }
+    };
+
+    todoModule.switchMode('window', mockChromeWin, mockWinWin);
+    assert.ok(tabOpts, 'chrome.tabs.create should be called');
+    assert.strictEqual(tabOpts.url, 'chrome-extension://mock/todo/todo.html');
+    assert.strictEqual(tabWindowClosed, false, 'window.close must NOT be called before callback');
+
+    // Trigger callback
+    tabCallback();
+    assert.strictEqual(tabWindowClosed, true, 'window.close must be called inside callback');
+});
+
 check('DOM (todo.html): Contains #modeSwitchBtn in .header-right', () => {
     assert(todoHtml.includes('id="modeSwitchBtn"'), 'todo.html must contain #modeSwitchBtn');
     const headerRightMatch = todoHtml.match(/<div class="header-right">([\s\S]*?)<\/div>/);
