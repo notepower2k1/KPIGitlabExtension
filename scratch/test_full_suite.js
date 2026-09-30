@@ -77,6 +77,7 @@ runSubSuite('Check-in & Check-out Alert Subsystem', 'scratch/test_checkin_checko
 runSubSuite('Notepad Multi-Tab Dual-Mode Subsystem', 'scratch/test_notepad_dual_mode.js');
 runSubSuite('Kanban To-Do Enhancements Subsystem', 'scratch/test_todo_enhancements.js');
 runSubSuite('GitLab Issue Summary Modal Subsystem', 'scratch/test_content_issue_summary.js');
+runSubSuite('End-of-Day Unadded Tasks Warning Subsystem', 'scratch/test_unadded_tasks_warning.js');
 
 // --- 2. EXTENSION-WIDE JS SYNTAX VALIDATION ---
 printHeader('EXTENSION-WIDE JAVASCRIPT SYNTAX VALIDATION');
@@ -190,6 +191,46 @@ check('Security: No external CDN or remote script references in todo/todo.html',
         // Ensure local relative script file exists
         const localScriptPath = path.resolve(path.dirname(todoHtmlPath), src);
         assert(fs.existsSync(localScriptPath), `Script target file must exist on disk: ${localScriptPath}`);
+    });
+});
+
+const popupHtmlPath = path.resolve(ROOT_DIR, 'popup/popup.html');
+
+check('popup/popup.html exists and is readable', () => {
+    assert(fs.existsSync(popupHtmlPath), 'popup/popup.html must exist');
+});
+
+const popupHtmlContent = fs.readFileSync(popupHtmlPath, 'utf8');
+
+check('Security: No external CDN or remote script references in popup/popup.html', () => {
+    const scriptRegex = /<script\b[^>]*src=["']([^"']+)["'][^>]*>/gi;
+    let match;
+    const foundScripts = [];
+    while ((match = scriptRegex.exec(popupHtmlContent)) !== null) {
+        foundScripts.push(match[1]);
+    }
+    assert(foundScripts.length > 0, 'Should find at least 1 script tag in popup.html');
+    foundScripts.forEach(src => {
+        assert(!src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('//'),
+            `Remote/CDN script not allowed under MV3 CSP: ${src}`);
+        assert(!src.includes('cdn.jsdelivr.net') && !src.includes('cdnjs.cloudflare.com') && !src.includes('unpkg.com'),
+            `CDN script not allowed: ${src}`);
+        
+        // Ensure local relative script file exists
+        const localScriptPath = path.resolve(path.dirname(popupHtmlPath), src);
+        assert(fs.existsSync(localScriptPath), `Script target file must exist on disk: ${localScriptPath}`);
+    });
+});
+
+check('DOM Containers and Warning Banner elements exist in popup/popup.html', () => {
+    const requiredIds = [
+        'unaddedKpiBanner',
+        'addAllUnaddedKpiBtn',
+        'kpiReminderEnabled'
+    ];
+
+    requiredIds.forEach(id => {
+        assert(popupHtmlContent.includes(`id="${id}"`), `popup.html must contain element with id="${id}"`);
     });
 });
 
