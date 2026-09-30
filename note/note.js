@@ -287,18 +287,18 @@ if (typeof document !== 'undefined') {
         function setSaveStatus(status) {
             if (!saveStatusEl) return;
             if (status === 'saving') {
-                saveStatusEl.textContent = 'Đang lưu...';
+                saveStatusEl.textContent = (typeof t === 'function') ? t('saving') : 'Đang lưu...';
                 saveStatusEl.className = 'save-status saving';
             } else if (status === 'saved') {
-                saveStatusEl.textContent = 'Đã lưu ✔';
+                saveStatusEl.textContent = (typeof t === 'function') ? t('autoSaved') : 'Đã lưu ✔';
                 saveStatusEl.className = 'save-status saved';
             }
         }
 
         function updateCounts(text) {
             const { words, chars } = calculateWordAndCharCount(text);
-            if (wordCountEl) wordCountEl.textContent = `${words} từ`;
-            if (charCountEl) charCountEl.textContent = `${chars} ký tự`;
+            if (wordCountEl) wordCountEl.textContent = (typeof t === 'function') ? t('wordsCount', { count: words }) : `${words} từ`;
+            if (charCountEl) charCountEl.textContent = (typeof t === 'function') ? t('charsCount', { count: chars }) : `${chars} ký tự`;
         }
 
         async function persistState(stateToSave) {
@@ -474,12 +474,12 @@ if (typeof document !== 'undefined') {
             if (!modeSwitchBtn) return;
             if (mode === 'window') {
                 modeSwitchBtn.textContent = '🗖';
-                modeSwitchBtn.title = 'Mở dạng Tab trình duyệt 🗖';
-                modeSwitchBtn.setAttribute('aria-label', 'Mở dạng Tab trình duyệt');
+                modeSwitchBtn.title = (typeof t === 'function') ? t('tabModeBtn') : 'Mở dạng Tab trình duyệt 🗖';
+                modeSwitchBtn.setAttribute('aria-label', (typeof t === 'function') ? t('tabModeBtn') : 'Mở dạng Tab trình duyệt');
             } else {
                 modeSwitchBtn.textContent = '🗗';
-                modeSwitchBtn.title = 'Tách thành cửa sổ riêng 🗗';
-                modeSwitchBtn.setAttribute('aria-label', 'Tách thành cửa sổ riêng');
+                modeSwitchBtn.title = (typeof t === 'function') ? t('windowModeBtn') : 'Tách thành cửa sổ riêng 🗗';
+                modeSwitchBtn.setAttribute('aria-label', (typeof t === 'function') ? t('windowModeBtn') : 'Tách thành cửa sổ riêng');
             }
         }
 
@@ -565,6 +565,30 @@ if (typeof document !== 'undefined') {
             saveStatusEl = document.getElementById('saveStatus');
             wordCountEl = document.getElementById('wordCount');
             charCountEl = document.getElementById('charCount');
+
+            if (typeof initLanguage === 'function') {
+                const storageLocal = (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) ? chrome.storage.local : null;
+                await initLanguage(storageLocal);
+            }
+            if (typeof applyI18n === 'function') {
+                applyI18n(document);
+            }
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+                chrome.storage.onChanged.addListener(async (changes, areaName) => {
+                    if (areaName === 'local' && changes.appLanguage) {
+                        const newLang = changes.appLanguage.newValue;
+                        if (typeof setLanguage === 'function') {
+                            setLanguage(newLang);
+                        }
+                        if (typeof applyI18n === 'function') {
+                            applyI18n(document);
+                        }
+                        updateModeSwitchButton(currentMode);
+                        setSaveStatus('saved');
+                        if (noteTextarea) updateCounts(noteTextarea.value);
+                    }
+                });
+            }
 
             // 1. Detect Dual-Mode
             if (typeof chrome !== 'undefined' && chrome.windows && chrome.windows.getCurrent) {

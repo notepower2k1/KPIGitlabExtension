@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notepad - Ghi chú cá nhân</title>
+    <title data-i18n="notesTitle">Notepad - Ghi chú cá nhân</title>
     <link rel="stylesheet" href="note.css">
+    <script src="../i18n.js"></script>
 </head>
 <body class="notepad-body">
     <div class="notepad-window">
@@ -18,20 +19,20 @@
                         <button class="tab-close-btn" title="Đóng tab" aria-label="Đóng tab">×</button>
                     </div>
                 </div>
-                <button id="addTabBtn" class="add-tab-btn" title="Thêm tab mới (+)" aria-label="Thêm tab mới">+</button>
+                <button id="addTabBtn" class="add-tab-btn" data-i18n="addNoteBtn" data-i18n-title="addNoteBtn" title="Thêm tab mới (+)" aria-label="Thêm tab mới">+</button>
             </div>
 
             <div class="notepad-toolbar">
-                <button id="modeSwitchBtn" class="tool-btn" title="Chuyển chế độ Cửa sổ / Tab" aria-label="Chuyển chế độ">🗗</button>
-                <button id="privacyBtn" class="tool-btn" title="Bật/Tắt che mờ riêng tư" aria-label="Che mờ riêng tư">👁️</button>
-                <button id="copyAllBtn" class="tool-btn" title="Sao chép toàn bộ ghi chú" aria-label="Sao chép">📋</button>
-                <button id="themeToggleBtn" class="tool-btn" title="Đổi giao diện Sáng / Tối" aria-label="Đổi giao diện">🌓</button>
+                <button id="modeSwitchBtn" class="tool-btn" data-i18n-title="windowModeBtn" title="Chuyển chế độ Cửa sổ / Tab" aria-label="Chuyển chế độ">🗗</button>
+                <button id="privacyBtn" class="tool-btn" data-i18n-title="privacyTooltip" title="Bật/Tắt che mờ riêng tư" aria-label="Che mờ riêng tư">👁️</button>
+                <button id="copyAllBtn" class="tool-btn" data-i18n-title="copyAllTooltip" title="Sao chép toàn bộ ghi chú" aria-label="Sao chép">📋</button>
+                <button id="themeToggleBtn" class="tool-btn" data-i18n-title="themeToggleTooltip" title="Đổi giao diện Sáng / Tối" aria-label="Đổi giao diện">🌓</button>
             </div>
         </header>
 
         <!-- Main Editor Area -->
         <main class="notepad-editor-container">
-            <textarea id="noteTextarea" class="note-textarea" placeholder="Bắt đầu ghi chú..." aria-label="Nội dung ghi chú" spellcheck="false" autofocus></textarea>
+            <textarea id="noteTextarea" class="note-textarea" data-i18n-placeholder="notePlaceholder" placeholder="Bắt đầu ghi chú..." aria-label="Nội dung ghi chú" spellcheck="false" autofocus></textarea>
         </main>
 
         <!-- Bottom Status Bar -->

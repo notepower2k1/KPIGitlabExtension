@@ -689,6 +689,149 @@ const mockStorage = {
 
     console.log('✔ Passed: popup.js initializes i18n, handles language switching, and localizes dynamic elements');
 
-    console.log('\n🎉 ALL TASK 1 & TASK 2 TESTS PASSED SUCCESSFULLY! 🎉\n');
+    // =========================================================================
+    // TASK 3: DASHBOARD, KANBAN, NOTEPAD & GITLAB INTEGRATION TESTS
+    // =========================================================================
+    console.log('\n=============================================================');
+    console.log('--- Running Task 3: Dashboard, Kanban, Notepad & In-Page GitLab ---');
+    console.log('=============================================================');
+
+    // 12. Verify manifest.json includes i18n.js in content_scripts
+    console.log('\n--- 12. Testing manifest.json content_scripts configuration ---');
+    const manifestPath = path.resolve(__dirname, '../manifest.json');
+    const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const issueScript = manifestJson.content_scripts.find(cs =>
+        cs.js && (cs.js.includes('content_issue.js') || cs.matches.some(m => m.includes('issues') || m.includes('work_items')))
+    );
+    assert.ok(issueScript, 'manifest.json must have content_script for issues/work_items');
+    assert.ok(issueScript.js.includes('i18n.js'), 'content_scripts for issues/work_items must include "i18n.js"');
+    console.log('✔ Passed: manifest.json includes i18n.js in content_scripts');
+
+    // 13. Verify page/page.html & page/page.js Localization
+    console.log('\n--- 13. Testing page/page.html & page/page.js Localization ---');
+    const pageHtmlPath = path.resolve(__dirname, '../page/page.html');
+    const pageHtml = fs.readFileSync(pageHtmlPath, 'utf8');
+
+    assert.ok(pageHtml.includes('src="../i18n.js"') || pageHtml.includes("src='../i18n.js'"), 'page.html must include script tag for ../i18n.js');
+    assert.ok(pageHtml.includes('data-i18n="kpiDashboardTitle"') || pageHtml.includes('data-i18n="pageTitle"'), 'page.html must have dashboard title data-i18n');
+    assert.ok(pageHtml.includes('data-i18n="tabWorkItems"'), 'page.html must have tabWorkItems');
+    assert.ok(pageHtml.includes('data-i18n="tabAnalytics"'), 'page.html must have tabAnalytics');
+    assert.ok(pageHtml.includes('data-i18n="quickControlsTitle"'), 'page.html must have quickControlsTitle');
+    assert.ok(pageHtml.includes('data-i18n="timesheetTitle"'), 'page.html must have timesheetTitle');
+    assert.ok(pageHtml.includes('data-i18n="chartEstSpentTitle"'), 'page.html must have chartEstSpentTitle');
+    assert.ok(pageHtml.includes('data-i18n="chartTaskTypeTitle"'), 'page.html must have chartTaskTypeTitle');
+    assert.ok(pageHtml.includes('data-i18n="chartTaskStatusTitle"'), 'page.html must have chartTaskStatusTitle');
+    assert.ok(pageHtml.includes('data-i18n="chartKpiTrendTitle"'), 'page.html must have chartKpiTrendTitle');
+
+    const pageJsContent = fs.readFileSync(path.resolve(__dirname, '../page/page.js'), 'utf8');
+    assert.ok(pageJsContent.includes('initLanguage'), 'page.js must call initLanguage');
+    assert.ok(pageJsContent.includes('applyI18n'), 'page.js must call applyI18n');
+    assert.ok(pageJsContent.includes('statusDoing'), 'page.js must reference statusDoing');
+    assert.ok(pageJsContent.includes('statusDone'), 'page.js must reference statusDone');
+    assert.ok(pageJsContent.includes('statusCarryOver'), 'page.js must reference statusCarryOver');
+
+    // Test getStatusBadgeText
+    const pageModule = require('../page/page.js');
+    assert.strictEqual(typeof pageModule.getStatusBadgeText, 'function', 'page.js must export getStatusBadgeText');
+    i18n.setLanguage('vi');
+    assert.strictEqual(pageModule.getStatusBadgeText('doing'), 'Đang làm');
+    assert.strictEqual(pageModule.getStatusBadgeText('done'), 'Hoàn thành');
+    assert.strictEqual(pageModule.getStatusBadgeText('carryOver'), 'Tồn đọng');
+    i18n.setLanguage('en');
+    assert.strictEqual(pageModule.getStatusBadgeText('doing'), 'Doing');
+    assert.strictEqual(pageModule.getStatusBadgeText('done'), 'Done');
+    assert.strictEqual(pageModule.getStatusBadgeText('carryOver'), 'Carry Over');
+    console.log('✔ Passed: page.html & page.js correctly wired for i18n');
+
+    // 14. Verify todo/todo.html & todo/todo.js Localization
+    console.log('\n--- 14. Testing todo/todo.html & todo/todo.js Localization ---');
+    const todoHtmlPath = path.resolve(__dirname, '../todo/todo.html');
+    const todoHtml = fs.readFileSync(todoHtmlPath, 'utf8');
+
+    assert.ok(todoHtml.includes('src="../i18n.js"') || todoHtml.includes("src='../i18n.js'"), 'todo.html must include script tag for ../i18n.js');
+    assert.ok(todoHtml.includes('data-i18n="kanbanTitle"'), 'todo.html must have data-i18n="kanbanTitle"');
+    assert.ok(todoHtml.includes('data-i18n="colTodo"'), 'todo.html must have data-i18n="colTodo"');
+    assert.ok(todoHtml.includes('data-i18n="colProcessing"'), 'todo.html must have data-i18n="colProcessing"');
+    assert.ok(todoHtml.includes('data-i18n="colDone"'), 'todo.html must have data-i18n="colDone"');
+    assert.ok(todoHtml.includes('data-i18n-placeholder="addTaskPlaceholder"'), 'todo.html must have addTaskPlaceholder');
+    assert.ok(todoHtml.includes('data-i18n-placeholder="deadlinePlaceholder"'), 'todo.html must have deadlinePlaceholder');
+    assert.ok(todoHtml.includes('data-i18n="addTaskBtn"'), 'todo.html must have addTaskBtn');
+    assert.ok(todoHtml.includes('data-i18n="editTaskModalTitle"'), 'todo.html must have editTaskModalTitle');
+    assert.ok(todoHtml.includes('data-i18n="taskTitleLabel"') || todoHtml.includes('data-i18n="taskNameLabel"'), 'todo.html must have task title label');
+    assert.ok(todoHtml.includes('data-i18n="deadlineLabel"'), 'todo.html must have deadlineLabel');
+    assert.ok(todoHtml.includes('data-i18n="saveChangesBtn"'), 'todo.html must have saveChangesBtn');
+    assert.ok(todoHtml.includes('data-i18n="cancelBtn"'), 'todo.html must have cancelBtn');
+
+    const todoJsContent = fs.readFileSync(path.resolve(__dirname, '../todo/todo.js'), 'utf8');
+    assert.ok(todoJsContent.includes('initLanguage'), 'todo.js must call initLanguage');
+    assert.ok(todoJsContent.includes('applyI18n'), 'todo.js must call applyI18n');
+    console.log('✔ Passed: todo.html & todo.js correctly wired for i18n');
+
+    // 15. Verify note/note.html & note/note.js Localization
+    console.log('\n--- 15. Testing note/note.html & note/note.js Localization ---');
+    const noteHtmlPath = path.resolve(__dirname, '../note/note.html');
+    const noteHtml = fs.readFileSync(noteHtmlPath, 'utf8');
+
+    assert.ok(noteHtml.includes('src="../i18n.js"') || noteHtml.includes("src='../i18n.js'"), 'note.html must include script tag for ../i18n.js');
+    assert.ok(noteHtml.includes('data-i18n="notesTitle"') || noteHtml.includes('data-i18n-title="notesTitle"'), 'note.html must have notesTitle');
+    assert.ok(noteHtml.includes('data-i18n-placeholder="notePlaceholder"'), 'note.html must have notePlaceholder');
+    assert.ok(noteHtml.includes('data-i18n="addNoteBtn"') || noteHtml.includes('data-i18n-title="addNoteBtn"'), 'note.html must have addNoteBtn');
+
+    const noteJsContent = fs.readFileSync(path.resolve(__dirname, '../note/note.js'), 'utf8');
+    assert.ok(noteJsContent.includes('initLanguage'), 'note.js must call initLanguage');
+    assert.ok(noteJsContent.includes('applyI18n'), 'note.js must call applyI18n');
+    assert.ok(noteJsContent.includes('autoSaved') || noteJsContent.includes('saving'), 'note.js must localize save status with i18n');
+    console.log('✔ Passed: note.html & note.js correctly wired for i18n');
+
+    // 16. Verify content_issue.js Summary Modal & KPI Button Localization
+    console.log('\n--- 16. Testing content_issue.js Summary Modal & In-Page Localization ---');
+    const contentIssuePath = path.resolve(__dirname, '../content_issue.js');
+    const contentIssueContent = fs.readFileSync(contentIssuePath, 'utf8');
+    assert.ok(contentIssueContent.includes('initLanguage'), 'content_issue.js must call initLanguage on startup');
+    assert.ok(contentIssueContent.includes('summaryBtn'), 'content_issue.js must use summaryBtn key');
+
+    // Test renderSummaryModalHtml in VI and EN
+    const contentIssueModule = require('../content_issue.js');
+    const sampleMetrics = {
+        totalTasks: 3,
+        totalEstimate: 10,
+        totalSpent: 8,
+        diffHours: 2,
+        openTasks: 1,
+        closedTasks: 2,
+        lateTasks: 0,
+        onTimeRate: 100,
+        plannedCount: 2,
+        unplannedCount: 1
+    };
+    const sampleTasks = [
+        { id: '1', iid: '1', title: 'Task 1', estimateHour: 5, spentHour: 4, state: 'closed', isLate: false, isUnplanned: false }
+    ];
+
+    // Render in VI
+    i18n.setLanguage('vi');
+    const viModalHtml = contentIssueModule.renderSummaryModalHtml(sampleMetrics, sampleTasks, 'Parent VI');
+    assert.ok(viModalHtml.includes('Tổng Task'), 'VI modal must contain "Tổng Task"');
+    assert.ok(viModalHtml.includes('Tổng Estimate'), 'VI modal must contain "Tổng Estimate"');
+    assert.ok(viModalHtml.includes('Tổng Spent'), 'VI modal must contain "Tổng Spent"');
+    assert.ok(viModalHtml.includes('Chênh lệch'), 'VI modal must contain "Chênh lệch"');
+    assert.ok(viModalHtml.includes('Đúng hạn'), 'VI modal must contain "Đúng hạn"');
+    assert.ok(viModalHtml.includes('Làm mới'), 'VI modal must contain "Làm mới"');
+    assert.ok(viModalHtml.includes('Thêm tất cả vào KPI'), 'VI modal must contain "Thêm tất cả vào KPI"');
+
+    // Render in EN
+    i18n.setLanguage('en');
+    const enModalHtml = contentIssueModule.renderSummaryModalHtml(sampleMetrics, sampleTasks, 'Parent EN');
+    assert.ok(enModalHtml.includes('Total Tasks'), 'EN modal must contain "Total Tasks"');
+    assert.ok(enModalHtml.includes('Total Estimate'), 'EN modal must contain "Total Estimate"');
+    assert.ok(enModalHtml.includes('Total Spent'), 'EN modal must contain "Total Spent"');
+    assert.ok(enModalHtml.includes('Difference') || enModalHtml.includes('Diff'), 'EN modal must contain Difference/Diff');
+    assert.ok(enModalHtml.includes('On-time Rate') || enModalHtml.includes('On-Time Rate'), 'EN modal must contain On-time Rate');
+    assert.ok(enModalHtml.includes('Refresh'), 'EN modal must contain "Refresh"');
+    assert.ok(enModalHtml.includes('Add All to KPI') || enModalHtml.includes('Add all to KPI'), 'EN modal must contain "Add All to KPI"');
+
+    console.log('✔ Passed: content_issue.js renderSummaryModalHtml produces localized markup for VI and EN');
+
+    console.log('\n🎉 ALL TASK 1, TASK 2 & TASK 3 TESTS PASSED SUCCESSFULLY! 🎉\n');
 })();
 

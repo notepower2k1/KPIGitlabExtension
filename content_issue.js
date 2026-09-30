@@ -277,6 +277,7 @@ function syncAllButtonsOnPage(doc = (typeof document !== 'undefined' ? document 
 
         const isAdded = isTaskInList(safeStoredList, { id: wid, iid: childIid, href });
         btn.innerHTML = isAdded ? svgRemove : svgAdd;
+        btn.title = isAdded ? (typeof t === 'function' ? t('addedToKpi') : '✔ Đã thêm vào KPI') : (typeof t === 'function' ? t('addToKpi') : '➕ Thêm vào KPI');
         if (btn.classList) {
             if (isAdded) {
                 btn.classList.remove('btn-success');
@@ -297,10 +298,13 @@ function syncAllButtonsOnPage(doc = (typeof document !== 'undefined' ? document 
         btn.className = isAdded
             ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
             : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
-        btn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+        const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
+        const text = isAdded ? (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI') : (isEn ? 'Add to KPI' : 'Thêm vào KPI');
+        const title = isAdded ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI')) : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add to KPI' : 'Thêm vào KPI'));
+        btn.title = title;
         btn.innerHTML = isAdded
-            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
-            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
+            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
+            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">${text}</span>`;
         if (btn.setAttribute) {
             btn.setAttribute('data-is-added', String(isAdded));
         }
@@ -318,10 +322,13 @@ function syncAllButtonsOnPage(doc = (typeof document !== 'undefined' ? document 
         if (btn.setAttribute) {
             btn.setAttribute('data-is-added', String(isAdded));
         }
-        btn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+        const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
+        const text = isAdded ? (isEn ? 'Delete' : 'Xóa') : (isEn ? 'Add' : 'Thêm');
+        const title = isAdded ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI')) : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add to KPI' : 'Thêm vào KPI'));
+        btn.title = title;
         btn.innerHTML = isAdded
-            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa</span>`
-            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm</span>`;
+            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
+            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">${text}</span>`;
     });
 }
 
@@ -330,10 +337,14 @@ function renderTaskTableRows(tasks, options = {}) {
     const isFiltered = options ? (options.isFiltered !== undefined ? options.isFiltered : true) : true;
     const storedWorkItemIds = (options && (options.storedWorkItemIds || options.storedItems)) || [];
 
+    const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
+
     if (!tasks || tasks.length === 0) {
         const emptyMsg = isSyncing
-            ? '⏳ Đang quét danh sách task con và đồng bộ số liệu từ GitLab...'
-            : (isFiltered ? 'Không tìm thấy task con nào phù hợp' : 'Không tìm thấy task con nào thuộc về bạn trên trang này.');
+            ? (isEn ? '⏳ Scanning child tasks and syncing data from GitLab...' : '⏳ Đang quét danh sách task con và đồng bộ số liệu từ GitLab...')
+            : (isFiltered
+                ? (isEn ? 'No matching child tasks found' : 'Không tìm thấy task con nào phù hợp')
+                : (isEn ? 'No child tasks assigned to you found on this page.' : 'Không tìm thấy task con nào thuộc về bạn trên trang này.'));
         return `
             <tr>
                 <td colspan="12" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #64748b;">
@@ -344,7 +355,7 @@ function renderTaskTableRows(tasks, options = {}) {
 
     return tasks.map(task => {
         const id = escapeHtml(String(task.id || ''));
-        const title = escapeHtml(task.title || (task.id ? `Task #${task.id}` : 'Không có tiêu đề'));
+        const title = escapeHtml(task.title || (task.id ? `Task #${task.id}` : (isEn ? 'No title' : 'Không có tiêu đề')));
         const href = escapeHtml(task.href || '#');
         const est = (task.estimateHour !== undefined && task.estimateHour !== null) ? `${task.estimateHour}h` : '-';
         const spent = (task.spentHour !== undefined && task.spentHour !== null) ? `${task.spentHour}h` : '-';
@@ -368,21 +379,25 @@ function renderTaskTableRows(tasks, options = {}) {
 
         const state = (task.state || '').toLowerCase();
         const stateBadge = state === 'closed'
-            ? '<span class="gl-badge gl-badge-closed">Đã đóng</span>'
-            : '<span class="gl-badge gl-badge-opened">Đang mở</span>';
+            ? `<span class="gl-badge gl-badge-closed">${isEn ? 'Closed' : 'Đã đóng'}</span>`
+            : `<span class="gl-badge gl-badge-opened">${isEn ? 'Open' : 'Đang mở'}</span>`;
 
         const timelinessBadge = task.isLate
-            ? '<span class="gl-badge gl-badge-danger">Trễ hạn</span>'
-            : '<span class="gl-badge gl-badge-success">Đúng hạn</span>';
+            ? `<span class="gl-badge gl-badge-danger">${isEn ? 'Late' : 'Trễ hạn'}</span>`
+            : `<span class="gl-badge gl-badge-success">${isEn ? 'On time' : 'Đúng hạn'}</span>`;
 
         const planBadge = task.isUnplanned
-            ? '<span class="gl-badge gl-badge-warning">Phát sinh</span>'
-            : '<span class="gl-badge gl-badge-info">Kế hoạch</span>';
+            ? `<span class="gl-badge gl-badge-warning">${isEn ? 'Unplanned' : 'Phát sinh'}</span>`
+            : `<span class="gl-badge gl-badge-info">${isEn ? 'Planned' : 'Kế hoạch'}</span>`;
 
         const isAdded = isTaskInList(storedWorkItemIds, task);
         const actionBtnClass = isAdded ? 'btn-danger' : 'btn-default';
-        const actionBtnText = isAdded ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa</span>` : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm</span>`;
-        const actionBtnTitle = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+        const addRowText = isEn ? 'Add' : 'Thêm';
+        const removeRowText = isEn ? 'Delete' : 'Xóa';
+        const actionBtnText = isAdded ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${removeRowText}</span>` : `${kpiWorkItemPlusSvg}<span class="gl-button-text">${addRowText}</span>`;
+        const actionBtnTitle = isAdded
+            ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI'))
+            : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add this task to KPI' : 'Thêm task này vào KPI'));
 
         return `
             <tr>
@@ -427,18 +442,56 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options =
         storedWorkItemIds: (options && (options.storedWorkItemIds || options.storedItems)) || []
     });
 
+    const modalTitle = (typeof t === 'function') ? t('summaryModalTitle') : "📊 Tổng hợp Task con của tôi";
+    const syncStatusText = (typeof t === 'function') ? t('syncingFromGitlab') : "Đang đồng bộ số liệu mới nhất từ GitLab...";
+    const addAllBtnText = (typeof t === 'function') ? t('addAllToKpiModal') : "➕ Thêm tất cả vào KPI";
+    const refreshBtnText = (typeof t === 'function') ? t('refreshBtn') : "🔄 Làm mới";
+    const cardTotalTasks = (typeof t === 'function') ? t('metricTotalTasks') : "Tổng Task";
+    const cardClosed = (typeof t === 'function') ? t('metricClosedTasks', { count: safeMetrics.closedTasks }) : `${safeMetrics.closedTasks} đóng`;
+    const cardOpen = (typeof t === 'function') ? t('metricOpenTasks', { count: safeMetrics.openTasks }) : `${safeMetrics.openTasks} mở`;
+    const cardTotalEst = (typeof t === 'function') ? t('metricTotalEst') : "Tổng Estimate";
+    const cardPlanned = (typeof t === 'function') ? t('metricPlannedTasks', { count: safeMetrics.plannedCount }) : `${safeMetrics.plannedCount} kế hoạch`;
+    const cardTotalSpent = (typeof t === 'function') ? t('metricTotalSpent') : "Tổng Spent";
+    const cardUnplanned = (typeof t === 'function') ? t('metricUnplannedTasks', { count: safeMetrics.unplannedCount }) : `${safeMetrics.unplannedCount} phát sinh`;
+    const cardDiff = (typeof t === 'function') ? t('metricDiff') : "Chênh lệch";
+    const cardDiffSub = safeMetrics.diffHours >= 0
+        ? ((typeof t === 'function') ? t('diffSurplus') : 'Dư thời gian')
+        : ((typeof t === 'function') ? t('diffExceeded') : 'Vượt Estimate');
+    const cardOnTime = (typeof t === 'function') ? t('metricOnTimeRate') : "Đúng hạn";
+    const cardOnTimeSub = safeMetrics.lateTasks > 0
+        ? ((typeof t === 'function') ? t('lateTasksCount', { count: safeMetrics.lateTasks }) : `${safeMetrics.lateTasks} task trễ`)
+        : ((typeof t === 'function') ? t('allOnTime') : '100% đúng hạn');
+    const searchPlaceholder = (typeof t === 'function') ? t('searchTaskPlaceholder') : "🔍 Tìm kiếm theo tên hoặc #id task...";
+    const countShown = tasks ? tasks.length : 0;
+    const taskCountText = (typeof t === 'function')
+        ? t('showingTasksCount', { shown: `<strong>${countShown}</strong>`, total: countShown })
+        : `Hiển thị <strong>${countShown}</strong> / ${countShown} task`;
+
+    const colTask = (typeof t === 'function') ? t('tableHeaderTask') : "Task";
+    const colEst = (typeof t === 'function') ? t('tableHeaderEst') : "Estimate";
+    const colSpent = (typeof t === 'function') ? t('tableHeaderSpent') : "Spent";
+    const colDiff = (typeof t === 'function') ? t('tableHeaderDiff') : "Chênh lệch";
+    const colStart = (typeof t === 'function') ? t('tableHeaderStart') : "Bắt đầu";
+    const colDue = (typeof t === 'function') ? t('tableHeaderDue') : "Hạn chót";
+    const colCreated = (typeof t === 'function') ? t('tableHeaderCreated') : "Ngày mở";
+    const colClosed = (typeof t === 'function') ? t('tableHeaderClosed') : "Ngày đóng";
+    const colStatus = (typeof t === 'function') ? t('tableHeaderStatus') : "Trạng thái";
+    const colProgress = (typeof t === 'function') ? t('tableHeaderProgress') : "Tiến độ";
+    const colType = (typeof t === 'function') ? t('tableHeaderType') : "Phân loại";
+    const colKpi = (typeof t === 'function') ? t('tableHeaderKpi') : "KPI";
+
     return `
 <div id="gitlabKpiSummaryModal" class="gl-kpi-modal-overlay">
     <div class="gl-kpi-modal-dialog">
         <div class="gl-kpi-modal-header">
             <div>
-                <h3 class="gl-kpi-modal-title">📊 Tổng hợp Task con của tôi</h3>
+                <h3 class="gl-kpi-modal-title">${modalTitle}</h3>
                 ${safeParentTitle ? `<div class="gl-kpi-modal-subtitle">${safeParentTitle}</div>` : ''}
-                ${isSyncing ? `<div class="gl-kpi-sync-status" style="font-size: 12px; color: #1068bf; margin-top: 4px; display: flex; align-items: center; gap: 6px;"><span class="gl-spinner" style="display: inline-block; width: 12px; height: 12px; border: 2px solid #1068bf; border-top-color: transparent; border-radius: 50%; animation: gl-spin 0.8s linear infinite;"></span> Đang đồng bộ số liệu mới nhất từ GitLab...</div>` : ''}
+                ${isSyncing ? `<div class="gl-kpi-sync-status" style="font-size: 12px; color: #1068bf; margin-top: 4px; display: flex; align-items: center; gap: 6px;"><span class="gl-spinner" style="display: inline-block; width: 12px; height: 12px; border: 2px solid #1068bf; border-top-color: transparent; border-radius: 50%; animation: gl-spin 0.8s linear infinite;"></span> ${syncStatusText}</div>` : ''}
             </div>
             <div class="gl-kpi-header-actions">
-                <button id="glKpiAddAllBtn" class="btn btn-sm btn-success gl-button"${!tasks || tasks.length === 0 ? ' disabled style="opacity: 0.6; cursor: not-allowed;"' : ''}>➕ Thêm tất cả vào KPI</button>
-                <button id="glKpiRefreshBtn" class="btn btn-sm btn-default gl-button">🔄 Làm mới</button>
+                <button id="glKpiAddAllBtn" class="btn btn-sm btn-success gl-button"${!tasks || tasks.length === 0 ? ' disabled style="opacity: 0.6; cursor: not-allowed;"' : ''}>${addAllBtnText}</button>
+                <button id="glKpiRefreshBtn" class="btn btn-sm btn-default gl-button">${refreshBtnText}</button>
                 <span id="glKpiCloseBtn" class="gl-kpi-close-icon" title="Đóng">&times;</span>
             </div>
         </div>
@@ -446,41 +499,41 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options =
             <!-- Summary Metric Cards -->
             <div class="gl-kpi-summary-grid">
                 <div class="gl-kpi-card">
-                    <div class="gl-kpi-card-title">Tổng Task</div>
+                    <div class="gl-kpi-card-title">${cardTotalTasks}</div>
                     <div class="gl-kpi-card-value">${safeMetrics.totalTasks}</div>
                     <div class="gl-kpi-card-sub">
-                        <span class="gl-badge gl-badge-closed">${safeMetrics.closedTasks} đóng</span>
-                        <span class="gl-badge gl-badge-opened">${safeMetrics.openTasks} mở</span>
+                        <span class="gl-badge gl-badge-closed">${cardClosed}</span>
+                        <span class="gl-badge gl-badge-opened">${cardOpen}</span>
                     </div>
                 </div>
                 <div class="gl-kpi-card">
-                    <div class="gl-kpi-card-title">Tổng Estimate</div>
+                    <div class="gl-kpi-card-title">${cardTotalEst}</div>
                     <div class="gl-kpi-card-value">${safeMetrics.totalEstimate}h</div>
-                    <div class="gl-kpi-card-sub">${safeMetrics.plannedCount} kế hoạch</div>
+                    <div class="gl-kpi-card-sub">${cardPlanned}</div>
                 </div>
                 <div class="gl-kpi-card">
-                    <div class="gl-kpi-card-title">Tổng Spent</div>
+                    <div class="gl-kpi-card-title">${cardTotalSpent}</div>
                     <div class="gl-kpi-card-value">${safeMetrics.totalSpent}h</div>
-                    <div class="gl-kpi-card-sub">${safeMetrics.unplannedCount} phát sinh</div>
+                    <div class="gl-kpi-card-sub">${cardUnplanned}</div>
                 </div>
                 <div class="gl-kpi-card">
-                    <div class="gl-kpi-card-title">Chênh lệch</div>
+                    <div class="gl-kpi-card-title">${cardDiff}</div>
                     <div class="gl-kpi-card-value ${diffColorClass}">${diffSign}</div>
-                    <div class="gl-kpi-card-sub">${safeMetrics.diffHours >= 0 ? 'Dư thời gian' : 'Vượt Estimate'}</div>
+                    <div class="gl-kpi-card-sub">${cardDiffSub}</div>
                 </div>
                 <div class="gl-kpi-card">
-                    <div class="gl-kpi-card-title">Đúng hạn</div>
+                    <div class="gl-kpi-card-title">${cardOnTime}</div>
                     <div class="gl-kpi-card-value ${onTimeColorClass}">${safeMetrics.onTimeRate}%</div>
-                    <div class="gl-kpi-card-sub">${safeMetrics.lateTasks > 0 ? `${safeMetrics.lateTasks} task trễ` : '100% đúng hạn'}</div>
+                    <div class="gl-kpi-card-sub">${cardOnTimeSub}</div>
                 </div>
             </div>
             <!-- Search & Count Toolbar -->
             <div class="gl-kpi-toolbar">
                 <div class="gl-kpi-search-box">
-                    <input type="text" id="glKpiSearchInput" class="gl-kpi-search-input" placeholder="🔍 Tìm kiếm theo tên hoặc #id task...">
+                    <input type="text" id="glKpiSearchInput" class="gl-kpi-search-input" placeholder="${searchPlaceholder}">
                 </div>
                 <div id="glKpiTaskCount" class="gl-kpi-task-count">
-                    Hiển thị <strong>${tasks ? tasks.length : 0}</strong> / ${tasks ? tasks.length : 0} task
+                    ${taskCountText}
                 </div>
             </div>
             <!-- Detailed Task Table -->
@@ -488,18 +541,18 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options =
                 <table class="gl-kpi-table">
                     <thead>
                         <tr>
-                            <th class="gl-kpi-sortable" data-sort-key="title" style="cursor: pointer; user-select: none;">Task <span class="gl-kpi-sort-icon">↕</span></th>
-                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="estimate" style="cursor: pointer; user-select: none;">Estimate <span class="gl-kpi-sort-icon">↕</span></th>
-                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="spent" style="cursor: pointer; user-select: none;">Spent <span class="gl-kpi-sort-icon">↕</span></th>
-                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="diff" style="cursor: pointer; user-select: none;">Chênh lệch <span class="gl-kpi-sort-icon">↕</span></th>
-                            <th class="gl-kpi-sortable" data-sort-key="startDate" style="cursor: pointer; user-select: none;">Bắt đầu <span class="gl-kpi-sort-icon">↕</span></th>
-                            <th class="gl-kpi-sortable" data-sort-key="dueDate" style="cursor: pointer; user-select: none;">Hạn chót <span class="gl-kpi-sort-icon">↕</span></th>
-                            <th class="gl-kpi-sortable" data-sort-key="createdAt" style="cursor: pointer; user-select: none;">Ngày mở <span class="gl-kpi-sort-icon">↕</span></th>
-                            <th class="gl-kpi-sortable" data-sort-key="closedAt" style="cursor: pointer; user-select: none;">Ngày đóng <span class="gl-kpi-sort-icon">↕</span></th>
-                            <th>Trạng thái</th>
-                            <th>Tiến độ</th>
-                            <th>Phân loại</th>
-                            <th style="text-align: center; min-width: 90px;">KPI</th>
+                            <th class="gl-kpi-sortable" data-sort-key="title" style="cursor: pointer; user-select: none;">${colTask} <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="estimate" style="cursor: pointer; user-select: none;">${colEst} <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="spent" style="cursor: pointer; user-select: none;">${colSpent} <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable gl-kpi-num" data-sort-key="diff" style="cursor: pointer; user-select: none;">${colDiff} <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable" data-sort-key="startDate" style="cursor: pointer; user-select: none;">${colStart} <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable" data-sort-key="dueDate" style="cursor: pointer; user-select: none;">${colDue} <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable" data-sort-key="createdAt" style="cursor: pointer; user-select: none;">${colCreated} <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th class="gl-kpi-sortable" data-sort-key="closedAt" style="cursor: pointer; user-select: none;">${colClosed} <span class="gl-kpi-sort-icon">↕</span></th>
+                            <th>${colStatus}</th>
+                            <th>${colProgress}</th>
+                            <th>${colType}</th>
+                            <th style="text-align: center; min-width: 90px;">${colKpi}</th>
                         </tr>
                     </thead>
                     <tbody id="glKpiTableBody">
@@ -942,8 +995,11 @@ function createSummaryButton(doc = (typeof document !== 'undefined' ? document :
     button.id = 'kpiSummaryTasksBtn';
     button.className = 'btn btn-default btn-sm gl-button custom-summary-button';
     button.setAttribute('type', 'button');
-    button.title = 'Tổng hợp task con của tôi';
-    button.innerHTML = `<span>📊</span><span>Tổng hợp task</span>`;
+    const titleText = (typeof t === 'function') ? t('summaryBtnTooltip') : 'Tổng hợp task con của tôi';
+    const labelRaw = (typeof t === 'function') ? t('summaryBtn') : '📊 Tổng hợp task';
+    const labelClean = labelRaw.replace(/^📊\s*/, '');
+    button.title = titleText;
+    button.innerHTML = `<span>📊</span><span>${labelClean}</span>`;
     return button;
 }
 
@@ -1249,10 +1305,15 @@ function createWorkItemKpiButton(workItemInfo = {}, isAdded = false, onClickHand
         : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
     button.setAttribute('type', 'button');
     button.setAttribute('data-is-added', String(isAdded));
-    button.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+    const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
+    const text = isAdded ? (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI') : (isEn ? 'Add to KPI' : 'Thêm vào KPI');
+    const title = isAdded
+        ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI'))
+        : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add this task to KPI' : 'Thêm task này vào KPI'));
+    button.title = title;
     button.innerHTML = isAdded
-        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
-        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
+        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
+        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">${text}</span>`;
 
     if (workItemInfo && workItemInfo.workItemId) {
         button.setAttribute('data-work-item-id', String(workItemInfo.workItemId));
@@ -1291,10 +1352,15 @@ function injectWorkItemButton(container, workItemInfo, isAdded, onClickHandler, 
         existingBtn.className = isAdded
             ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
             : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
-        existingBtn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+        const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
+        const text = isAdded ? (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI') : (isEn ? 'Add to KPI' : 'Thêm vào KPI');
+        const title = isAdded
+            ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI'))
+            : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add this task to KPI' : 'Thêm task này vào KPI'));
+        existingBtn.title = title;
         existingBtn.innerHTML = isAdded
-            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
-            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
+            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
+            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">${text}</span>`;
         return existingBtn;
     }
 
@@ -1917,7 +1983,8 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                         window._storedWorkItemIds = updatedList;
                     }
                 }
-                addAllBtn.innerText = '✔ Đã thêm tất cả vào KPI';
+                const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
+                addAllBtn.innerText = isEn ? '✔ Added all to KPI' : '✔ Đã thêm tất cả vào KPI';
                 if (addAllBtn.classList) {
                     addAllBtn.classList.remove('btn-success');
                     addAllBtn.classList.add('btn-default');
@@ -1931,8 +1998,9 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                     if (btn.setAttribute) {
                         btn.setAttribute('data-is-added', 'true');
                     }
-                    btn.title = 'Xóa task này khỏi KPI';
-                    btn.innerHTML = `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa</span>`;
+                    const removeRowText = isEn ? 'Delete' : 'Xóa';
+                    btn.title = (typeof t === 'function') ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI');
+                    btn.innerHTML = `${kpiWorkItemMinusSvg}<span class="gl-button-text">${removeRowText}</span>`;
                 });
 
                 if (typeof window !== 'undefined' && typeof window._onChildTasksAddedAll === 'function') {
@@ -1948,8 +2016,9 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
     const refreshBtn = modalOverlay.querySelector('#glKpiRefreshBtn');
     if (refreshBtn && typeof refreshBtn.addEventListener === 'function') {
         refreshBtn.addEventListener('click', async () => {
+            const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
             refreshBtn.disabled = true;
-            refreshBtn.innerText = '⏳ Đang làm mới...';
+            refreshBtn.innerText = isEn ? '⏳ Refreshing...' : '⏳ Đang làm mới...';
             try {
                 await refreshSummaryModal(doc, safeParentInfo, {
                     userProfile: options.userProfile,
@@ -1961,7 +2030,7 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
             } catch (err) {
                 console.error('Error refreshing summary modal:', err);
                 refreshBtn.disabled = false;
-                refreshBtn.innerText = '🔄 Làm mới';
+                refreshBtn.innerText = isEn ? '🔄 Refresh' : '🔄 Làm mới';
             }
         });
     }
@@ -1986,7 +2055,11 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
         }
         const countEl = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiTaskCount') : null;
         if (countEl) {
-            countEl.innerHTML = `Hiển thị <strong>${filteredSorted.length}</strong> / ${tasks ? tasks.length : 0} task`;
+            const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
+            const countText = isEn
+                ? `Showing <strong>${filteredSorted.length}</strong> / ${tasks ? tasks.length : 0} tasks`
+                : `Hiển thị <strong>${filteredSorted.length}</strong> / ${tasks ? tasks.length : 0} task`;
+            countEl.innerHTML = countText;
         }
         const headers = modalOverlay.querySelectorAll ? modalOverlay.querySelectorAll('th.gl-kpi-sortable') : [];
         if (headers && headers.forEach) {
@@ -2038,10 +2111,14 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                     if (btn.setAttribute) {
                         btn.setAttribute('data-is-added', String(isNowAdded));
                     }
-                    btn.title = isNowAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+                    const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
+                    const text = isNowAdded ? (isEn ? 'Delete' : 'Xóa') : (isEn ? 'Add' : 'Thêm');
+                    btn.title = isNowAdded
+                        ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI'))
+                        : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add this task to KPI' : 'Thêm task này vào KPI'));
                     btn.innerHTML = isNowAdded
-                        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa</span>`
-                        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm</span>`;
+                        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
+                        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">${text}</span>`;
                 }
             } catch (err) {
                 console.error('Error toggling task from summary modal row:', err);
@@ -2085,9 +2162,10 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
 
     // Auto-refresh in background if requested
     if (isAutoRefreshing) {
+        const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
         if (refreshBtn) {
             refreshBtn.disabled = true;
-            refreshBtn.innerText = '⏳ Đang đồng bộ...';
+            refreshBtn.innerText = isEn ? '⏳ Syncing...' : '⏳ Đang đồng bộ...';
         }
         setTimeout(() => {
             refreshSummaryModal(doc, safeParentInfo, {
@@ -2099,7 +2177,7 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                 console.error('Auto refresh error:', err);
                 if (refreshBtn) {
                     refreshBtn.disabled = false;
-                    refreshBtn.innerText = '🔄 Làm mới';
+                    refreshBtn.innerText = isEn ? '🔄 Refresh' : '🔄 Làm mới';
                 }
             });
         }, 50);
@@ -2190,6 +2268,14 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     (async () => {
         console.log('Loading content_issue.js');
 
+        if (typeof initLanguage === 'function' && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            try {
+                await initLanguage(chrome.storage.local);
+            } catch (err) {
+                console.warn('Could not initialize i18n in content_issue.js:', err);
+            }
+        }
+
         let loadingSuccess = false;
         const WORK_ITEM_KEY = 'WorkItemIds';
 
@@ -2205,12 +2291,30 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         // Lắng nghe thay đổi storage từ bất kỳ tab hoặc window nào để tự động đồng bộ ngay lập tức
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
             chrome.storage.onChanged.addListener((changes, areaName) => {
-                if (areaName === 'local' && changes[WORK_ITEM_KEY]) {
-                    storedItemsCache = changes[WORK_ITEM_KEY].newValue || [];
-                    if (typeof window !== 'undefined') {
-                        window._storedWorkItemIds = storedItemsCache;
+                if (areaName === 'local') {
+                    if (changes[WORK_ITEM_KEY]) {
+                        storedItemsCache = changes[WORK_ITEM_KEY].newValue || [];
+                        if (typeof window !== 'undefined') {
+                            window._storedWorkItemIds = storedItemsCache;
+                        }
+                        syncAllButtonsOnPage(document, storedItemsCache);
                     }
-                    syncAllButtonsOnPage(document, storedItemsCache);
+                    if (changes.appLanguage && typeof setLanguage === 'function') {
+                        setLanguage(changes.appLanguage.newValue);
+                        const summaryBtn = document.getElementById('kpiSummaryTasksBtn');
+                        if (summaryBtn) {
+                            const titleText = (typeof t === 'function') ? t('summaryBtnTooltip') : 'Tổng hợp task con của tôi';
+                            const labelRaw = (typeof t === 'function') ? t('summaryBtn') : '📊 Tổng hợp task';
+                            const labelClean = labelRaw.replace(/^📊\s*/, '');
+                            summaryBtn.title = titleText;
+                            summaryBtn.innerHTML = `<span>📊</span><span>${labelClean}</span>`;
+                        }
+                        syncAllButtonsOnPage(document, storedItemsCache);
+                        const modalOverlay = document.getElementById('gitlabKpiSummaryModal');
+                        if (modalOverlay && typeof refreshSummaryModal === 'function') {
+                            refreshSummaryModal(document, getParentIssueInfo(), { storedWorkItemIds: storedItemsCache });
+                        }
+                    }
                 }
             });
         }
@@ -2316,6 +2420,9 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
             const updateButtonAppearance = () => {
                 const isAdded = isTaskInList(storedItemsCache, { id: workItemId, iid: childIid, href });
+                const addTitle = (typeof t === 'function') ? t('addToKpi') : 'Thêm vào KPI';
+                const removeTitle = (typeof t === 'function') ? t('addedToKpi') : 'Xóa khỏi KPI';
+                button.title = isAdded ? removeTitle : addTitle;
                 if (isAdded) {
                     button.innerHTML = svgRemove;
                     button.classList.remove('btn-success');
@@ -2446,6 +2553,9 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
                     existingBtn.setAttribute('data-work-item-id', workItemId);
                     existingBtn.setAttribute('data-task-href', anchor.href);
                     existingBtn.innerHTML = isAdded ? svgRemove : svgAdd;
+                    const addTitle = (typeof t === 'function') ? t('addToKpi') : 'Thêm vào KPI';
+                    const removeTitle = (typeof t === 'function') ? t('addedToKpi') : 'Xóa khỏi KPI';
+                    existingBtn.title = isAdded ? removeTitle : addTitle;
                     if (existingBtn.classList) {
                         if (isAdded) {
                             existingBtn.classList.remove('btn-success');

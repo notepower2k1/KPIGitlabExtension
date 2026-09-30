@@ -1,6 +1,42 @@
+function getStatusBadgeText(status) {
+    switch (status) {
+        case 'doing':
+            return (typeof t === 'function') ? t('statusDoing') : 'Đang làm';
+        case 'done':
+            return (typeof t === 'function') ? t('statusDone') : 'Hoàn thành';
+        case 'carryOver':
+            return (typeof t === 'function') ? t('statusCarryOver') : 'Tồn đọng';
+        default:
+            return status;
+    }
+}
+
 if (typeof document !== 'undefined') {
 (async () => {
     console.log('Loading page.js');
+    if (typeof initLanguage === 'function') {
+        const storageLocal = (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) ? chrome.storage.local : null;
+        await initLanguage(storageLocal);
+    }
+    if (typeof applyI18n === 'function') {
+        applyI18n(document);
+    }
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+        chrome.storage.onChanged.addListener(async (changes, areaName) => {
+            if (areaName === 'local' && changes.appLanguage) {
+                const newLang = changes.appLanguage.newValue;
+                if (typeof setLanguage === 'function') {
+                    setLanguage(newLang);
+                }
+                if (typeof applyI18n === 'function') {
+                    applyI18n(document);
+                }
+                if (typeof applyFilter === 'function') {
+                    await applyFilter();
+                }
+            }
+        });
+    }
     const today = new Date();
 
     const toIsoDate = dateStr => {
@@ -1534,18 +1570,18 @@ if (typeof document !== 'undefined') {
             const headerRow = document.createElement("tr");
 
             const taskColumns = [
-                { label: "Tasks", key: "tasks", center: false },
-                { label: "Tên Work Item", key: "title", center: false },
-                { label: "Issue cha", key: "parentTitle", center: false },
-                { label: "Start date", key: "startDate", center: true },
-                { label: "Due date", key: "dueDate", center: true },
-                { label: "Closed date", key: "closeDate", center: true },
-                { label: "Estimate (h)", key: "estimate", center: true },
-                { label: "Spent (h)", key: "spent", center: true },
-                { label: "Số lần bị reopen", key: "reopenTotal", center: true },
-                { label: "Loại task", key: "type", center: true },
-                { label: "Tiến độ", key: "progress", center: true },
-                { label: "Thao tác", key: null, center: true }
+                { label: (typeof t === 'function' ? t('tableTasks') : "Tasks"), key: "tasks", center: false },
+                { label: (typeof t === 'function' ? t('tableWorkItemName') : "Tên Work Item"), key: "title", center: false },
+                { label: (typeof t === 'function' ? t('tableParentIssue') : "Issue cha"), key: "parentTitle", center: false },
+                { label: (typeof t === 'function' ? t('tableStartDate') : "Start date"), key: "startDate", center: true },
+                { label: (typeof t === 'function' ? t('tableDueDate') : "Due date"), key: "dueDate", center: true },
+                { label: (typeof t === 'function' ? t('tableClosedDate') : "Closed date"), key: "closeDate", center: true },
+                { label: (typeof t === 'function' ? t('tableEst') : "Estimate (h)"), key: "estimate", center: true },
+                { label: (typeof t === 'function' ? t('tableSpent') : "Spent (h)"), key: "spent", center: true },
+                { label: (typeof t === 'function' ? t('tableReopen') : "Số lần bị reopen"), key: "reopenTotal", center: true },
+                { label: (typeof t === 'function' ? t('tableTaskType') : "Loại task"), key: "type", center: true },
+                { label: (typeof t === 'function' ? t('tableProgress') : "Tiến độ"), key: "progress", center: true },
+                { label: (typeof t === 'function' ? t('tableAction') : "Thao tác"), key: null, center: true }
             ];
 
             const gSort = groupSortStates[groupName] || { column: null, direction: null };
@@ -1616,7 +1652,7 @@ if (typeof document !== 'undefined') {
                 if (isItemCarryOver(item, weekStart)) {
                     const carryBadge = document.createElement("span");
                     carryBadge.className = "badge-carryover";
-                    carryBadge.textContent = "🔄 Tiếp diễn";
+                    carryBadge.textContent = "🔄 " + getStatusBadgeText('carryOver');
                     const originDate = item.addedAt ? formatDate(parseToIsoDate(item.addedAt)) : '';
                     carryBadge.title = `Công việc chuyển tiếp từ tuần trước${originDate ? ` (Tạo ngày ${originDate})` : ''}`;
                     taskTd.appendChild(carryBadge);
@@ -1785,11 +1821,11 @@ if (typeof document !== 'undefined') {
             section.appendChild(groupTitle);
 
             const mrColumns = [
-                { label: "Tasks", key: "tasks", center: false, className: "col-mr-task" },
-                { label: "Tên Merge Request", key: "title", center: false, className: "col-mr-title" },
-                { label: "Estimate (h)", key: "estimate", center: true, className: "col-mr-time" },
-                { label: "Spent (h)", key: "spent", center: true, className: "col-mr-time" },
-                { label: "Thao tác", key: null, center: true, className: "col-action" }
+                { label: (typeof t === 'function' ? t('tableTasks') : "Tasks"), key: "tasks", center: false, className: "col-mr-task" },
+                { label: (typeof t === 'function' ? t('tableWorkItemName') : "Tên Merge Request"), key: "title", center: false, className: "col-mr-title" },
+                { label: (typeof t === 'function' ? t('tableEst') : "Estimate (h)"), key: "estimate", center: true, className: "col-mr-time" },
+                { label: (typeof t === 'function' ? t('tableSpent') : "Spent (h)"), key: "spent", center: true, className: "col-mr-time" },
+                { label: (typeof t === 'function' ? t('tableAction') : "Thao tác"), key: null, center: true, className: "col-action" }
             ];
             const table = document.createElement("table");
             table.className = "table-mr";
@@ -1861,7 +1897,7 @@ if (typeof document !== 'undefined') {
                 if (isItemCarryOver(item, weekStart)) {
                     const carryBadge = document.createElement("span");
                     carryBadge.className = "badge-carryover";
-                    carryBadge.textContent = "🔄 Tiếp diễn";
+                    carryBadge.textContent = "🔄 " + getStatusBadgeText('carryOver');
                     const originDate = item.addedAt ? formatDate(parseToIsoDate(item.addedAt)) : '';
                     carryBadge.title = `Merge Request chuyển tiếp từ tuần trước${originDate ? ` (Tạo ngày ${originDate})` : ''}`;
                     taskTd.appendChild(carryBadge);
@@ -5134,10 +5170,12 @@ if (typeof window !== 'undefined') {
     window.saveLeaveDay = saveLeaveDay;
     window.openDayDetailModal = openDayDetailModal;
     window.initDayDetailModal = initDayDetailModal;
+    window.getStatusBadgeText = getStatusBadgeText;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        getStatusBadgeText,
         setControlsCollapsed,
         initTabs,
         updateAnalyticsMonthBadge,

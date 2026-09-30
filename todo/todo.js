@@ -149,6 +149,29 @@ if (typeof document !== 'undefined') {
         const cancelEditBtn = document.getElementById('cancel-edit-btn');
         const closeEditBtn = document.getElementById('close-edit-btn');
 
+        if (typeof initLanguage === 'function') {
+            const storageLocal = (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) ? chrome.storage.local : null;
+            await initLanguage(storageLocal);
+        }
+        if (typeof applyI18n === 'function') {
+            applyI18n(document);
+        }
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+            chrome.storage.onChanged.addListener(async (changes, areaName) => {
+                if (areaName === 'local' && changes.appLanguage) {
+                    const newLang = changes.appLanguage.newValue;
+                    if (typeof setLanguage === 'function') {
+                        setLanguage(newLang);
+                    }
+                    if (typeof applyI18n === 'function') {
+                        applyI18n(document);
+                    }
+                    updateModeSwitchBtn();
+                    await renderKanban();
+                }
+            });
+        }
+
         // Load settings
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             const { reminderMinutesBefore = 30, reminderRepeatMinutes = 10 } = await chrome.storage.local.get([
@@ -158,9 +181,6 @@ if (typeof document !== 'undefined') {
             if (reminderBeforeInput) reminderBeforeInput.value = reminderMinutesBefore;
             if (reminderRepeatInput) reminderRepeatInput.value = reminderRepeatMinutes;
         }
-
-        // Initial Render
-        await renderKanban();
 
         // Dual-Mode Window/Tab Switcher
         const modeSwitchBtn = document.getElementById('modeSwitchBtn');
@@ -175,15 +195,23 @@ if (typeof document !== 'undefined') {
             }
         }
 
-        if (modeSwitchBtn) {
+        function updateModeSwitchBtn() {
+            if (!modeSwitchBtn) return;
             if (currentWindowMode === 'window') {
-                modeSwitchBtn.textContent = '🗖 Mở dạng Tab';
-                modeSwitchBtn.title = 'Chuyển sang mở trong Tab trình duyệt';
+                modeSwitchBtn.textContent = (typeof t === 'function') ? t('tabModeBtn') : '🗖 Mở dạng Tab';
+                modeSwitchBtn.title = (typeof t === 'function') ? t('tabModeBtn') : 'Chuyển sang mở trong Tab trình duyệt';
             } else {
-                modeSwitchBtn.textContent = '🗗 Cửa sổ rời';
-                modeSwitchBtn.title = 'Tách thành cửa sổ riêng biệt';
+                modeSwitchBtn.textContent = (typeof t === 'function') ? t('windowModeBtn') : '🗗 Cửa sổ rời';
+                modeSwitchBtn.title = (typeof t === 'function') ? t('windowModeBtn') : 'Tách thành cửa sổ riêng biệt';
             }
+        }
 
+        updateModeSwitchBtn();
+
+        // Initial Render
+        await renderKanban();
+
+        if (modeSwitchBtn) {
             modeSwitchBtn.addEventListener('click', () => {
                 switchMode(currentWindowMode, typeof chrome !== 'undefined' ? chrome : null, typeof window !== 'undefined' ? window : null);
             });
@@ -494,7 +522,10 @@ if (typeof document !== 'undefined') {
             });
             const totalCountEl = document.getElementById('total-todo-count');
             if (totalCountEl) {
-                totalCountEl.textContent = `${counts.todo + counts.processing} công việc cần hoàn thành`;
+                const activeCount = counts.todo + counts.processing;
+                totalCountEl.textContent = (typeof t === 'function')
+                    ? t('totalTodoActive', { count: activeCount })
+                    : `${activeCount} công việc đang thực hiện`;
             }
 
             // Attach events to dynamic buttons
