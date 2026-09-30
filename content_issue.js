@@ -30,31 +30,51 @@ function calculateChildTaskMetrics(tasks) {
         };
     }
 
+    const validTasks = tasks.filter(Boolean);
+    if (validTasks.length === 0) {
+        return {
+            totalTasks: 0,
+            totalEstimate: 0,
+            totalSpent: 0,
+            diffHours: 0,
+            openTasks: 0,
+            closedTasks: 0,
+            lateTasks: 0,
+            onTimeRate: 100,
+            plannedCount: 0,
+            unplannedCount: 0
+        };
+    }
+
     let sumEstimate = 0;
     let sumSpent = 0;
     let openTasks = 0;
     let closedTasks = 0;
     let lateTasks = 0;
+    let lateClosedTasks = 0;
     let plannedCount = 0;
     let unplannedCount = 0;
 
-    tasks.forEach(task => {
-        if (!task) return;
+    validTasks.forEach(task => {
         const est = parseFloat(task.estimateHour) || 0;
         const spent = parseFloat(task.spentHour) || 0;
 
         sumEstimate += est;
         sumSpent += spent;
 
+        const isLate = Boolean(task.isLate);
+        if (isLate) {
+            lateTasks++;
+        }
+
         const state = (task.state || '').toLowerCase();
         if (state === 'opened') {
             openTasks++;
         } else if (state === 'closed') {
             closedTasks++;
-        }
-
-        if (Boolean(task.isLate)) {
-            lateTasks++;
+            if (isLate) {
+                lateClosedTasks++;
+            }
         }
 
         if (task.isUnplanned) {
@@ -68,11 +88,11 @@ function calculateChildTaskMetrics(tasks) {
     const totalSpent = roundToOneDecimal(sumSpent);
     const diffHours = roundToOneDecimal(totalEstimate - totalSpent);
     const onTimeRate = closedTasks > 0
-        ? Math.max(0, Math.round(((closedTasks - lateTasks) / closedTasks) * 100))
+        ? Math.max(0, Math.round(((closedTasks - lateClosedTasks) / closedTasks) * 100))
         : 100;
 
     return {
-        totalTasks: tasks.length,
+        totalTasks: validTasks.length,
         totalEstimate,
         totalSpent,
         diffHours,
@@ -119,7 +139,7 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '') {
                 const diffVal = Number(task.diffHour);
                 diffText = diffVal > 0 ? `+${diffVal}h` : `${diffVal}h`;
                 diffClass = diffVal >= 0 ? 'gl-text-success' : 'gl-text-danger';
-            } else if (task.estimateHour !== undefined && task.spentHour !== undefined) {
+            } else if (task.estimateHour != null && task.spentHour != null) {
                 const diffVal = roundToOneDecimal(Number(task.estimateHour) - Number(task.spentHour));
                 diffText = diffVal > 0 ? `+${diffVal}h` : `${diffVal}h`;
                 diffClass = diffVal >= 0 ? 'gl-text-success' : 'gl-text-danger';
@@ -223,11 +243,723 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '') {
 </div>`.trim();
 }
 
+// --- Modal Styles & Helpers ---
+
+function getModalStyles() {
+    return `
+#gitlabKpiSummaryModal.gl-kpi-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+    box-sizing: border-box;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-modal-dialog {
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+    width: 92%;
+    max-width: 980px;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+    font-size: 14px;
+    color: #1f2937;
+    border: 1px solid #dcdcde;
+    animation: glKpiFadeIn 0.15s ease-out;
+}
+
+@keyframes glKpiFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+#gitlabKpiSummaryModal .gl-kpi-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #fafafa;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-modal-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-modal-subtitle {
+    margin-top: 3px;
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: normal;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-close-icon {
+    font-size: 24px;
+    cursor: pointer;
+    color: #6b7280;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+    user-select: none;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-close-icon:hover {
+    color: #111827;
+    background: #e5e7eb;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-modal-body {
+    padding: 18px 20px;
+    overflow-y: auto;
+    max-height: calc(88vh - 70px);
+}
+
+#gitlabKpiSummaryModal .gl-kpi-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-card-title {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 500;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-card-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 4px;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-card-sub {
+    font-size: 11px;
+    color: #64748b;
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    align-items: center;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-table-wrapper {
+    overflow-x: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 13px;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-table th {
+    background: #f9fafb;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    font-weight: 600;
+    color: #374151;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #1f2937;
+    vertical-align: middle;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-table tr:last-child td {
+    border-bottom: none;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-table tr:hover td {
+    background: #f8fafc;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+#gitlabKpiSummaryModal .gl-kpi-table th:nth-child(2),
+#gitlabKpiSummaryModal .gl-kpi-table th:nth-child(3),
+#gitlabKpiSummaryModal .gl-kpi-table th:nth-child(4) {
+    text-align: right;
+}
+
+#gitlabKpiSummaryModal .gl-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 12px;
+    line-height: 1.4;
+}
+
+#gitlabKpiSummaryModal .gl-badge-opened {
+    background: #e0f2fe;
+    color: #0284c7;
+}
+
+#gitlabKpiSummaryModal .gl-badge-closed {
+    background: #ecfdf5;
+    color: #059669;
+}
+
+#gitlabKpiSummaryModal .gl-badge-success {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+#gitlabKpiSummaryModal .gl-badge-danger {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+#gitlabKpiSummaryModal .gl-badge-warning {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+#gitlabKpiSummaryModal .gl-badge-info {
+    background: #e0e7ff;
+    color: #4338ca;
+}
+
+#gitlabKpiSummaryModal .gl-text-success {
+    color: #16a34a !important;
+}
+
+#gitlabKpiSummaryModal .gl-text-danger {
+    color: #dc2626 !important;
+}
+
+#gitlabKpiSummaryModal .gl-text-warning {
+    color: #d97706 !important;
+}
+
+.custom-summary-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+`.trim();
+}
+
+function ensureModalStyles(doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc || !doc.head) return;
+    if (doc.getElementById('gitlab-kpi-summary-styles')) return;
+
+    const styleEl = doc.createElement('style');
+    styleEl.id = 'gitlab-kpi-summary-styles';
+    styleEl.textContent = getModalStyles();
+    doc.head.appendChild(styleEl);
+}
+
+function createSummaryButton(doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc) return null;
+    const button = doc.createElement('button');
+    button.id = 'kpiSummaryTasksBtn';
+    button.className = 'btn btn-default btn-sm gl-button custom-summary-button';
+    button.setAttribute('type', 'button');
+    button.title = 'Tổng hợp task con của tôi';
+    button.innerHTML = `<span>📊</span><span>Tổng hợp task</span>`;
+    return button;
+}
+
+function findEditButtonPlacement(doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc) return null;
+
+    // 1. Primary: Edit title button or standard edit button
+    const editBtn = doc.querySelector(
+        '[data-testid="edit-title-button"], button.js-issuable-edit, [data-testid="issue-edit-button"], [data-testid="work-item-actions-dropdown"]'
+    );
+    if (editBtn) {
+        return { target: editBtn, position: 'after' };
+    }
+
+    // 2. Secondary: Detail page header actions container button or container
+    const headerBtn = doc.querySelector('.detail-page-header-actions .btn-default');
+    if (headerBtn) {
+        return { target: headerBtn, position: 'after' };
+    }
+    const headerActions = doc.querySelector('.detail-page-header-actions');
+    if (headerActions) {
+        return { target: headerActions, position: 'append' };
+    }
+
+    // 3. Fallback: Adjacent to issue title
+    const titleEl = doc.querySelector('h1.title, [data-testid="issue-title"], .issue-details .title');
+    if (titleEl) {
+        return { target: titleEl, position: 'after' };
+    }
+
+    return null;
+}
+
+function injectSummaryButton(doc = (typeof document !== 'undefined' ? document : null), onClickHandler = null) {
+    if (!doc) return null;
+    const existing = doc.getElementById('kpiSummaryTasksBtn');
+    if (existing) {
+        return existing;
+    }
+
+    const placement = findEditButtonPlacement(doc);
+    if (!placement || !placement.target) {
+        return null;
+    }
+
+    const btn = createSummaryButton(doc);
+    if (onClickHandler && typeof btn.addEventListener === 'function') {
+        btn.addEventListener('click', onClickHandler);
+    }
+
+    if (placement.position === 'after') {
+        if (typeof placement.target.after === 'function') {
+            placement.target.after(btn);
+        } else if (placement.target.parentNode) {
+            placement.target.parentNode.insertBefore(btn, placement.target.nextSibling);
+        }
+    } else if (placement.position === 'append') {
+        placement.target.appendChild(btn);
+    } else {
+        if (placement.target.parentNode) {
+            placement.target.parentNode.appendChild(btn);
+        }
+    }
+
+    return btn;
+}
+
+function extractChildTasksFromDom(container = (typeof document !== 'undefined' ? document : null)) {
+    if (!container) return [];
+    const items = container.querySelectorAll('ul[data-testid="child-items-container"] > li.tree-item');
+    if (!items || items.length === 0) return [];
+
+    const extracted = [];
+    items.forEach(li => {
+        const linkChild = li.querySelector('div[data-testid="links-child"]');
+        let id = linkChild?.getAttribute('parent-work-item-id');
+        const anchor = li.querySelector('a');
+        const href = anchor ? (anchor.getAttribute('href') || anchor.href || '') : '';
+
+        if (!id && href) {
+            const match = href.match(/work_items\/(\d+)|issues\/(\d+)/);
+            if (match) id = match[1] || match[2];
+        }
+
+        if (!id && !href) return;
+
+        const title = (anchor?.innerText?.trim() || anchor?.getAttribute('title')?.trim() || (id ? `Task #${id}` : 'Không có tiêu đề'));
+        const avatarLink = li.querySelector('div.gl-avatars-inline-child > a');
+        const assigneeUrl = avatarLink ? (avatarLink.getAttribute('href') || avatarLink.href || '') : '';
+
+        const isClosed = (
+            li.classList?.contains('gl-badge-closed') ||
+            li.classList?.contains('is-closed') ||
+            li.querySelector?.('.gl-badge-closed') !== null ||
+            li.querySelector?.('[data-testid="status-closed"]') !== null ||
+            (li.getAttribute?.('data-state') === 'closed')
+        );
+        const state = isClosed ? 'closed' : 'opened';
+
+        extracted.push({
+            id: String(id || ''),
+            href,
+            title,
+            assigneeUrl,
+            state
+        });
+    });
+
+    return extracted;
+}
+
+function enrichChildTasks(tasks, userProfile, storedKpi = []) {
+    if (!Array.isArray(tasks)) return [];
+    const userUrl = userProfile?.web_url;
+    const filtered = filterMyChildTasks(tasks, userUrl);
+
+    const kpiMap = new Map();
+    if (Array.isArray(storedKpi)) {
+        storedKpi.forEach(item => {
+            if (!item) return;
+            if (item.id) kpiMap.set(String(item.id), item);
+            if (item.taskUrl) kpiMap.set(item.taskUrl, item);
+        });
+    }
+
+    return filtered.map(task => {
+        const kpi = kpiMap.get(String(task.id)) || (task.href ? kpiMap.get(task.href) : null);
+        if (kpi) {
+            const est = kpi.estimate != null ? Number(kpi.estimate) : 0;
+            const spent = kpi.spent != null ? Number(kpi.spent) : 0;
+            const diff = roundToOneDecimal(est - spent);
+            const isLate = kpi.progress === 'Trễ hạn' || Boolean(kpi.isLate);
+            const isUnplanned = kpi.type === 'Phát sinh' || Boolean(kpi.isUnplanned);
+            const state = (kpi.state || task.state || 'opened').toLowerCase();
+
+            return {
+                ...task,
+                estimateHour: est,
+                spentHour: spent,
+                diffHour: diff,
+                isLate,
+                isUnplanned,
+                state
+            };
+        }
+
+        return {
+            ...task,
+            estimateHour: 0,
+            spentHour: 0,
+            diffHour: 0,
+            isLate: false,
+            isUnplanned: false,
+            state: (task.state || 'opened').toLowerCase()
+        };
+    });
+}
+
+function batchAddTasksToStorage(tasks, parentInfo = {}, currentStored = []) {
+    const list = Array.isArray(currentStored) ? [...currentStored] : [];
+    let addedCount = 0;
+    const parentTitle = parentInfo.parentTitle || '';
+    const parentUrl = parentInfo.parentUrl || '';
+    const parentIid = parentInfo.parentIid || '';
+
+    if (Array.isArray(tasks)) {
+        tasks.forEach(task => {
+            if (!task || !task.id) return;
+            const strId = String(task.id);
+            const existingIdx = list.findIndex(item => String(item.id) === strId);
+
+            if (existingIdx === -1) {
+                list.push({
+                    id: strId,
+                    href: task.href || '',
+                    createAt: new Date().toLocaleString(),
+                    parentTitle,
+                    parentUrl,
+                    parentIid,
+                    taskTitle: task.title || ''
+                });
+                addedCount++;
+            } else {
+                const item = list[existingIdx];
+                let changed = false;
+                if (!item.parentTitle && parentTitle) {
+                    item.parentTitle = parentTitle;
+                    changed = true;
+                }
+                if (!item.parentUrl && parentUrl) {
+                    item.parentUrl = parentUrl;
+                    changed = true;
+                }
+                if (!item.parentIid && parentIid) {
+                    item.parentIid = parentIid;
+                    changed = true;
+                }
+                if (!item.taskTitle && task.title) {
+                    item.taskTitle = task.title;
+                    changed = true;
+                }
+                if (changed) {
+                    list[existingIdx] = { ...item };
+                }
+            }
+        });
+    }
+
+    return { updatedList: list, addedCount };
+}
+
+async function fetchTaskDetail(projectPath, iid, token) {
+    if (!projectPath || !iid || !token) return null;
+    const queryData = {
+        operationName: "namespaceWorkItem",
+        variables: {
+            fullPath: projectPath,
+            iid: String(iid),
+        },
+        query: `
+        query namespaceWorkItem($fullPath: ID!, $iid: String!) {
+          workspace: namespace(fullPath: $fullPath) {
+            id
+            workItem(iid: $iid) {
+              id
+              iid
+              title
+              state
+              closedAt
+              widgets {
+                type
+                ... on WorkItemWidgetStartAndDueDate {
+                  dueDate
+                  startDate
+                }
+                ... on WorkItemWidgetTimeTracking {
+                  timeEstimate
+                  totalTimeSpent
+                }
+                ... on WorkItemWidgetLabels {
+                  labels {
+                    nodes {
+                      title
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        `
+    };
+
+    try {
+        const response = await fetch('https://gitlab.widosoft.com/api/graphql', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(queryData),
+        });
+        const res = await response.json();
+        return res?.data?.workspace?.workItem || null;
+    } catch (err) {
+        console.warn('Error fetching task detail for iid ' + iid + ':', err);
+        return null;
+    }
+}
+
+function closeSummaryModal(doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc) return;
+    const existing = doc.getElementById('gitlabKpiSummaryModal');
+    if (existing) {
+        existing.remove();
+    }
+    if (typeof doc.removeEventListener === 'function' && doc._glKpiEscapeHandler) {
+        doc.removeEventListener('keydown', doc._glKpiEscapeHandler);
+        doc._glKpiEscapeHandler = null;
+    }
+    if (typeof window !== 'undefined' && window._glKpiEscapeHandler) {
+        window.removeEventListener('keydown', window._glKpiEscapeHandler);
+        window._glKpiEscapeHandler = null;
+    }
+}
+
+function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof document !== 'undefined' ? document : null), options = {}) {
+    if (!doc || !doc.body) return null;
+    ensureModalStyles(doc);
+    closeSummaryModal(doc);
+
+    const safeParentInfo = parentInfo || {};
+    const parentTitle = safeParentInfo.parentTitle || '';
+
+    let tasks = preloadedTasks;
+    if (!tasks) {
+        const rawTasks = extractChildTasksFromDom(doc);
+        const userProfile = options.userProfile || null;
+        const storedKpi = options.storedKpi || [];
+        tasks = enrichChildTasks(rawTasks, userProfile, storedKpi);
+    }
+
+    const metrics = calculateChildTaskMetrics(tasks);
+    const modalHtml = renderSummaryModalHtml(metrics, tasks, parentTitle);
+
+    let modalOverlay = null;
+    if (typeof doc.createElement === 'function') {
+        const temp = doc.createElement('div');
+        temp.innerHTML = modalHtml;
+        modalOverlay = temp.querySelector('#gitlabKpiSummaryModal') || (temp.children && temp.children.find(c => c.id === 'gitlabKpiSummaryModal')) || temp.firstElementChild || temp;
+        if (modalOverlay) {
+            doc.body.appendChild(modalOverlay);
+        }
+    }
+
+    if (!modalOverlay) return null;
+
+    // Attach Close handlers
+    const closeBtn = modalOverlay.querySelector('#glKpiCloseBtn');
+    if (closeBtn && typeof closeBtn.addEventListener === 'function') {
+        closeBtn.addEventListener('click', () => closeSummaryModal(doc));
+    }
+
+    if (typeof modalOverlay.addEventListener === 'function') {
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                closeSummaryModal(doc);
+            }
+        });
+    }
+
+    // Attach Escape key listener
+    const escapeHandler = (e) => {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+            closeSummaryModal(doc);
+        }
+    };
+    doc._glKpiEscapeHandler = escapeHandler;
+    if (typeof doc.addEventListener === 'function') {
+        doc.addEventListener('keydown', escapeHandler);
+    }
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window._glKpiEscapeHandler = escapeHandler;
+        window.addEventListener('keydown', escapeHandler);
+    }
+
+    // Attach Add All button handler
+    const addAllBtn = modalOverlay.querySelector('#glKpiAddAllBtn');
+    if (addAllBtn && typeof addAllBtn.addEventListener === 'function') {
+        addAllBtn.addEventListener('click', async () => {
+            try {
+                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                    const currentStored = (typeof getStoredIds === 'function') ? await getStoredIds('WorkItemIds') : [];
+                    const { updatedList } = batchAddTasksToStorage(tasks, safeParentInfo, currentStored);
+                    await chrome.storage.local.set({ ['WorkItemIds']: updatedList });
+                }
+                addAllBtn.innerText = '✔ Đã thêm tất cả vào KPI';
+                if (addAllBtn.classList) {
+                    addAllBtn.classList.remove('btn-success');
+                    addAllBtn.classList.add('btn-default');
+                }
+                addAllBtn.disabled = true;
+
+                if (typeof window !== 'undefined' && typeof window._onChildTasksAddedAll === 'function') {
+                    window._onChildTasksAddedAll(tasks);
+                }
+            } catch (err) {
+                console.error('Error batch adding tasks to storage:', err);
+            }
+        });
+    }
+
+    // Attach Refresh button handler
+    const refreshBtn = modalOverlay.querySelector('#glKpiRefreshBtn');
+    if (refreshBtn && typeof refreshBtn.addEventListener === 'function') {
+        refreshBtn.addEventListener('click', async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.innerText = '⏳ Đang làm mới...';
+            try {
+                let userProfile = null;
+                let token = null;
+                let storedKpi = [];
+
+                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                    if (typeof getUserProfile === 'function') userProfile = await getUserProfile();
+                    if (typeof getAccessToken === 'function') token = await getAccessToken();
+                    if (typeof getStoredIds === 'function') storedKpi = await getStoredIds('KpiInfo');
+                }
+
+                const rawTasks = extractChildTasksFromDom(doc);
+                let refreshedTasks = enrichChildTasks(rawTasks, userProfile, storedKpi);
+
+                if (token && typeof window !== 'undefined' && window.location) {
+                    const pathname = window.location.pathname || '';
+                    const matchProject = pathname.replace(/\/-\/(issues|work_items)\/.*$/, '').replace(/^\//, '');
+                    if (matchProject) {
+                        const livePromises = refreshedTasks.map(async (t) => {
+                            try {
+                                const detail = await fetchTaskDetail(matchProject, t.id, token);
+                                if (detail) {
+                                    const timeTracking = detail.widgets?.find(w => w.type === 'TIME_TRACKING');
+                                    const labels = detail.widgets?.find(w => w.type === 'LABELS');
+                                    const startAndDueDate = detail.widgets?.find(w => w.type === 'START_AND_DUE_DATE');
+
+                                    const est = timeTracking?.timeEstimate ? parseFloat((timeTracking.timeEstimate / 3600).toFixed(2)) : t.estimateHour;
+                                    const spent = timeTracking?.totalTimeSpent ? parseFloat((timeTracking.totalTimeSpent / 3600).toFixed(2)) : t.spentHour;
+                                    const diff = roundToOneDecimal(est - spent);
+                                    const isUnplanned = labels?.labels?.nodes?.some(l => l.title?.toLowerCase() === 'unplanned') || t.isUnplanned;
+                                    const isLate = (detail.state === 'closed' && detail.closedAt && startAndDueDate?.dueDate)
+                                        ? (new Date(detail.closedAt) > new Date(startAndDueDate.dueDate))
+                                        : t.isLate;
+
+                                    return {
+                                        ...t,
+                                        estimateHour: est,
+                                        spentHour: spent,
+                                        diffHour: diff,
+                                        state: detail.state || t.state,
+                                        isLate,
+                                        isUnplanned
+                                    };
+                                }
+                            } catch (e) {
+                                console.warn('GraphQL enrichment failed for task', t.id, e);
+                            }
+                            return t;
+                        });
+                        refreshedTasks = await Promise.all(livePromises);
+                    }
+                }
+
+                openSummaryModal(safeParentInfo, refreshedTasks, doc, { userProfile, storedKpi });
+            } catch (err) {
+                console.error('Error refreshing summary modal:', err);
+                refreshBtn.disabled = false;
+                refreshBtn.innerText = '🔄 Làm mới';
+            }
+        });
+    }
+
+    return modalOverlay;
+}
+
 // --- Browser Content Script Initialization ---
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.calculateChildTaskMetrics = calculateChildTaskMetrics;
     window.filterMyChildTasks = filterMyChildTasks;
     window.renderSummaryModalHtml = renderSummaryModalHtml;
+    window.getModalStyles = getModalStyles;
+    window.ensureModalStyles = ensureModalStyles;
+    window.createSummaryButton = createSummaryButton;
+    window.findEditButtonPlacement = findEditButtonPlacement;
+    window.injectSummaryButton = injectSummaryButton;
+    window.extractChildTasksFromDom = extractChildTasksFromDom;
+    window.enrichChildTasks = enrichChildTasks;
+    window.batchAddTasksToStorage = batchAddTasksToStorage;
+    window.fetchTaskDetail = fetchTaskDetail;
+    window.openSummaryModal = openSummaryModal;
+    window.closeSummaryModal = closeSummaryModal;
 
     (async () => {
         console.log('Loading content_issue.js');
@@ -251,6 +983,30 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         const storedItems = await getStoredIds(WORK_ITEM_KEY);
         storedItems.forEach(item => addedLinks.add(item.id));
         const userProfile = await getUserProfile();
+
+        ensureModalStyles(document);
+
+        async function handleSummaryButtonClick() {
+            const parentInfo = getParentIssueInfo();
+            const storedKpi = (typeof getStoredIds === 'function') ? await getStoredIds('KpiInfo') : [];
+            const profile = (typeof getUserProfile === 'function') ? await getUserProfile() : userProfile;
+            openSummaryModal(parentInfo, null, document, { userProfile: profile, storedKpi });
+        }
+
+        window._onChildTasksAddedAll = (tasks) => {
+            if (!Array.isArray(tasks)) return;
+            tasks.forEach(t => addedLinks.add(String(t.id)));
+            const allAddButtons = document.querySelectorAll('.custom-add-button');
+            allAddButtons.forEach(btn => {
+                const container = btn.closest('div[data-testid="links-child"]');
+                const wid = container?.getAttribute('parent-work-item-id');
+                if (wid && addedLinks.has(wid)) {
+                    btn.innerHTML = svgRemove;
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('btn-danger');
+                }
+            });
+        };
 
         function getParentIssueInfo() {
             const pageUrl = (window.location.origin + window.location.pathname).replace(/\/+$/, '');
@@ -323,6 +1079,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
         function createRefreshButton() {
             const taskHeader = document.querySelector('#tasks > .crud-header');
+            if (!taskHeader) return;
 
             // Tạo nút
             const button = document.createElement('button');
@@ -396,14 +1153,17 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             }
         }
 
+        // Khởi tạo nút Tổng hợp task ban đầu
+        injectSummaryButton(document, handleSummaryButtonClick);
+
         // Bắt đầu quan sát từ phần tử gốc (ví dụ: body)
         const observer = new MutationObserver((mutations, obs) => {
-            const targetElement = document.querySelector("ul[data-testid='child-items-container']");
+            injectSummaryButton(document, handleSummaryButtonClick);
 
+            const targetElement = document.querySelector("ul[data-testid='child-items-container']");
             if (targetElement) {
                 processTasks();
                 createRefreshButton();
-                obs.disconnect(); // Ngừng quan sát sau khi phát hiện
             }
         });
 
@@ -458,6 +1218,17 @@ if (typeof module !== 'undefined' && module.exports) {
         roundToOneDecimal,
         calculateChildTaskMetrics,
         filterMyChildTasks,
-        renderSummaryModalHtml
+        renderSummaryModalHtml,
+        getModalStyles,
+        ensureModalStyles,
+        createSummaryButton,
+        findEditButtonPlacement,
+        injectSummaryButton,
+        extractChildTasksFromDom,
+        enrichChildTasks,
+        batchAddTasksToStorage,
+        fetchTaskDetail,
+        openSummaryModal,
+        closeSummaryModal
     };
 }

@@ -12,13 +12,31 @@ try {
 const {
     calculateChildTaskMetrics,
     filterMyChildTasks,
-    renderSummaryModalHtml
+    renderSummaryModalHtml,
+    getModalStyles,
+    createSummaryButton,
+    findEditButtonPlacement,
+    extractChildTasksFromDom,
+    enrichChildTasks,
+    batchAddTasksToStorage,
+    openSummaryModal,
+    closeSummaryModal,
+    injectSummaryButton
 } = contentIssueModule || {};
 
 // 1. Function existence tests
 assert.strictEqual(typeof calculateChildTaskMetrics, 'function', 'calculateChildTaskMetrics should be exported as a function');
 assert.strictEqual(typeof filterMyChildTasks, 'function', 'filterMyChildTasks should be exported as a function');
 assert.strictEqual(typeof renderSummaryModalHtml, 'function', 'renderSummaryModalHtml should be exported as a function');
+assert.strictEqual(typeof getModalStyles, 'function', 'getModalStyles should be exported as a function');
+assert.strictEqual(typeof createSummaryButton, 'function', 'createSummaryButton should be exported as a function');
+assert.strictEqual(typeof findEditButtonPlacement, 'function', 'findEditButtonPlacement should be exported as a function');
+assert.strictEqual(typeof extractChildTasksFromDom, 'function', 'extractChildTasksFromDom should be exported as a function');
+assert.strictEqual(typeof enrichChildTasks, 'function', 'enrichChildTasks should be exported as a function');
+assert.strictEqual(typeof batchAddTasksToStorage, 'function', 'batchAddTasksToStorage should be exported as a function');
+assert.strictEqual(typeof openSummaryModal, 'function', 'openSummaryModal should be exported as a function');
+assert.strictEqual(typeof closeSummaryModal, 'function', 'closeSummaryModal should be exported as a function');
+assert.strictEqual(typeof injectSummaryButton, 'function', 'injectSummaryButton should be exported as a function');
 console.log('✔ Passed: Exported functions existence check');
 
 // 2. Metric calculation: standard scenarios
@@ -192,4 +210,454 @@ console.log('✔ Passed: Exported functions existence check');
     console.log('✔ Passed: Modal HTML rendering and escaping');
 }
 
+// 7. Reviewer polish: onTimeRate does not drop from open late tasks, and handles sparse arrays
+{
+    // 2 closed tasks (both on-time: isLate = false) and 1 open task (isLate = true)
+    const mixedTasks = [
+        { id: '1', state: 'closed', isLate: false, estimateHour: 2, spentHour: 2 },
+        { id: '2', state: 'closed', isLate: false, estimateHour: 3, spentHour: 3 },
+        { id: '3', state: 'opened', isLate: true, estimateHour: 1, spentHour: 1 }
+    ];
+    const metrics = calculateChildTaskMetrics(mixedTasks);
+    assert.strictEqual(metrics.closedTasks, 2, 'Closed tasks count should be 2');
+    assert.strictEqual(metrics.openTasks, 1, 'Open tasks count should be 1');
+    assert.strictEqual(metrics.lateTasks, 1, 'Total late tasks count should be 1');
+    assert.strictEqual(metrics.onTimeRate, 100, 'onTimeRate must be 100% since both closed tasks finished on time');
+
+    // Sparse array with undefined / null items
+    const sparseTasks = [
+        null,
+        { id: '1', state: 'closed', isLate: false, estimateHour: 2, spentHour: 1.5 },
+        undefined,
+        { id: '2', state: 'opened', isLate: false, estimateHour: 1, spentHour: 0.5 }
+    ];
+    const sparseMetrics = calculateChildTaskMetrics(sparseTasks);
+    assert.strictEqual(sparseMetrics.totalTasks, 2, 'Total tasks should count only valid items');
+    assert.strictEqual(sparseMetrics.totalEstimate, 3);
+    assert.strictEqual(sparseMetrics.totalSpent, 2);
+
+    // renderSummaryModalHtml safely handles 0h estimate and spent
+    const zeroTask = [{ id: '0', title: 'Zero task', estimateHour: 0, spentHour: 0, state: 'opened' }];
+    const zeroHtml = renderSummaryModalHtml(calculateChildTaskMetrics(zeroTask), zeroTask, 'Parent Zero');
+    assert.ok(zeroHtml.includes('0h') || zeroHtml.includes('+0h'), 'Must display 0h for 0 estimate and spent');
+
+    console.log('✔ Passed: Reviewer polish tests (open late tasks, sparse arrays, zero hours)');
+}
+
+// Lightweight Mock DOM for Node.js testing
+class MockElement {
+    constructor(tagName, options = {}) {
+        this.tagName = (tagName || 'div').toUpperCase();
+        this.id = options.id || '';
+        this.className = options.className || '';
+        this.attributes = { ...(options.attributes || {}) };
+        this.children = [];
+        this.parentNode = null;
+        this._innerHTML = options.innerHTML || '';
+        this.innerText = options.innerText || '';
+        this.style = {};
+        this.eventListeners = {};
+        if (options.innerHTML) {
+            this.innerHTML = options.innerHTML;
+        }
+    }
+
+    get firstElementChild() {
+        return this.children[0] || null;
+    }
+
+    get innerHTML() {
+        return this._innerHTML || '';
+    }
+
+    set innerHTML(val) {
+        this._innerHTML = val;
+        const idMatches = [...val.matchAll(/id="([^"]+)"/g)];
+        this.children = [];
+        for (const m of idMatches) {
+            const childId = m[1];
+            const child = new MockElement('div', { id: childId });
+            child.parentNode = this;
+            this.children.push(child);
+        }
+    }
+
+    getAttribute(name) {
+        if (name === 'id') return this.id || null;
+        if (name === 'class') return this.className || null;
+        return this.attributes[name] !== undefined ? this.attributes[name] : null;
+    }
+
+    setAttribute(name, val) {
+        if (name === 'id') this.id = String(val);
+        else if (name === 'class') this.className = String(val);
+        else this.attributes[name] = String(val);
+    }
+
+    get classList() {
+        return {
+            contains: (cls) => this.className.split(/\s+/).filter(Boolean).includes(cls),
+            add: (cls) => {
+                if (!this.classList.contains(cls)) {
+                    this.className = (this.className + ' ' + cls).trim();
+                }
+            },
+            remove: (cls) => {
+                this.className = this.className.split(/\s+/).filter(c => c !== cls).join(' ');
+            }
+        };
+    }
+
+    appendChild(child) {
+        child.parentNode = this;
+        this.children.push(child);
+        return child;
+    }
+
+    append(...children) {
+        children.forEach(c => this.appendChild(c));
+    }
+
+    prepend(child) {
+        child.parentNode = this;
+        this.children.unshift(child);
+    }
+
+    remove() {
+        if (this.parentNode) {
+            const idx = this.parentNode.children.indexOf(this);
+            if (idx !== -1) {
+                this.parentNode.children.splice(idx, 1);
+            }
+            this.parentNode = null;
+        }
+    }
+
+    after(el) {
+        if (!this.parentNode) return;
+        const idx = this.parentNode.children.indexOf(this);
+        el.parentNode = this.parentNode;
+        this.parentNode.children.splice(idx + 1, 0, el);
+    }
+
+    before(el) {
+        if (!this.parentNode) return;
+        const idx = this.parentNode.children.indexOf(this);
+        el.parentNode = this.parentNode;
+        this.parentNode.children.splice(idx, 0, el);
+    }
+
+    addEventListener(event, fn) {
+        if (!this.eventListeners[event]) this.eventListeners[event] = [];
+        this.eventListeners[event].push(fn);
+    }
+
+    removeEventListener(event, fn) {
+        if (this.eventListeners[event]) {
+            this.eventListeners[event] = this.eventListeners[event].filter(h => h !== fn);
+        }
+    }
+
+    dispatchEvent(event) {
+        const list = this.eventListeners[event.type || event] || [];
+        for (const fn of list) {
+            fn(event);
+        }
+    }
+
+    querySelector(selector) {
+        return this.querySelectorAll(selector)[0] || null;
+    }
+
+    querySelectorAll(selector) {
+        const results = [];
+        const match = (el) => {
+            const selList = selector.split(',').map(s => s.trim());
+            for (const s of selList) {
+                if (s.startsWith('#') && el.id === s.slice(1)) return true;
+                if (s.startsWith('.') && el.classList.contains(s.slice(1))) return true;
+                if (s.startsWith('[data-testid="') && s.endsWith('"]')) {
+                    const tid = s.slice(14, -2);
+                    if (el.getAttribute('data-testid') === tid) return true;
+                }
+                if (s.toLowerCase() === el.tagName.toLowerCase()) return true;
+                if (s === 'button.js-issuable-edit') {
+                    if (el.tagName === 'BUTTON' && el.classList.contains('js-issuable-edit')) return true;
+                }
+                if (s === 'h1.title') {
+                    if (el.tagName === 'H1' && el.classList.contains('title')) return true;
+                }
+                if (s === 'div.gl-avatars-inline-child > a') {
+                    if (el.tagName === 'A' && el.parentNode && el.parentNode.tagName === 'DIV' && el.parentNode.classList.contains('gl-avatars-inline-child')) return true;
+                }
+                if (s === 'ul[data-testid="child-items-container"] > li.tree-item') {
+                    if (el.tagName === 'LI' && el.classList.contains('tree-item') && el.parentNode && el.parentNode.getAttribute('data-testid') === 'child-items-container') return true;
+                }
+                if (s === 'div[data-testid="links-child"]') {
+                    if (el.tagName === 'DIV' && el.getAttribute('data-testid') === 'links-child') return true;
+                }
+            }
+            return false;
+        };
+
+        const traverse = (node) => {
+            for (const child of node.children) {
+                if (match(child)) results.push(child);
+                traverse(child);
+            }
+        };
+        traverse(this);
+        return results;
+    }
+}
+
+class MockDocument {
+    constructor() {
+        this.head = new MockElement('head');
+        this.body = new MockElement('body');
+        this.documentElement = new MockElement('html');
+        this.documentElement.appendChild(this.head);
+        this.documentElement.appendChild(this.body);
+        this.eventListeners = {};
+    }
+    createElement(tag) {
+        return new MockElement(tag);
+    }
+    getElementById(id) {
+        return this.querySelector('#' + id);
+    }
+    querySelector(selector) {
+        if (selector === 'head') return this.head;
+        if (selector === 'body') return this.body;
+        return this.documentElement.querySelector(selector);
+    }
+    querySelectorAll(selector) {
+        return this.documentElement.querySelectorAll(selector);
+    }
+    addEventListener(event, fn) {
+        if (!this.eventListeners[event]) this.eventListeners[event] = [];
+        this.eventListeners[event].push(fn);
+    }
+    removeEventListener(event, fn) {
+        if (this.eventListeners[event]) {
+            this.eventListeners[event] = this.eventListeners[event].filter(h => h !== fn);
+        }
+    }
+    dispatchEvent(event) {
+        const list = this.eventListeners[event.type || event] || [];
+        for (const fn of list) {
+            fn(event);
+        }
+    }
+}
+
+// 8. Scoped Modal CSS test
+{
+    const css = getModalStyles();
+    assert.ok(typeof css === 'string' && css.length > 50, 'CSS string should be non-empty');
+    assert.ok(css.includes('#gitlabKpiSummaryModal') || css.includes('.gl-kpi-modal-overlay'), 'Should style overlay');
+    assert.ok(css.includes('.gl-kpi-modal-dialog'), 'Should style dialog');
+    assert.ok(css.includes('.gl-kpi-summary-grid'), 'Should style summary grid');
+    assert.ok(css.includes('.gl-kpi-card'), 'Should style cards');
+    assert.ok(css.includes('.gl-kpi-table'), 'Should style table');
+    assert.ok(css.includes('.custom-summary-button'), 'Should style injected button');
+    console.log('✔ Passed: Scoped modal CSS generation');
+}
+
+// 9. Summary Button Creation
+{
+    const mockDoc = new MockDocument();
+    const btn = createSummaryButton(mockDoc);
+    assert.strictEqual(btn.id, 'kpiSummaryTasksBtn', 'Button id must be kpiSummaryTasksBtn');
+    assert.ok(btn.classList.contains('gl-button'), 'Button should have gl-button class');
+    assert.ok(btn.classList.contains('custom-summary-button'), 'Button should have custom-summary-button class');
+    assert.ok(btn.innerHTML.includes('Tổng hợp task'), 'Button content should contain "Tổng hợp task"');
+    console.log('✔ Passed: Summary button element creation');
+}
+
+// 10. Placement Resolver & Button Injection
+{
+    // Test resolving [data-testid="edit-title-button"]
+    const doc1 = new MockDocument();
+    const editBtn1 = new MockElement('button', { attributes: { 'data-testid': 'edit-title-button' } });
+    doc1.body.appendChild(editBtn1);
+
+    const placement1 = findEditButtonPlacement(doc1);
+    assert.strictEqual(placement1.target, editBtn1);
+
+    // Test resolving button.js-issuable-edit
+    const doc2 = new MockDocument();
+    const editBtn2 = new MockElement('button', { className: 'btn js-issuable-edit' });
+    doc2.body.appendChild(editBtn2);
+
+    const placement2 = findEditButtonPlacement(doc2);
+    assert.strictEqual(placement2.target, editBtn2);
+
+    // Test resolving fallback header actions container
+    const doc3 = new MockDocument();
+    const headerActions = new MockElement('div', { className: 'detail-page-header-actions' });
+    doc3.body.appendChild(headerActions);
+
+    const placement3 = findEditButtonPlacement(doc3);
+    assert.strictEqual(placement3.target, headerActions);
+
+    // Test resolving fallback title
+    const doc4 = new MockDocument();
+    const titleEl = new MockElement('h1', { className: 'title', innerText: 'Sample Issue' });
+    doc4.body.appendChild(titleEl);
+
+    const placement4 = findEditButtonPlacement(doc4);
+    assert.strictEqual(placement4.target, titleEl);
+
+    // Test injectSummaryButton
+    const injectedBtn = injectSummaryButton(doc1);
+    assert.ok(injectedBtn, 'Should return injected button');
+    assert.strictEqual(doc1.getElementById('kpiSummaryTasksBtn'), injectedBtn);
+
+    // Duplicate injection guard
+    const secondCall = injectSummaryButton(doc1);
+    assert.strictEqual(secondCall, injectedBtn, 'Second injection call should return existing button without duplicating');
+    const allButtons = doc1.body.querySelectorAll('#kpiSummaryTasksBtn');
+    assert.strictEqual(allButtons.length, 1, 'There must only be 1 summary button in the DOM');
+
+    console.log('✔ Passed: Button placement resolution & duplicate-guarded injection');
+}
+
+// 11. Child Tasks Extraction from DOM
+{
+    const doc = new MockDocument();
+    const ul = new MockElement('ul', { attributes: { 'data-testid': 'child-items-container' } });
+    doc.body.appendChild(ul);
+
+    // Item 1: Closed child task assigned to Alice
+    const li1 = new MockElement('li', { className: 'tree-item gl-badge-closed' });
+    const linkChild1 = new MockElement('div', { attributes: { 'data-testid': 'links-child', 'parent-work-item-id': '201' } });
+    const a1 = new MockElement('a', { attributes: { href: 'https://gitlab.com/grp/prj/-/work_items/201' }, innerText: 'Child Feature A' });
+    const avatarContainer1 = new MockElement('div', { className: 'gl-avatars-inline-child' });
+    const avatarLink1 = new MockElement('a', { attributes: { href: 'https://gitlab.com/alice' } });
+    avatarContainer1.appendChild(avatarLink1);
+    li1.appendChild(linkChild1);
+    li1.appendChild(a1);
+    li1.appendChild(avatarContainer1);
+    ul.appendChild(li1);
+
+    // Item 2: Open child task assigned to Bob
+    const li2 = new MockElement('li', { className: 'tree-item' });
+    const linkChild2 = new MockElement('div', { attributes: { 'data-testid': 'links-child', 'parent-work-item-id': '202' } });
+    const a2 = new MockElement('a', { attributes: { href: 'https://gitlab.com/grp/prj/-/work_items/202' }, innerText: 'Child Bugfix B' });
+    const avatarContainer2 = new MockElement('div', { className: 'gl-avatars-inline-child' });
+    const avatarLink2 = new MockElement('a', { attributes: { href: 'https://gitlab.com/bob' } });
+    avatarContainer2.appendChild(avatarLink2);
+    li2.appendChild(linkChild2);
+    li2.appendChild(a2);
+    li2.appendChild(avatarContainer2);
+    ul.appendChild(li2);
+
+    const extracted = extractChildTasksFromDom(doc);
+    assert.strictEqual(extracted.length, 2, 'Should extract 2 child tasks');
+    assert.strictEqual(extracted[0].id, '201');
+    assert.strictEqual(extracted[0].title, 'Child Feature A');
+    assert.strictEqual(extracted[0].assigneeUrl, 'https://gitlab.com/alice');
+    assert.strictEqual(extracted[0].state, 'closed');
+
+    assert.strictEqual(extracted[1].id, '202');
+    assert.strictEqual(extracted[1].title, 'Child Bugfix B');
+    assert.strictEqual(extracted[1].assigneeUrl, 'https://gitlab.com/bob');
+    assert.strictEqual(extracted[1].state, 'opened');
+
+    console.log('✔ Passed: Child tasks extraction from DOM');
+}
+
+// 12. Child Tasks Enrichment
+{
+    const rawTasks = [
+        { id: '201', href: 'https://gitlab.com/grp/prj/-/work_items/201', title: 'Task 1', assigneeUrl: 'https://gitlab.com/alice', state: 'closed' },
+        { id: '202', href: 'https://gitlab.com/grp/prj/-/work_items/202', title: 'Task 2', assigneeUrl: 'https://gitlab.com/bob', state: 'opened' },
+        { id: '203', href: 'https://gitlab.com/grp/prj/-/work_items/203', title: 'Task 3', assigneeUrl: 'https://gitlab.com/alice', state: 'opened' }
+    ];
+
+    const storedKpi = [
+        { id: '201', estimate: 4, spent: 3.5, progress: 'Đúng hạn', type: 'Kế hoạch', state: 'closed' }
+        // Task 203 is missing from cache
+    ];
+
+    const userProfile = { web_url: 'https://gitlab.com/alice' };
+
+    const enriched = enrichChildTasks(rawTasks, userProfile, storedKpi);
+    assert.strictEqual(enriched.length, 2, 'Should only include Alice tasks (201 and 203)');
+
+    // 201: Cached
+    assert.strictEqual(enriched[0].id, '201');
+    assert.strictEqual(enriched[0].estimateHour, 4);
+    assert.strictEqual(enriched[0].spentHour, 3.5);
+    assert.strictEqual(enriched[0].diffHour, 0.5);
+    assert.strictEqual(enriched[0].isLate, false);
+    assert.strictEqual(enriched[0].isUnplanned, false);
+
+    // 203: Not in cache, has safe defaults
+    assert.strictEqual(enriched[1].id, '203');
+    assert.strictEqual(enriched[1].estimateHour, 0);
+    assert.strictEqual(enriched[1].spentHour, 0);
+    assert.strictEqual(enriched[1].diffHour, 0);
+    assert.strictEqual(enriched[1].isLate, false);
+
+    console.log('✔ Passed: Child tasks enrichment with storage cache');
+}
+
+// 13. Batch Add Tasks to Storage Logic
+{
+    const userTasks = [
+        { id: '301', href: '/tasks/301', title: 'Task 301' },
+        { id: '302', href: '/tasks/302', title: 'Task 302' }
+    ];
+    const parentInfo = { parentTitle: 'Parent Epic #10', parentUrl: '/issues/10', parentIid: '10' };
+    const currentStored = [
+        { id: '301', href: '/tasks/301', createAt: 'yesterday', parentTitle: '' }
+    ];
+
+    const result = batchAddTasksToStorage(userTasks, parentInfo, currentStored);
+    assert.strictEqual(result.addedCount, 1, 'Should add 1 new task (302)');
+    assert.strictEqual(result.updatedList.length, 2, 'Total list length should be 2');
+
+    // 301 should have parentTitle updated
+    const task301 = result.updatedList.find(t => t.id === '301');
+    assert.strictEqual(task301.parentTitle, 'Parent Epic #10');
+
+    // 302 should be newly added with parent metadata
+    const task302 = result.updatedList.find(t => t.id === '302');
+    assert.strictEqual(task302.id, '302');
+    assert.strictEqual(task302.parentTitle, 'Parent Epic #10');
+    assert.strictEqual(task302.parentUrl, '/issues/10');
+    assert.strictEqual(task302.taskTitle, 'Task 302');
+
+    console.log('✔ Passed: Batch add tasks calculation & parent backfilling');
+}
+
+// 14. Modal Lifecycle (Open, Close, Backdrop, Escape)
+{
+    const doc = new MockDocument();
+    const parentInfo = { parentTitle: 'Sprint Epic', parentUrl: '/issues/99', parentIid: '99' };
+    const sampleTasks = [
+        { id: '401', title: 'Task 401', href: '/tasks/401', estimateHour: 4, spentHour: 2, state: 'closed', isLate: false }
+    ];
+
+    // Open modal
+    const modalEl = openSummaryModal(parentInfo, sampleTasks, doc);
+    assert.ok(modalEl, 'Modal element must be returned');
+    assert.strictEqual(doc.body.children[0].id, 'gitlabKpiSummaryModal', 'Modal should be attached to body');
+
+    // Close modal
+    closeSummaryModal(doc);
+    assert.strictEqual(doc.getElementById('gitlabKpiSummaryModal'), null, 'Modal should be removed from body');
+
+    // Re-open and test Escape key dispatch
+    openSummaryModal(parentInfo, sampleTasks, doc);
+    assert.ok(doc.getElementById('gitlabKpiSummaryModal') !== null);
+    doc.dispatchEvent({ type: 'keydown', key: 'Escape' });
+    assert.strictEqual(doc.getElementById('gitlabKpiSummaryModal'), null, 'Modal should close on Escape key');
+
+    console.log('✔ Passed: Modal open, close, and Escape key lifecycle');
+}
+
 console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');
+
