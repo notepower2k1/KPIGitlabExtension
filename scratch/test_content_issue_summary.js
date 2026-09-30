@@ -30,7 +30,12 @@ const {
     refreshSummaryModal,
     openSummaryModal,
     closeSummaryModal,
-    injectSummaryButton
+    injectSummaryButton,
+    extractWorkItemPageInfo,
+    extractWorkItemModalInfo,
+    findWorkItemEditPlacement,
+    createWorkItemKpiButton,
+    injectWorkItemButton
 } = contentIssueModule || {};
 
 // 1. Function existence tests
@@ -55,6 +60,11 @@ assert.strictEqual(typeof refreshSummaryModal, 'function', 'refreshSummaryModal 
 assert.strictEqual(typeof openSummaryModal, 'function', 'openSummaryModal should be exported as a function');
 assert.strictEqual(typeof closeSummaryModal, 'function', 'closeSummaryModal should be exported as a function');
 assert.strictEqual(typeof injectSummaryButton, 'function', 'injectSummaryButton should be exported as a function');
+assert.strictEqual(typeof extractWorkItemPageInfo, 'function', 'extractWorkItemPageInfo should be exported as a function');
+assert.strictEqual(typeof extractWorkItemModalInfo, 'function', 'extractWorkItemModalInfo should be exported as a function');
+assert.strictEqual(typeof findWorkItemEditPlacement, 'function', 'findWorkItemEditPlacement should be exported as a function');
+assert.strictEqual(typeof createWorkItemKpiButton, 'function', 'createWorkItemKpiButton should be exported as a function');
+assert.strictEqual(typeof injectWorkItemButton, 'function', 'injectWorkItemButton should be exported as a function');
 console.log('✔ Passed: Exported functions existence check');
 
 // 2. Metric calculation: standard scenarios
@@ -413,6 +423,15 @@ class MockElement {
                 }
                 if (s === 'div[data-testid="links-child"]') {
                     if (el.tagName === 'DIV' && el.getAttribute('data-testid') === 'links-child') return true;
+                }
+                if (s.includes('[href*="') && s.endsWith('"]')) {
+                    const matchPattern = s.match(/^(?:([a-zA-Z0-9_-]+))?\[href\*="([^"]+)"\]$/);
+                    if (matchPattern) {
+                        const tag = matchPattern[1];
+                        const val = matchPattern[2];
+                        const href = el.getAttribute('href') || el.href || '';
+                        if ((!tag || el.tagName.toLowerCase() === tag.toLowerCase()) && href.includes(val)) return true;
+                    }
                 }
             }
             return false;
@@ -1167,6 +1186,87 @@ class MockDocument {
         assert.ok(modalHtml.includes('data-sort-key="closedAt"'), 'Modal must have sortable closedAt header');
 
         console.log('✔ Passed: Date extraction (Start, Due, Open, Close), formatting & date sorting');
+    }
+
+    // 22. Work Item Standalone Page & Modal Popup KPI Button Injection
+    {
+        // 1. extractWorkItemPageInfo
+        const mockDocPage = new MockDocument();
+        const titleEl = new MockElement('h1', { attributes: { 'data-testid': 'work-item-title' }, innerText: 'Implement SSO Auth' });
+        const parentLink = new MockElement('a', { attributes: { 'data-testid': 'work-item-parent-link', href: 'https://gitlab.widosoft.com/grp/prj/-/issues/50' }, innerText: 'Epic Auth System' });
+        mockDocPage.body.appendChild(titleEl);
+        mockDocPage.body.appendChild(parentLink);
+
+        const mockWinPage = {
+            location: {
+                origin: 'https://gitlab.widosoft.com',
+                pathname: '/grp/prj/-/work_items/501',
+                href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/501'
+            }
+        };
+
+        const pageInfo = extractWorkItemPageInfo(mockDocPage, mockWinPage);
+        assert.ok(pageInfo, 'Should extract page info for work_items URL');
+        assert.strictEqual(pageInfo.workItemId, '501');
+        assert.strictEqual(pageInfo.title, 'Implement SSO Auth');
+        assert.strictEqual(pageInfo.parentTitle, 'Epic Auth System');
+        assert.strictEqual(pageInfo.parentIid, '50');
+        assert.strictEqual(pageInfo.parentUrl, 'https://gitlab.widosoft.com/grp/prj/-/issues/50');
+
+        // Not on work_items page
+        const notWorkItem = extractWorkItemPageInfo(mockDocPage, { location: { pathname: '/grp/prj/-/issues/50' } });
+        assert.strictEqual(notWorkItem, null, 'Should return null when not on a work_items URL');
+
+        // 2. extractWorkItemModalInfo
+        const mockModal = new MockElement('div', { attributes: { 'data-testid': 'work-item-detail-modal' } });
+        const modalTitle = new MockElement('h1', { attributes: { 'data-testid': 'work-item-title' }, innerText: 'Modal Child Task' });
+        const modalLink = new MockElement('a', { attributes: { href: 'https://gitlab.widosoft.com/grp/prj/-/work_items/502' } });
+        mockModal.appendChild(modalTitle);
+        mockModal.appendChild(modalLink);
+
+        const currentParent = { parentTitle: 'Parent Issue Title', parentUrl: 'https://gitlab.widosoft.com/grp/prj/-/issues/100', parentIid: '100' };
+        const modalInfo = extractWorkItemModalInfo(mockModal, currentParent);
+        assert.ok(modalInfo, 'Should extract modal info');
+        assert.strictEqual(modalInfo.workItemId, '502');
+        assert.strictEqual(modalInfo.title, 'Modal Child Task');
+        assert.strictEqual(modalInfo.parentTitle, 'Parent Issue Title');
+        assert.strictEqual(modalInfo.parentIid, '100');
+
+        // 3. findWorkItemEditPlacement
+        const mockContainer = new MockElement('div');
+        const editBtn = new MockElement('button', { attributes: { 'data-testid': 'edit-title-button' } });
+        mockContainer.appendChild(editBtn);
+
+        const placement = findWorkItemEditPlacement(mockContainer);
+        assert.ok(placement, 'Should find placement');
+        assert.strictEqual(placement.target, editBtn);
+        assert.strictEqual(placement.position, 'after');
+
+        // 4. createWorkItemKpiButton
+        const mockDoc = new MockDocument();
+        const addBtn = createWorkItemKpiButton({ workItemId: '501' }, false, null, mockDoc);
+        assert.ok(addBtn.innerHTML.includes('Thêm vào KPI'));
+        assert.ok(addBtn.className.includes('btn-success') || addBtn.className.includes('btn-default'));
+
+        const removeBtn = createWorkItemKpiButton({ workItemId: '501' }, true, null, mockDoc);
+        assert.ok(removeBtn.innerHTML.includes('Xóa khỏi KPI'));
+        assert.ok(removeBtn.className.includes('btn-danger'));
+
+        // 5. injectWorkItemButton
+        const testContainer = new MockElement('div');
+        const targetEdit = new MockElement('button', { attributes: { 'data-testid': 'work-item-edit-button' } });
+        testContainer.appendChild(targetEdit);
+
+        const injected = injectWorkItemButton(testContainer, { workItemId: '501' }, false, null, mockDoc);
+        assert.ok(injected, 'Should inject button');
+        assert.strictEqual(testContainer.querySelector('.custom-work-item-kpi-btn'), injected);
+
+        // Duplicate call updates existing button state
+        const reinjected = injectWorkItemButton(testContainer, { workItemId: '501' }, true, null, mockDoc);
+        assert.strictEqual(reinjected, injected, 'Second injection should reuse existing button');
+        assert.ok(reinjected.innerHTML.includes('Xóa khỏi KPI'), 'Should update text to remove');
+
+        console.log('✔ Passed: Work item standalone page & modal popup KPI button injection');
     }
 
     console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');

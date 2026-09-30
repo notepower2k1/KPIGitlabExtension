@@ -20,7 +20,8 @@
         {
             "matches": [
                 "*://gitlab.widosoft.com/*/-/issues/*",
-                "*://gitlab.widosoft.com/*/-/merge_requests/*"
+                "*://gitlab.widosoft.com/*/-/merge_requests/*",
+                "*://gitlab.widosoft.com/*/-/work_items/*"
             ],
             "js": [
                 "utils.js",

@@ -652,7 +652,8 @@ function getModalStyles() {
     color: #0969da;
 }
 
-.custom-summary-button {
+.custom-summary-button,
+.custom-work-item-kpi-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -733,6 +734,199 @@ function injectSummaryButton(doc = (typeof document !== 'undefined' ? document :
     if (onClickHandler && typeof btn.addEventListener === 'function') {
         btn.addEventListener('click', onClickHandler);
     }
+
+    if (placement.position === 'after') {
+        if (typeof placement.target.after === 'function') {
+            placement.target.after(btn);
+        } else if (placement.target.parentNode) {
+            placement.target.parentNode.insertBefore(btn, placement.target.nextSibling);
+        }
+    } else if (placement.position === 'append') {
+        placement.target.appendChild(btn);
+    } else {
+        if (placement.target.parentNode) {
+            placement.target.parentNode.appendChild(btn);
+        }
+    }
+
+    return btn;
+}
+
+function extractWorkItemPageInfo(doc = (typeof document !== 'undefined' ? document : null), win = (typeof window !== 'undefined' ? window : null)) {
+    if (!doc || !win || !win.location) return null;
+    const pathname = win.location.pathname || '';
+    const match = pathname.match(/\/work_items\/(\d+)/);
+    if (!match) return null;
+
+    const workItemId = match[1];
+    const href = (win.location.origin || '') + pathname;
+
+    const titleEl = doc.querySelector ? doc.querySelector('[data-testid="work-item-title"], h1.title, h1') : null;
+    let title = titleEl ? titleEl.innerText?.trim() : '';
+    if (!title && doc.title) {
+        title = doc.title.replace(/\s*·.*$/, '').trim();
+    }
+    if (!title) {
+        title = `Task #${workItemId}`;
+    }
+
+    const parentAnchor = doc.querySelector ? doc.querySelector(
+        '[data-testid="work-item-parent-link"], [data-testid="work-item-parent"] a, [data-testid="work-item-ancestors"] a, a[href*="/issues/"]'
+    ) : null;
+
+    let parentTitle = parentAnchor ? parentAnchor.innerText?.trim() : '';
+    let parentUrl = parentAnchor ? (parentAnchor.getAttribute('href') || parentAnchor.href || '') : '';
+    let parentIid = parentUrl ? (parentUrl.match(/\/issues\/(\d+)/)?.[1] || '') : '';
+
+    return {
+        workItemId,
+        href,
+        title,
+        parentTitle,
+        parentUrl,
+        parentIid
+    };
+}
+
+function extractWorkItemModalInfo(modalEl, currentParentInfo = {}) {
+    if (!modalEl) return null;
+
+    let workItemId = '';
+    if (typeof modalEl.getAttribute === 'function') {
+        workItemId = modalEl.getAttribute('data-work-item-id') || modalEl.getAttribute('data-work-item-iid') || '';
+    }
+
+    let href = '';
+    const link = modalEl.querySelector ? modalEl.querySelector('a[href*="/work_items/"]') : null;
+    if (link) {
+        href = link.getAttribute('href') || link.href || '';
+        const match = href.match(/\/work_items\/(\d+)/);
+        if (match && !workItemId) {
+            workItemId = match[1];
+        }
+    }
+
+    if (!workItemId && modalEl.querySelectorAll) {
+        const anchors = modalEl.querySelectorAll('a');
+        for (const a of anchors) {
+            const h = (typeof a.getAttribute === 'function' ? a.getAttribute('href') : a.href) || '';
+            const match = h.match(/\/work_items\/(\d+)/);
+            if (match) {
+                workItemId = match[1];
+                href = h;
+                break;
+            }
+        }
+    }
+
+    if (!workItemId && href) {
+        const match = href.match(/\/work_items\/(\d+)/);
+        if (match) workItemId = match[1];
+    }
+
+    if (!workItemId) return null;
+
+    const titleEl = modalEl.querySelector ? modalEl.querySelector('[data-testid="work-item-title"], h1.title, h1, .work-item-title') : null;
+    let title = titleEl ? titleEl.innerText?.trim() : '';
+    if (!title) {
+        title = `Task #${workItemId}`;
+    }
+
+    const safeParent = currentParentInfo || {};
+    let parentTitle = safeParent.parentTitle || '';
+    let parentUrl = safeParent.parentUrl || '';
+    let parentIid = safeParent.parentIid || '';
+
+    if (!parentTitle && modalEl.querySelector) {
+        const parentAnchor = modalEl.querySelector(
+            '[data-testid="work-item-parent-link"], [data-testid="work-item-parent"] a, [data-testid="work-item-ancestors"] a, a[href*="/issues/"]'
+        );
+        if (parentAnchor) {
+            parentTitle = parentAnchor.innerText?.trim() || '';
+            parentUrl = parentAnchor.getAttribute('href') || parentAnchor.href || '';
+            parentIid = parentUrl.match(/\/issues\/(\d+)/)?.[1] || '';
+        }
+    }
+
+    return {
+        workItemId,
+        href,
+        title,
+        parentTitle,
+        parentUrl,
+        parentIid
+    };
+}
+
+function findWorkItemEditPlacement(container = (typeof document !== 'undefined' ? document : null)) {
+    if (!container || !container.querySelector) return null;
+
+    // Look for Edit button or actions dropdown in the work item header
+    const editBtn = container.querySelector(
+        '[data-testid="edit-title-button"], [data-testid="work-item-edit-button"], button.js-issuable-edit, [data-testid="work-item-actions-dropdown"], [data-testid="work-item-actions"]'
+    );
+    if (editBtn) {
+        return { target: editBtn, position: 'after' };
+    }
+
+    // Fallback: title element
+    const titleEl = container.querySelector('[data-testid="work-item-title"], h1.title, h1');
+    if (titleEl) {
+        return { target: titleEl, position: 'after' };
+    }
+
+    return null;
+}
+
+function createWorkItemKpiButton(workItemInfo = {}, isAdded = false, onClickHandler = null, doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc || !doc.createElement) return null;
+
+    const button = doc.createElement('button');
+    button.id = 'kpiWorkItemAddBtn';
+    button.className = isAdded
+        ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
+        : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
+    button.setAttribute('type', 'button');
+    button.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+    button.innerHTML = isAdded
+        ? '<span>➖</span><span>Xóa khỏi KPI</span>'
+        : '<span>➕</span><span>Thêm vào KPI</span>';
+
+    if (workItemInfo && workItemInfo.workItemId) {
+        button.setAttribute('data-work-item-id', String(workItemInfo.workItemId));
+    }
+
+    if (onClickHandler && typeof button.addEventListener === 'function') {
+        button.addEventListener('click', onClickHandler);
+    }
+
+    return button;
+}
+
+function injectWorkItemButton(container, workItemInfo, isAdded, onClickHandler, doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!container || !workItemInfo || !workItemInfo.workItemId) return null;
+    const documentObj = doc || (typeof document !== 'undefined' ? document : null);
+    if (!documentObj) return null;
+
+    const existingBtn = container.querySelector ? (container.querySelector('#kpiWorkItemAddBtn') || container.querySelector('.custom-work-item-kpi-btn')) : null;
+    if (existingBtn) {
+        // Update state and appearance
+        existingBtn.className = isAdded
+            ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
+            : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
+        existingBtn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+        existingBtn.innerHTML = isAdded
+            ? '<span>➖</span><span>Xóa khỏi KPI</span>'
+            : '<span>➕</span><span>Thêm vào KPI</span>';
+        existingBtn.setAttribute('data-work-item-id', String(workItemInfo.workItemId));
+        return existingBtn;
+    }
+
+    const placement = findWorkItemEditPlacement(container);
+    if (!placement || !placement.target) return null;
+
+    const btn = createWorkItemKpiButton(workItemInfo, isAdded, onClickHandler, documentObj);
+    if (!btn) return null;
 
     if (placement.position === 'after') {
         if (typeof placement.target.after === 'function') {
@@ -1482,6 +1676,11 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.refreshSummaryModal = refreshSummaryModal;
     window.openSummaryModal = openSummaryModal;
     window.closeSummaryModal = closeSummaryModal;
+    window.extractWorkItemPageInfo = extractWorkItemPageInfo;
+    window.extractWorkItemModalInfo = extractWorkItemModalInfo;
+    window.findWorkItemEditPlacement = findWorkItemEditPlacement;
+    window.createWorkItemKpiButton = createWorkItemKpiButton;
+    window.injectWorkItemButton = injectWorkItemButton;
 
     (async () => {
         console.log('Loading content_issue.js');
@@ -1613,6 +1812,19 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
                 }
 
                 updateButtonAppearance();
+
+                // Cập nhật nút trong popup/page work item nếu có
+                const workItemBtn = document.querySelector(`.custom-work-item-kpi-btn[data-work-item-id="${workItemId}"]`);
+                if (workItemBtn) {
+                    const isAdded = addedLinks.has(workItemId);
+                    workItemBtn.className = isAdded
+                        ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
+                        : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
+                    workItemBtn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+                    workItemBtn.innerHTML = isAdded
+                        ? '<span>➖</span><span>Xóa khỏi KPI</span>'
+                        : '<span>➕</span><span>Thêm vào KPI</span>';
+                }
             });
 
             return button;
@@ -1712,12 +1924,103 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             }
         }
 
-        // Khởi tạo nút Tổng hợp task ban đầu
+        async function handleToggleWorkItem(info, btn) {
+            if (!info || !info.workItemId) return;
+            const wid = String(info.workItemId);
+            if (btn) btn.disabled = true;
+            try {
+                if (addedLinks.has(wid)) {
+                    await removeIdFromStorage(WORK_ITEM_KEY, wid);
+                    addedLinks.delete(wid);
+                } else {
+                    const today = new Date().toLocaleString();
+                    await addIdToStorage(WORK_ITEM_KEY, wid, info.href, today, {
+                        parentTitle: info.parentTitle || '',
+                        parentUrl: info.parentUrl || '',
+                        parentIid: info.parentIid || '',
+                        taskTitle: info.title || ''
+                    });
+                    addedLinks.add(wid);
+                }
+
+                // Update work item button appearance
+                const isAdded = addedLinks.has(wid);
+                if (btn) {
+                    btn.className = isAdded
+                        ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
+                        : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
+                    btn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
+                    btn.innerHTML = isAdded
+                        ? '<span>➖</span><span>Xóa khỏi KPI</span>'
+                        : '<span>➕</span><span>Thêm vào KPI</span>';
+                }
+
+                // Synchronize child item buttons on the page if present
+                const allAddButtons = document.querySelectorAll('.custom-add-button');
+                allAddButtons.forEach(b => {
+                    const container = b.closest('div[data-testid="links-child"]');
+                    const cId = container?.getAttribute('parent-work-item-id');
+                    if (cId === wid) {
+                        if (isAdded) {
+                            b.innerHTML = svgRemove;
+                            b.classList.remove('btn-success');
+                            b.classList.add('btn-danger');
+                        } else {
+                            b.innerHTML = svgAdd;
+                            b.classList.remove('btn-danger');
+                            b.classList.add('btn-success');
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error('Error toggling work item in KPI:', err);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function processWorkItemButtons() {
+            // Case 1: Standalone work item page (e.g. /-/work_items/123)
+            if (window.location && window.location.pathname && window.location.pathname.includes('/work_items/')) {
+                const pageInfo = extractWorkItemPageInfo(document, window);
+                if (pageInfo && pageInfo.workItemId) {
+                    const isAdded = addedLinks.has(String(pageInfo.workItemId));
+                    injectWorkItemButton(document, pageInfo, isAdded, (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const btn = e.currentTarget || document.getElementById('kpiWorkItemAddBtn');
+                        handleToggleWorkItem(pageInfo, btn);
+                    });
+                }
+            }
+
+            // Case 2: Work item modal or drawer popup (opened from any page)
+            const modal = document.querySelector(
+                '[data-testid="work-item-detail-modal"], .work-item-detail-modal, [data-testid="work-item-drawer"], .gl-drawer.work-item-drawer, .gl-drawer, [role="dialog"]'
+            );
+            if (modal) {
+                const parentInfo = getParentIssueInfo();
+                const modalInfo = extractWorkItemModalInfo(modal, parentInfo);
+                if (modalInfo && modalInfo.workItemId) {
+                    const isAdded = addedLinks.has(String(modalInfo.workItemId));
+                    injectWorkItemButton(modal, modalInfo, isAdded, (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const btn = e.currentTarget || modal.querySelector('.custom-work-item-kpi-btn');
+                        handleToggleWorkItem(modalInfo, btn);
+                    });
+                }
+            }
+        }
+
+        // Khởi tạo nút ban đầu
         injectSummaryButton(document, handleSummaryButtonClick);
+        processWorkItemButtons();
 
         // Bắt đầu quan sát từ phần tử gốc (ví dụ: body)
         const observer = new MutationObserver((mutations, obs) => {
             injectSummaryButton(document, handleSummaryButtonClick);
+            processWorkItemButtons();
 
             const targetElement = document.querySelector("ul[data-testid='child-items-container']");
             if (targetElement) {
@@ -1796,6 +2099,11 @@ if (typeof module !== 'undefined' && module.exports) {
         renderTaskTableRows,
         refreshSummaryModal,
         openSummaryModal,
-        closeSummaryModal
+        closeSummaryModal,
+        extractWorkItemPageInfo,
+        extractWorkItemModalInfo,
+        findWorkItemEditPlacement,
+        createWorkItemKpiButton,
+        injectWorkItemButton
     };
 }
