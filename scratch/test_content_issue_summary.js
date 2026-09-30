@@ -22,6 +22,7 @@ const {
     enrichChildTasks,
     batchAddTasksToStorage,
     fetchTaskDetail,
+    refreshSummaryModal,
     openSummaryModal,
     closeSummaryModal,
     injectSummaryButton
@@ -40,6 +41,7 @@ assert.strictEqual(typeof extractChildTasksFromDom, 'function', 'extractChildTas
 assert.strictEqual(typeof enrichChildTasks, 'function', 'enrichChildTasks should be exported as a function');
 assert.strictEqual(typeof batchAddTasksToStorage, 'function', 'batchAddTasksToStorage should be exported as a function');
 assert.strictEqual(typeof fetchTaskDetail, 'function', 'fetchTaskDetail should be exported as a function');
+assert.strictEqual(typeof refreshSummaryModal, 'function', 'refreshSummaryModal should be exported as a function');
 assert.strictEqual(typeof openSummaryModal, 'function', 'openSummaryModal should be exported as a function');
 assert.strictEqual(typeof closeSummaryModal, 'function', 'closeSummaryModal should be exported as a function');
 assert.strictEqual(typeof injectSummaryButton, 'function', 'injectSummaryButton should be exported as a function');
@@ -807,6 +809,27 @@ class MockDocument {
     }
 
     console.log('✔ Passed: GraphQL dynamic endpoint origin, custom endpoints, and error handling');
+
+    // 18. Auto-Sync Status & refreshSummaryModal Tests
+    {
+        // Test 1: renderSummaryModalHtml shows syncing status when isSyncing: true
+        const syncHtml = renderSummaryModalHtml(null, [], 'My Epic', { isSyncing: true });
+        assert.ok(syncHtml.includes('gl-kpi-sync-status'), 'Should contain gl-kpi-sync-status when isSyncing is true');
+        assert.ok(syncHtml.includes('Đang quét danh sách task con'), 'Should show scanning message when isSyncing is true and tasks are empty');
+
+        // Test 2: refreshSummaryModal function contract
+        assert.strictEqual(typeof refreshSummaryModal, 'function');
+        const nullResult = await refreshSummaryModal(null);
+        assert.strictEqual(nullResult, null, 'Should return null gracefully if doc is null');
+
+        // Test 3: refreshSummaryModal returns null if modal is closed
+        const doc = new MockDocument();
+        const closedResult = await refreshSummaryModal(doc, { parentTitle: 'Test' }, { waitForDom: false });
+        assert.strictEqual(closedResult, null, 'Should return null if modal is not currently in DOM');
+
+        console.log('✔ Passed: Auto-sync status rendering and refreshSummaryModal lifecycle');
+    }
+
     console.log('\n--- ALL GITLAB ISSUE SUMMARY TESTS PASSED ---');
 })().catch(err => {
     console.error('Test suite failed:', err);

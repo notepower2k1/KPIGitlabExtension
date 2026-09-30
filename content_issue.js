@@ -136,7 +136,8 @@ function shouldBackfillParent(currentTasks, backfilledSet, lastTitle, currentTit
     return false;
 }
 
-function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '') {
+function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '', options = {}) {
+    const isSyncing = Boolean(options && options.isSyncing);
     const safeParentTitle = escapeHtml(parentTitle);
     const safeMetrics = metrics || calculateChildTaskMetrics([]);
     const diffSign = safeMetrics.diffHours > 0 ? `+${safeMetrics.diffHours}h` : `${safeMetrics.diffHours}h`;
@@ -148,7 +149,7 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '') {
         tableRowsHtml = `
             <tr>
                 <td colspan="7" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #666;">
-                    Không tìm thấy task con nào thuộc về bạn trên trang này.
+                    ${isSyncing ? '⏳ Đang quét danh sách task con và đồng bộ số liệu từ GitLab...' : 'Không tìm thấy task con nào thuộc về bạn trên trang này.'}
                 </td>
             </tr>`;
     } else {
@@ -205,6 +206,7 @@ function renderSummaryModalHtml(metrics, tasks = [], parentTitle = '') {
             <div>
                 <h3 class="gl-kpi-modal-title">📊 Tổng hợp Task con của tôi</h3>
                 ${safeParentTitle ? `<div class="gl-kpi-modal-subtitle">${safeParentTitle}</div>` : ''}
+                ${isSyncing ? `<div class="gl-kpi-sync-status" style="font-size: 12px; color: #1068bf; margin-top: 4px; display: flex; align-items: center; gap: 6px;"><span class="gl-spinner" style="display: inline-block; width: 12px; height: 12px; border: 2px solid #1068bf; border-top-color: transparent; border-radius: 50%; animation: gl-spin 0.8s linear infinite;"></span> Đang đồng bộ số liệu mới nhất từ GitLab...</div>` : ''}
             </div>
             <div class="gl-kpi-header-actions">
                 <button id="glKpiAddAllBtn" class="btn btn-sm btn-success gl-button"${!tasks || tasks.length === 0 ? ' disabled style="opacity: 0.6; cursor: not-allowed;"' : ''}>➕ Thêm tất cả vào KPI</button>
@@ -505,6 +507,10 @@ function getModalStyles() {
     margin-left: 6px;
     vertical-align: middle;
 }
+
+@keyframes gl-spin {
+    to { transform: rotate(360deg); }
+}
 `.trim();
 }
 
@@ -595,7 +601,10 @@ function injectSummaryButton(doc = (typeof document !== 'undefined' ? document :
 
 function extractChildTasksFromDom(container = (typeof document !== 'undefined' ? document : null)) {
     if (!container) return [];
-    const items = container.querySelectorAll('ul[data-testid="child-items-container"] > li.tree-item');
+    let items = container.querySelectorAll('ul[data-testid="child-items-container"] > li.tree-item');
+    if (!items || items.length === 0) {
+        items = container.querySelectorAll('#tasks li.tree-item, [data-testid="child-items-container"] li, li[data-testid="work-item-tree-item"]');
+    }
     if (!items || items.length === 0) return [];
 
     const extracted = [];
@@ -613,7 +622,7 @@ function extractChildTasksFromDom(container = (typeof document !== 'undefined' ?
         if (!id && !href) return;
 
         const title = (anchor?.innerText?.trim() || anchor?.getAttribute('title')?.trim() || (id ? `Task #${id}` : 'Không có tiêu đề'));
-        const avatarLink = li.querySelector('div.gl-avatars-inline-child > a');
+        const avatarLink = li.querySelector('div.gl-avatars-inline-child > a, div.gl-avatars-inline-child a, [data-testid="avatar-link"], .gl-avatar-link');
         const assigneeUrl = avatarLink ? (avatarLink.getAttribute('href') || avatarLink.href || '') : '';
 
         const isClosed = (
@@ -821,6 +830,85 @@ function closeSummaryModal(doc = (typeof document !== 'undefined' ? document : n
     }
 }
 
+async function refreshSummaryModal(doc = (typeof document !== 'undefined' ? document : null), parentInfo = {}, options = {}) {
+    if (!doc || !doc.body) return null;
+    const safeParentInfo = parentInfo || {};
+
+    let userProfile = options.userProfile || null;
+    let token = options.token || null;
+    let storedKpi = options.storedKpi || [];
+
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        if (!userProfile && typeof getUserProfile === 'function') userProfile = await getUserProfile();
+        if (!token && typeof getAccessToken === 'function') token = await getAccessToken();
+        if ((!storedKpi || storedKpi.length === 0) && typeof getStoredIds === 'function') storedKpi = await getStoredIds('KpiInfo');
+    }
+
+    // Wait for child tasks in DOM if empty and waitForDom is true
+    let rawTasks = extractChildTasksFromDom(doc);
+    if (rawTasks.length === 0 && options.waitForDom !== false) {
+        const startTime = Date.now();
+        while (Date.now() - startTime < 1600) {
+            await new Promise(r => setTimeout(r, 200));
+            rawTasks = extractChildTasksFromDom(doc);
+            if (rawTasks.length > 0) break;
+        }
+    }
+
+    let refreshedTasks = enrichChildTasks(rawTasks, userProfile, storedKpi);
+
+    if (token && typeof window !== 'undefined' && window.location) {
+        const pathname = window.location.pathname || '';
+        const matchProject = pathname.replace(/(?:\/-)?\/(issues|work_items)\/.*$/, '').replace(/^\//, '');
+        if (matchProject && refreshedTasks.length > 0) {
+            const livePromises = refreshedTasks.map(async (t) => {
+                try {
+                    const childIid = resolveTaskIid(t);
+                    const detail = await fetchTaskDetail(matchProject, childIid, token);
+                    if (detail) {
+                        const timeTracking = detail.widgets?.find(w => w.type === 'TIME_TRACKING');
+                        const labels = detail.widgets?.find(w => w.type === 'LABELS');
+                        const startAndDueDate = detail.widgets?.find(w => w.type === 'START_AND_DUE_DATE');
+
+                        const est = timeTracking?.timeEstimate ? parseFloat((timeTracking.timeEstimate / 3600).toFixed(2)) : t.estimateHour;
+                        const spent = timeTracking?.totalTimeSpent ? parseFloat((timeTracking.totalTimeSpent / 3600).toFixed(2)) : t.spentHour;
+                        const diff = roundToOneDecimal(est - spent);
+                        const isUnplanned = labels?.labels?.nodes?.some(l => l.title?.toLowerCase() === 'unplanned') || t.isUnplanned;
+                        const isLate = (detail.state === 'closed' && detail.closedAt && startAndDueDate?.dueDate)
+                            ? (detail.closedAt.slice(0, 10) > startAndDueDate.dueDate)
+                            : t.isLate;
+
+                        return {
+                            ...t,
+                            estimateHour: est,
+                            spentHour: spent,
+                            diffHour: diff,
+                            state: detail.state || t.state,
+                            isLate,
+                            isUnplanned
+                        };
+                    }
+                } catch (e) {
+                    console.warn('GraphQL enrichment failed for task', t.id, e);
+                }
+                return t;
+            });
+            refreshedTasks = await Promise.all(livePromises);
+        }
+    }
+
+    // Only update modal if modal is still open
+    const currentModal = doc.querySelector ? doc.querySelector('#gitlabKpiSummaryModal') : (doc.getElementById ? doc.getElementById('gitlabKpiSummaryModal') : null);
+    if (!currentModal) return null;
+
+    return openSummaryModal(safeParentInfo, refreshedTasks, doc, {
+        userProfile,
+        storedKpi,
+        token,
+        autoRefresh: false
+    });
+}
+
 function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof document !== 'undefined' ? document : null), options = {}) {
     if (!doc || !doc.body) return null;
     ensureModalStyles(doc);
@@ -837,8 +925,9 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
         tasks = enrichChildTasks(rawTasks, userProfile, storedKpi);
     }
 
+    const isAutoRefreshing = Boolean(options.autoRefresh && !preloadedTasks);
     const metrics = calculateChildTaskMetrics(tasks);
-    const modalHtml = renderSummaryModalHtml(metrics, tasks, parentTitle);
+    const modalHtml = renderSummaryModalHtml(metrics, tasks, parentTitle, { isSyncing: isAutoRefreshing });
 
     let modalOverlay = null;
     if (typeof doc.createElement === 'function') {
@@ -914,66 +1003,40 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
             refreshBtn.disabled = true;
             refreshBtn.innerText = '⏳ Đang làm mới...';
             try {
-                let userProfile = null;
-                let token = null;
-                let storedKpi = [];
-
-                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                    if (typeof getUserProfile === 'function') userProfile = await getUserProfile();
-                    if (typeof getAccessToken === 'function') token = await getAccessToken();
-                    if (typeof getStoredIds === 'function') storedKpi = await getStoredIds('KpiInfo');
-                }
-
-                const rawTasks = extractChildTasksFromDom(doc);
-                let refreshedTasks = enrichChildTasks(rawTasks, userProfile, storedKpi);
-
-                if (token && typeof window !== 'undefined' && window.location) {
-                    const pathname = window.location.pathname || '';
-                    const matchProject = pathname.replace(/\/-\/(issues|work_items)\/.*$/, '').replace(/^\//, '');
-                    if (matchProject) {
-                        const livePromises = refreshedTasks.map(async (t) => {
-                            try {
-                                const childIid = resolveTaskIid(t);
-                                const detail = await fetchTaskDetail(matchProject, childIid, token);
-                                if (detail) {
-                                    const timeTracking = detail.widgets?.find(w => w.type === 'TIME_TRACKING');
-                                    const labels = detail.widgets?.find(w => w.type === 'LABELS');
-                                    const startAndDueDate = detail.widgets?.find(w => w.type === 'START_AND_DUE_DATE');
-
-                                    const est = timeTracking?.timeEstimate ? parseFloat((timeTracking.timeEstimate / 3600).toFixed(2)) : t.estimateHour;
-                                    const spent = timeTracking?.totalTimeSpent ? parseFloat((timeTracking.totalTimeSpent / 3600).toFixed(2)) : t.spentHour;
-                                    const diff = roundToOneDecimal(est - spent);
-                                    const isUnplanned = labels?.labels?.nodes?.some(l => l.title?.toLowerCase() === 'unplanned') || t.isUnplanned;
-                                    const isLate = (detail.state === 'closed' && detail.closedAt && startAndDueDate?.dueDate)
-                                        ? (detail.closedAt.slice(0, 10) > startAndDueDate.dueDate)
-                                        : t.isLate;
-
-                                    return {
-                                        ...t,
-                                        estimateHour: est,
-                                        spentHour: spent,
-                                        diffHour: diff,
-                                        state: detail.state || t.state,
-                                        isLate,
-                                        isUnplanned
-                                    };
-                                }
-                            } catch (e) {
-                                console.warn('GraphQL enrichment failed for task', t.id, e);
-                            }
-                            return t;
-                        });
-                        refreshedTasks = await Promise.all(livePromises);
-                    }
-                }
-
-                openSummaryModal(safeParentInfo, refreshedTasks, doc, { userProfile, storedKpi });
+                await refreshSummaryModal(doc, safeParentInfo, {
+                    userProfile: options.userProfile,
+                    storedKpi: options.storedKpi,
+                    token: options.token,
+                    waitForDom: false
+                });
             } catch (err) {
                 console.error('Error refreshing summary modal:', err);
                 refreshBtn.disabled = false;
                 refreshBtn.innerText = '🔄 Làm mới';
             }
         });
+    }
+
+    // Auto-refresh in background if requested
+    if (isAutoRefreshing) {
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.innerText = '⏳ Đang đồng bộ...';
+        }
+        setTimeout(() => {
+            refreshSummaryModal(doc, safeParentInfo, {
+                userProfile: options.userProfile,
+                storedKpi: options.storedKpi,
+                token: options.token,
+                waitForDom: true
+            }).catch(err => {
+                console.error('Auto refresh error:', err);
+                if (refreshBtn) {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerText = '🔄 Làm mới';
+                }
+            });
+        }, 50);
     }
 
     return modalOverlay;
@@ -995,6 +1058,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.enrichChildTasks = enrichChildTasks;
     window.batchAddTasksToStorage = batchAddTasksToStorage;
     window.fetchTaskDetail = fetchTaskDetail;
+    window.refreshSummaryModal = refreshSummaryModal;
     window.openSummaryModal = openSummaryModal;
     window.closeSummaryModal = closeSummaryModal;
 
@@ -1027,7 +1091,13 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             const parentInfo = getParentIssueInfo();
             const storedKpi = (typeof getStoredIds === 'function') ? await getStoredIds('KpiInfo') : [];
             const profile = (typeof getUserProfile === 'function') ? await getUserProfile() : userProfile;
-            openSummaryModal(parentInfo, null, document, { userProfile: profile, storedKpi });
+            const token = (typeof getAccessToken === 'function') ? await getAccessToken() : null;
+            openSummaryModal(parentInfo, null, document, {
+                userProfile: profile,
+                storedKpi,
+                token,
+                autoRefresh: true
+            });
         }
 
         window._onChildTasksAddedAll = (tasks) => {
@@ -1285,6 +1355,7 @@ if (typeof module !== 'undefined' && module.exports) {
         enrichChildTasks,
         batchAddTasksToStorage,
         fetchTaskDetail,
+        refreshSummaryModal,
         openSummaryModal,
         closeSummaryModal
     };
