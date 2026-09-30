@@ -652,20 +652,64 @@ function getModalStyles() {
     color: #0969da;
 }
 
-.custom-summary-button,
-.custom-work-item-kpi-btn {
+.custom-summary-button {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     margin-left: 6px;
-    margin-right: 6px;
     vertical-align: middle;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1;
-    cursor: pointer;
-    white-space: nowrap;
-    z-index: 10;
+}
+
+.custom-work-item-kpi-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    line-height: 20px !important;
+    padding: 0 10px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
+    vertical-align: middle !important;
+    border-radius: 4px !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out !important;
+}
+
+.custom-work-item-kpi-btn.btn-default {
+    color: #108548 !important;
+    border: 1px solid #108548 !important;
+    background-color: #ffffff !important;
+}
+
+.custom-work-item-kpi-btn.btn-default:hover {
+    background-color: #f1fbf5 !important;
+    color: #0d6d3b !important;
+    border-color: #0d6d3b !important;
+}
+
+.custom-work-item-kpi-btn.btn-danger {
+    color: #ffffff !important;
+    border: 1px solid #dd2b0e !important;
+    background-color: #dd2b0e !important;
+}
+
+.custom-work-item-kpi-btn.btn-danger:hover {
+    background-color: #c92509 !important;
+    border-color: #c92509 !important;
+}
+
+.custom-work-item-kpi-btn svg {
+    flex-shrink: 0 !important;
+}
+
+.custom-work-item-kpi-btn .gl-button-text {
+    line-height: 20px !important;
 }
 
 @keyframes gl-spin {
@@ -935,6 +979,9 @@ function extractWorkItemModalInfo(modalEl, currentParentInfo = {}, win = (typeof
     };
 }
 
+const kpiWorkItemPlusSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-2px;"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+const kpiWorkItemMinusSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-2px;"><path d="M1 8h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+
 function findWorkItemEditPlacement(container = (typeof document !== 'undefined' ? document : null)) {
     if (!container || !container.querySelector) return null;
 
@@ -943,18 +990,11 @@ function findWorkItemEditPlacement(container = (typeof document !== 'undefined' 
         '[data-testid="edit-title-button"], [data-testid="work-item-edit-button"], .js-issuable-edit, button.js-issuable-edit, [data-testid="issue-edit-button"]'
     );
     if (editBtn) {
-        return { target: editBtn, position: 'after' };
+        const wrapper = editBtn.closest ? editBtn.closest('.btn-group, .gl-button-group') : null;
+        return { target: wrapper || editBtn, position: 'after' };
     }
 
-    // 2. Look for actions dropdown in work item header
-    const actionsDropdown = container.querySelector(
-        '[data-testid="work-item-actions-dropdown"], [data-testid="work-item-more-actions"]'
-    );
-    if (actionsDropdown) {
-        return { target: actionsDropdown, position: 'before' };
-    }
-
-    // 3. Look for header actions container
+    // 2. Header actions container (primary toolbar for actions in Work Items)
     const actionsContainer = container.querySelector(
         '[data-testid="work-item-actions"], .work-item-header-actions, .gl-drawer-actions'
     );
@@ -962,7 +1002,16 @@ function findWorkItemEditPlacement(container = (typeof document !== 'undefined' 
         return { target: actionsContainer, position: 'prepend' };
     }
 
-    // 4. Look for drawer close button
+    // 3. Actions dropdown in work item header (place BEFORE dropdown container wrapper, not inside it!)
+    const actionsDropdown = container.querySelector(
+        '[data-testid="work-item-actions-dropdown"], [data-testid="work-item-more-actions"]'
+    );
+    if (actionsDropdown) {
+        const dropdownContainer = (actionsDropdown.closest ? actionsDropdown.closest('.gl-new-dropdown, .dropdown, .gl-disclosure-dropdown') : null) || actionsDropdown;
+        return { target: dropdownContainer, position: 'before' };
+    }
+
+    // 4. Drawer close button
     const closeBtn = container.querySelector(
         '[data-testid="close-button"], .gl-drawer-close-button, button.gl-drawer-close-button'
     );
@@ -997,8 +1046,8 @@ function createWorkItemKpiButton(workItemInfo = {}, isAdded = false, onClickHand
     button.setAttribute('data-is-added', String(isAdded));
     button.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
     button.innerHTML = isAdded
-        ? '<span>➖</span><span>Xóa khỏi KPI</span>'
-        : '<span>➕</span><span>Thêm vào KPI</span>';
+        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
+        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
 
     if (workItemInfo && workItemInfo.workItemId) {
         button.setAttribute('data-work-item-id', String(workItemInfo.workItemId));
@@ -1015,6 +1064,8 @@ function injectWorkItemButton(container, workItemInfo, isAdded, onClickHandler, 
     if (!container || !workItemInfo || !workItemInfo.workItemId) return null;
     const documentObj = doc || (typeof document !== 'undefined' ? document : null);
     if (!documentObj) return null;
+
+    ensureModalStyles(documentObj);
 
     const existingBtn = container.querySelector ? (container.querySelector('#kpiWorkItemAddBtn') || container.querySelector('.custom-work-item-kpi-btn')) : null;
     if (existingBtn) {
@@ -1037,8 +1088,8 @@ function injectWorkItemButton(container, workItemInfo, isAdded, onClickHandler, 
             : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
         existingBtn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
         existingBtn.innerHTML = isAdded
-            ? '<span>➖</span><span>Xóa khỏi KPI</span>'
-            : '<span>➕</span><span>Thêm vào KPI</span>';
+            ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
+            : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
         return existingBtn;
     }
 
@@ -1957,8 +2008,11 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
                         : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
                     workItemBtn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
                     workItemBtn.innerHTML = isAdded
-                        ? '<span>➖</span><span>Xóa khỏi KPI</span>'
-                        : '<span>➕</span><span>Thêm vào KPI</span>';
+                        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
+                        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
+                    if (workItemBtn.setAttribute) {
+                        workItemBtn.setAttribute('data-is-added', String(isAdded));
+                    }
                 }
             });
 
@@ -2086,8 +2140,11 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
                         : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
                     btn.title = isAdded ? 'Xóa task này khỏi KPI' : 'Thêm task này vào KPI';
                     btn.innerHTML = isAdded
-                        ? '<span>➖</span><span>Xóa khỏi KPI</span>'
-                        : '<span>➕</span><span>Thêm vào KPI</span>';
+                        ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">Xóa khỏi KPI</span>`
+                        : `${kpiWorkItemPlusSvg}<span class="gl-button-text">Thêm vào KPI</span>`;
+                    if (btn.setAttribute) {
+                        btn.setAttribute('data-is-added', String(isAdded));
+                    }
                 }
 
                 // Synchronize child item buttons on the page if present
