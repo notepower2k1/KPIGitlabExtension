@@ -986,6 +986,16 @@ async function getGitlabServerUrl(storageArea = null, fallback = 'https://gitlab
     return sanitizeGitlabUrl(fallback, 'https://gitlab.com');
 }
 
+/**
+ * Checks whether the GitLab server URL belongs to Widosoft (company-specific KPI spec).
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isWidosoftGitlab(url) {
+    if (!url || typeof url !== 'string') return false;
+    return url.toLowerCase().includes('gitlab.widosoft');
+}
+
 if (typeof window !== 'undefined') {
     window.deletelocalStorage = deletelocalStorage;
     window.getStoredIds = getStoredIds;
@@ -1025,6 +1035,7 @@ if (typeof window !== 'undefined') {
     window.sanitizeGitlabUrl = sanitizeGitlabUrl;
     window.getTokenGenerationUrl = getTokenGenerationUrl;
     window.getGitlabServerUrl = getGitlabServerUrl;
+    window.isWidosoftGitlab = isWidosoftGitlab;
 }
 
 const _rootScope = typeof window !== 'undefined'
@@ -1037,6 +1048,7 @@ if (_rootScope) {
     _rootScope.sanitizeGitlabUrl = sanitizeGitlabUrl;
     _rootScope.getTokenGenerationUrl = getTokenGenerationUrl;
     _rootScope.getGitlabServerUrl = getGitlabServerUrl;
+    _rootScope.isWidosoftGitlab = isWidosoftGitlab;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -1078,7 +1090,8 @@ if (typeof module !== 'undefined' && module.exports) {
         fetchTodayCreatedIssues,
         sanitizeGitlabUrl,
         getTokenGenerationUrl,
-        getGitlabServerUrl
+        getGitlabServerUrl,
+        isWidosoftGitlab
     };
 }
 

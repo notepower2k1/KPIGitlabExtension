@@ -509,7 +509,8 @@ const I18N_DICTIONARIES = {
         alertNoActiveWeeksInMonth: "Tháng {month} không có tuần nào có dữ liệu công việc.",
         selectWeekToExportPrompt: "Chọn tuần bạn muốn xuất KPI trong tháng {month}:\n\n",
         alertNoKpiDataToExport: "Chưa có dữ liệu thống kê KPI. Vui lòng bấm \"Thống kê\" trước khi xuất file!",
-        alertNoMonthDataToExport: "Tháng {month} không có dữ liệu công việc."
+        alertNoMonthDataToExport: "Tháng {month} không có dữ liệu công việc.",
+        alertOnlyAvailableForWidosoft: "Chức năng xuất KPI mẫu Excel chỉ áp dụng cho máy chủ gitlab.widosoft."
     },
 
     en: {
@@ -1017,7 +1018,8 @@ const I18N_DICTIONARIES = {
         alertNoActiveWeeksInMonth: "Month {month} has no weeks with work item data.",
         selectWeekToExportPrompt: "Select the week you want to export KPI for in month {month}:\n\n",
         alertNoKpiDataToExport: "No KPI calculation data yet. Please click \"Calculate\" before exporting file!",
-        alertNoMonthDataToExport: "Month {month} has no work item data."
+        alertNoMonthDataToExport: "Month {month} has no work item data.",
+        alertOnlyAvailableForWidosoft: "The KPI Excel export feature is only available for gitlab.widosoft server."
     }
 };
 

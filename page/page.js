@@ -44,6 +44,24 @@ function _tr(key, params = {}, fallback = '') {
     return fallback || key;
 }
 
+function isWidosoftGitlab(url) {
+    if (!url || typeof url !== 'string') return false;
+    return url.toLowerCase().includes('gitlab.widosoft');
+}
+
+function updateExportButtonsVisibility(serverUrl) {
+    if (typeof document === 'undefined') return;
+    const isWido = isWidosoftGitlab(serverUrl);
+    const exportWeekBtn = document.getElementById('exportWeekKpiBtn') || document.getElementById('exportCSVBtn');
+    const exportMonthBtn = document.getElementById('exportMonthKpiBtn');
+    if (exportWeekBtn) {
+        exportWeekBtn.style.display = isWido ? '' : 'none';
+    }
+    if (exportMonthBtn) {
+        exportMonthBtn.style.display = isWido ? '' : 'none';
+    }
+}
+
 if (typeof document !== 'undefined') {
 (async () => {
     console.log('Loading page.js');
@@ -72,6 +90,8 @@ if (typeof document !== 'undefined') {
             }
         } catch (e) {}
     }
+
+    updateExportButtonsVisibility(gitlabServerUrl);
 
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
         chrome.storage.onChanged.addListener(async (changes, areaName) => {
@@ -107,6 +127,7 @@ if (typeof document !== 'undefined') {
                 gitlabServerUrl = (typeof sanitizeGitlabUrl === 'function')
                     ? sanitizeGitlabUrl(changes.gitlabServerUrl.newValue)
                     : (changes.gitlabServerUrl.newValue || 'https://gitlab.com');
+                updateExportButtonsVisibility(gitlabServerUrl);
             }
         });
     }
@@ -2662,6 +2683,14 @@ if (typeof document !== 'undefined') {
     }
 
     async function exportWeeklyKPIExcel() {
+        const isWido = (typeof isWidosoftGitlab === 'function')
+            ? isWidosoftGitlab(gitlabServerUrl)
+            : (gitlabServerUrl && typeof gitlabServerUrl === 'string' && gitlabServerUrl.toLowerCase().includes('gitlab.widosoft'));
+        if (!isWido) {
+            alert(_tr('alertOnlyAvailableForWidosoft', {}, 'Chức năng xuất KPI mẫu Excel chỉ áp dụng cho máy chủ gitlab.widosoft.'));
+            return;
+        }
+
         if (typeof ExcelJS === 'undefined') {
             alert('Thư viện ExcelJS chưa sẵn sàng. Vui lòng tải lại trang!');
             return;
@@ -2940,6 +2969,14 @@ if (typeof document !== 'undefined') {
     }
 
     async function exportMonthlyKPIExcel() {
+        const isWido = (typeof isWidosoftGitlab === 'function')
+            ? isWidosoftGitlab(gitlabServerUrl)
+            : (gitlabServerUrl && typeof gitlabServerUrl === 'string' && gitlabServerUrl.toLowerCase().includes('gitlab.widosoft'));
+        if (!isWido) {
+            alert(_tr('alertOnlyAvailableForWidosoft', {}, 'Chức năng xuất KPI mẫu Excel chỉ áp dụng cho máy chủ gitlab.widosoft.'));
+            return;
+        }
+
         if (typeof ExcelJS === 'undefined') {
             alert('Thư viện ExcelJS chưa sẵn sàng. Vui lòng tải lại trang!');
             return;
@@ -5343,6 +5380,8 @@ if (typeof window !== 'undefined') {
     window.openDayDetailModal = openDayDetailModal;
     window.initDayDetailModal = initDayDetailModal;
     window.getStatusBadgeText = getStatusBadgeText;
+    window.isWidosoftGitlab = isWidosoftGitlab;
+    window.updateExportButtonsVisibility = updateExportButtonsVisibility;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -5362,7 +5401,9 @@ if (typeof module !== 'undefined' && module.exports) {
         getLeaveDays,
         saveLeaveDay,
         openDayDetailModal,
-        initDayDetailModal
+        initDayDetailModal,
+        isWidosoftGitlab,
+        updateExportButtonsVisibility
     };
 }
 

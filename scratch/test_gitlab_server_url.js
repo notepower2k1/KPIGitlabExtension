@@ -582,6 +582,68 @@ const { getGitlabServerUrl } = utils;
         console.log('✔ Passed: Least privilege permissions, strict CSP and runtime permission requests verified');
     }
 
+    // 15. Testing Widosoft-Only Export Buttons Visibility
+    console.log('\n--- 15. Testing Widosoft-Only Export Buttons Visibility ---');
+    {
+        const utils = require('../utils.js');
+        const pageMod = require('../page/page.js');
+
+        // 15.1 Verify isWidosoftGitlab helper
+        assert.strictEqual(typeof utils.isWidosoftGitlab, 'function', 'utils.js must export isWidosoftGitlab');
+        assert.strictEqual(utils.isWidosoftGitlab('https://gitlab.widosoft.com'), true);
+        assert.strictEqual(utils.isWidosoftGitlab('http://gitlab.widosoft.com:8080'), true);
+        assert.strictEqual(utils.isWidosoftGitlab('https://gitlab.widosoft.vn'), true);
+        assert.strictEqual(utils.isWidosoftGitlab('https://gitlab.com'), false);
+        assert.strictEqual(utils.isWidosoftGitlab('https://gitlab.mycompany.org'), false);
+        assert.strictEqual(utils.isWidosoftGitlab(''), false);
+        assert.strictEqual(utils.isWidosoftGitlab(null), false);
+        assert.strictEqual(utils.isWidosoftGitlab(undefined), false);
+
+        // 15.2 Verify page.html markup hides export buttons by default
+        const pageHtmlPath = path.resolve(__dirname, '../page/page.html');
+        const pageHtml = fs.readFileSync(pageHtmlPath, 'utf8');
+        assert.ok(pageHtml.includes('id="exportWeekKpiBtn"'), 'page.html must contain #exportWeekKpiBtn');
+        assert.ok(pageHtml.includes('id="exportMonthKpiBtn"'), 'page.html must contain #exportMonthKpiBtn');
+        assert.ok(/id=["']exportWeekKpiBtn["'][^>]*style=["'][^"']*display:\s*none/i.test(pageHtml),
+            '#exportWeekKpiBtn must have default style="display: none;"');
+        assert.ok(/id=["']exportMonthKpiBtn["'][^>]*style=["'][^"']*display:\s*none/i.test(pageHtml),
+            '#exportMonthKpiBtn must have default style="display: none;"');
+
+        // 15.3 Verify updateExportButtonsVisibility DOM behavior
+        assert.strictEqual(typeof pageMod.updateExportButtonsVisibility, 'function', 'page.js must export updateExportButtonsVisibility');
+        const mockWeekBtn = { style: { display: 'none' } };
+        const mockMonthBtn = { style: { display: 'none' } };
+        global.document = {
+            getElementById: (id) => {
+                if (id === 'exportWeekKpiBtn' || id === 'exportCSVBtn') return mockWeekBtn;
+                if (id === 'exportMonthKpiBtn') return mockMonthBtn;
+                return null;
+            }
+        };
+
+        // When server is gitlab.widosoft.com -> buttons shown
+        pageMod.updateExportButtonsVisibility('https://gitlab.widosoft.com');
+        assert.strictEqual(mockWeekBtn.style.display, '', 'Week export button must be visible for Widosoft');
+        assert.strictEqual(mockMonthBtn.style.display, '', 'Month export button must be visible for Widosoft');
+
+        // When server is gitlab.com -> buttons hidden
+        pageMod.updateExportButtonsVisibility('https://gitlab.com');
+        assert.strictEqual(mockWeekBtn.style.display, 'none', 'Week export button must be hidden for gitlab.com');
+        assert.strictEqual(mockMonthBtn.style.display, 'none', 'Month export button must be hidden for gitlab.com');
+
+        // When server is custom third-party -> buttons hidden
+        pageMod.updateExportButtonsVisibility('https://git.internal-corp.vn');
+        assert.strictEqual(mockWeekBtn.style.display, 'none', 'Week export button must be hidden for generic gitlab');
+        assert.strictEqual(mockMonthBtn.style.display, 'none', 'Month export button must be hidden for generic gitlab');
+
+        // 15.4 Verify alertOnlyAvailableForWidosoft token
+        const i18n = require('../i18n.js');
+        assert.ok(i18n.I18N_DICTIONARIES.vi.alertOnlyAvailableForWidosoft, 'alertOnlyAvailableForWidosoft must exist in VI');
+        assert.ok(i18n.I18N_DICTIONARIES.en.alertOnlyAvailableForWidosoft, 'alertOnlyAvailableForWidosoft must exist in EN');
+
+        console.log('✔ Passed: Widosoft-only export buttons visibility rules and helpers verified');
+    }
+
     console.log('\n🎉 ALL TASK TESTS PASSED! 🎉\n');
 })().catch(err => {
     console.error('Test Suite Failed:', err);
