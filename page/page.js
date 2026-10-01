@@ -701,10 +701,12 @@ if (typeof document !== 'undefined') {
 
             if (lastUpdatedTime && !isNaN(lastUpdatedTime.getTime())) {
                 const lastUpdateTitle = document.createElement('h1');
-                lastUpdateTitle.textContent = 'Lần thống kê cuối: ' + lastUpdatedTime.toLocaleString();
+                const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+                const formattedDate = isEn ? lastUpdatedTime.toLocaleString('en-US') : lastUpdatedTime.toLocaleString('vi-VN');
+                lastUpdateTitle.textContent = _tr('lastStatsUpdatedPrefix', {}, 'Lần thống kê cuối: ') + formattedDate;
 
                 if (isInPreviousWeek(lastUpdatedTime)) {
-                    lastUpdateTitle.textContent += ' (Tuần trước)';
+                    lastUpdateTitle.textContent += _tr('lastStatsPreviousWeekSuffix', {}, ' (Tuần trước)');
                     lastUpdateTitle.style.color = 'red';
                 }
 
@@ -817,18 +819,18 @@ if (typeof document !== 'undefined') {
     async function deleteKpiItem(itemToDelete) {
         const itemLabel = itemToDelete.title || itemToDelete.taskUrl;
         const typeLabel = itemToDelete.isMR ? 'Merge Request' : 'Task';
-        const msg = `Bạn có chắc muốn xóa ${typeLabel} "${itemLabel}" khỏi danh sách?`;
+        const msg = _tr('confirmDeleteItem', { type: typeLabel, label: itemLabel }, `Bạn có chắc muốn xóa ${typeLabel} "${itemLabel}" khỏi danh sách?`);
         await deleteKpiItems([itemToDelete], msg);
     }
 
     async function deleteWeekItems(wb) {
         if (!wb || !wb.items || wb.items.length === 0) {
-            alert('Không có công việc nào trong tuần này để xóa.');
+            alert(_tr('alertNoTasksInWeekToDelete', {}, 'Không có công việc nào trong tuần này để xóa.'));
             return;
         }
         const cleanTitle = wb.title.replace(/^📦\s*/, '');
         const count = wb.items.length;
-        const msg = `Bạn có chắc muốn xóa toàn bộ ${count} công việc (bao gồm cả Task và Merge Request) trong "${cleanTitle}"?`;
+        const msg = _tr('confirmDeleteWeekItems', { count, title: cleanTitle }, `Bạn có chắc muốn xóa toàn bộ ${count} công việc (bao gồm cả Task và Merge Request) trong "${cleanTitle}"?`);
         await deleteKpiItems(wb.items, msg);
     }
 
@@ -845,7 +847,7 @@ if (typeof document !== 'undefined') {
 
         const totalCount = Math.max(tasksToDelete.length + mrsToDelete.length, kpiToDelete.length);
         if (totalCount === 0) {
-            alert('Không có công việc hoặc Merge Request nào trong khoảng thời gian này để xóa.');
+            alert(_tr('alertNoItemsInRangeToDelete', {}, 'Không có công việc hoặc Merge Request nào trong khoảng thời gian này để xóa.'));
             return;
         }
 
@@ -984,15 +986,17 @@ if (typeof document !== 'undefined') {
 
         if (kpiInfo.length === 0) {
             document.getElementById('spinner').style.display = 'none'; // Ẩn loading sau khi render xong
-            document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">Không có dữ liệu để thống kê.</div>';
+            document.getElementById('kpiContainer').innerHTML = `<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">${_tr('noDataToStat', {}, 'Không có dữ liệu để thống kê.')}</div>`;
             return;
         }
 
         const lastUpdateTitle = document.createElement('h1');
-        lastUpdateTitle.textContent = 'Lần thống kê cuối: ' + new Date().toLocaleString();
+        const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+        const formattedDate = isEn ? new Date().toLocaleString('en-US') : new Date().toLocaleString('vi-VN');
+        lastUpdateTitle.textContent = _tr('lastStatsUpdatedPrefix', {}, 'Lần thống kê cuối: ') + formattedDate;
 
         if (isInPreviousWeek(new Date())) {
-            lastUpdateTitle.textContent += ' (Tuần trước)';
+            lastUpdateTitle.textContent += _tr('lastStatsPreviousWeekSuffix', {}, ' (Tuần trước)');
             lastUpdateTitle.style.color = 'red';
         }
 
@@ -1493,9 +1497,11 @@ if (typeof document !== 'undefined') {
         };
         const taskColumns = ["Tasks", "Start date", "Due date", "Closed date", "Estimate (h)", "Spent (h)", "Số lần bị reopen", "Loại task", "Tiến độ"];
 
+        const activeLang = (typeof getLanguage === 'function') ? getLanguage() : 'vi';
+
         // 1. Calculate and Save Current Week Stats if requested (keeps popup synced with current week)
         if (isSaveKpiStats) {
-            const cw = getCurrentWeekRange();
+            const cw = getCurrentWeekRange(today, activeLang);
             const currentWeekData = kpiData.filter(item => isItemActiveInWeek(item, cw.start, cw.end));
             const weeklyStats = calculateStats(currentWeekData.length > 0 ? currentWeekData : kpiData, filterVal);
             await saveKpiStats(weeklyStats);
@@ -1508,16 +1514,16 @@ if (typeof document !== 'undefined') {
 
         // Period Label for KPI Health Card
         const [selYear, selMonth] = selectedMonth.split('-').map(Number);
-        let periodLabel = `Tháng ${String(selMonth).padStart(2, '0')}/${selYear}`;
+        let periodLabel = _tr('monthBadgeLabel', { month: String(selMonth).padStart(2, '0'), year: selYear }, `Tháng ${String(selMonth).padStart(2, '0')}/${selYear}`);
         if (filterVal === 'current_week') {
-            const cw = getCurrentWeekRange();
-            periodLabel = `Tuần này (${cw.label})`;
+            const cw = getCurrentWeekRange(today, activeLang);
+            periodLabel = activeLang === 'en' ? `This week (${cw.label})` : `Tuần này (${cw.label})`;
         } else if (filterVal.startsWith('week:')) {
             const parts = filterVal.split(':');
-            periodLabel = `Tuần (${formatDate(parts[1])} - ${formatDate(parts[2])})`;
+            periodLabel = (activeLang === 'en' ? 'Week' : 'Tuần') + ` (${formatDate(parts[1])} - ${formatDate(parts[2])})`;
         } else if (filterVal.startsWith('day:')) {
             const dayIso = filterVal.replace('day:', '');
-            periodLabel = `Ngày ${formatDate(dayIso)}`;
+            periodLabel = (activeLang === 'en' ? 'Day ' : 'Ngày ') + formatDate(dayIso);
         } else if (filterVal === 'custom_range') {
             periodLabel = `${formatDate(cStart)} - ${formatDate(cEnd)}`;
         }
@@ -1699,7 +1705,7 @@ if (typeof document !== 'undefined') {
                 } else {
                     if (col.center) th.className = "text-center";
                     th.classList.add("sortable-th");
-                    th.title = `Bấm để sắp xếp theo ${col.label}`;
+                    th.title = _tr('clickToSortByColumn', { column: col.label }, `Bấm để sắp xếp theo ${col.label}`);
 
                     const contentSpan = document.createElement("span");
                     contentSpan.className = "th-content";
@@ -1934,7 +1940,7 @@ if (typeof document !== 'undefined') {
             const section = document.createElement("div");
             section.className = "report-section";
             const groupTitle = document.createElement('h3');
-            groupTitle.textContent = "🚀 DANH SÁCH MERGE REQUEST";
+            groupTitle.textContent = "🚀 " + _tr('mrSectionTitle', {}, "DANH SÁCH MERGE REQUEST");
             section.appendChild(groupTitle);
 
             const mrColumns = [
@@ -1958,7 +1964,7 @@ if (typeof document !== 'undefined') {
                 } else {
                     if (col.center) th.classList.add("text-center");
                     th.classList.add("sortable-th");
-                    th.title = `Bấm để sắp xếp theo ${col.label}`;
+                    th.title = _tr('clickToSortByColumn', { column: col.label }, `Bấm để sắp xếp theo ${col.label}`);
 
                     const contentSpan = document.createElement("span");
                     contentSpan.className = "th-content";
@@ -2006,7 +2012,7 @@ if (typeof document !== 'undefined') {
                     const redDot = document.createElement("span");
                     redDot.className = "badge-dot-red";
                     redDot.textContent = "🔴";
-                    redDot.title = "Merge Request đang mở (Open)";
+                    redDot.title = _tr('mrOpenTitle', {}, "Merge Request đang mở (Open)");
                     taskTd.appendChild(redDot);
                     row.classList.add("row-unclosed");
                 }
@@ -2016,7 +2022,9 @@ if (typeof document !== 'undefined') {
                     carryBadge.className = "badge-carryover";
                     carryBadge.textContent = "🔄 " + getStatusBadgeText('carryOver');
                     const originDate = item.addedAt ? formatDate(parseToIsoDate(item.addedAt)) : '';
-                    carryBadge.title = `Merge Request chuyển tiếp từ tuần trước${originDate ? ` (Tạo ngày ${originDate})` : ''}`;
+                    carryBadge.title = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en')
+                        ? `Merge Request carried over from previous week${originDate ? ` (Created on ${originDate})` : ''}`
+                        : `Merge Request chuyển tiếp từ tuần trước${originDate ? ` (Tạo ngày ${originDate})` : ''}`;
                     taskTd.appendChild(carryBadge);
                 }
 
@@ -2057,7 +2065,7 @@ if (typeof document !== 'undefined') {
                 const delBtn = document.createElement("button");
                 delBtn.className = "btn-delete-row";
                 delBtn.innerHTML = "🗑️";
-                delBtn.title = "Xóa MR này khỏi danh sách";
+                delBtn.title = _tr('deleteMRTitle', {}, "Xóa MR này khỏi danh sách");
                 delBtn.addEventListener("click", async (e) => {
                     e.stopPropagation();
                     await deleteKpiItem(item);
@@ -2075,7 +2083,7 @@ if (typeof document !== 'undefined') {
             // colSpan 2: Tasks, Tên Merge Request
             const totalLabel = document.createElement("td");
             totalLabel.colSpan = 2;
-            totalLabel.textContent = "TỔNG MERGE REQUEST";
+            totalLabel.textContent = _tr('totalMRsFooterLabel', {}, "TỔNG MERGE REQUEST");
             totalLabel.style.fontWeight = "600";
             totalLabel.style.textAlign = "right";
             totalLabel.style.paddingRight = "16px";
@@ -2120,14 +2128,14 @@ if (typeof document !== 'undefined') {
             const remaining = displayData.filter(it => !matchedIds.has(it.taskUrl || it.addedAt));
             if (remaining.length > 0) {
                 weekBlocks.push({
-                    title: '📦 Khác',
+                    title: '📦 ' + _tr('groupOther', {}, 'Khác'),
                     start: null,
                     end: null,
                     items: remaining
                 });
             }
         } else if (filterVal === 'current_week') {
-            const cw = getCurrentWeekRange();
+            const cw = getCurrentWeekRange(today, activeLang);
             weekBlocks.push({
                 title: `📦 ${cw.label}`,
                 start: cw.start,
@@ -2137,7 +2145,8 @@ if (typeof document !== 'undefined') {
         } else if (filterVal.startsWith('week:')) {
             const parts = filterVal.split(':');
             const foundWeek = monthWeeks.find(w => w.start === parts[1] && w.end === parts[2]);
-            const title = foundWeek ? `📦 ${foundWeek.label}` : `📦 Tuần (${formatDate(parts[1])} - ${formatDate(parts[2])})`;
+            const weekPrefix = activeLang === 'en' ? 'Week' : 'Tuần';
+            const title = foundWeek ? `📦 ${foundWeek.label}` : `📦 ${weekPrefix} (${formatDate(parts[1])} - ${formatDate(parts[2])})`;
             weekBlocks.push({
                 title: title,
                 start: parts[1],
@@ -2148,7 +2157,7 @@ if (typeof document !== 'undefined') {
             const dayIso = filterVal.replace('day:', '');
             const dObj = new Date(dayIso);
             const dayLabel = !isNaN(dObj.getTime())
-                ? dObj.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+                ? dObj.toLocaleDateString(activeLang === 'en' ? 'en-US' : 'vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
                 : formatDate(dayIso);
             weekBlocks.push({
                 title: `📅 ${dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1)}`,
@@ -2174,7 +2183,7 @@ if (typeof document !== 'undefined') {
                 const remaining = displayData.filter(it => !matchedIds.has(it.taskUrl || it.addedAt));
                 if (remaining.length > 0) {
                     weekBlocks.push({
-                        title: '📦 Khác',
+                        title: '📦 ' + _tr('groupOther', {}, 'Khác'),
                         start: null,
                         end: null,
                         items: remaining
@@ -2184,7 +2193,7 @@ if (typeof document !== 'undefined') {
                 const startDisp = cStart ? formatDate(cStart) : '...';
                 const endDisp = cEnd ? formatDate(cEnd) : '...';
                 weekBlocks.push({
-                    title: `🗓️ Khoảng ngày: ${startDisp} - ${endDisp}`,
+                    title: `🗓️ ${_tr('dateRangePrefix', {}, 'Khoảng ngày')}: ${startDisp} - ${endDisp}`,
                     start: cStart,
                     end: cEnd,
                     items: displayData
@@ -2307,17 +2316,18 @@ if (typeof document !== 'undefined') {
             weekActions.style.gap = "10px";
 
             const carryCount = wb.items.filter(it => isItemCarryOver(it, wb.start)).length;
-            const carryText = carryCount > 0 ? ` (${carryCount} tiếp diễn)` : '';
+            const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+            const carryText = carryCount > 0 ? (isEn ? ` (${carryCount} ongoing)` : ` (${carryCount} tiếp diễn)`) : '';
 
             const badge = document.createElement("span");
             badge.className = "week-badge";
-            badge.textContent = `${weekSpent.toFixed(2)}h spent / ${wb.items.length} công việc${carryText}`;
+            badge.textContent = `${weekSpent.toFixed(2)}h spent / ${wb.items.length} ${_tr('workItemsUnit', {}, 'công việc')}${carryText}`;
             weekActions.appendChild(badge);
 
             const delWeekBtn = document.createElement("button");
             delWeekBtn.className = "btn-delete-week";
-            delWeekBtn.textContent = "🗑️ Xóa tuần này";
-            delWeekBtn.title = `Xóa toàn bộ Task và Merge Request trong ${wb.title}`;
+            delWeekBtn.textContent = _tr('deleteThisWeekBtn', {}, "🗑️ Xóa tuần này");
+            delWeekBtn.title = _tr('deleteThisWeekTitle', { title: wb.title }, `Xóa toàn bộ Task và Merge Request trong ${wb.title}`);
             delWeekBtn.addEventListener("click", async (e) => {
                 e.stopPropagation();
                 await deleteWeekItems(wb);
@@ -2559,10 +2569,12 @@ if (typeof document !== 'undefined') {
             }
 
             const lastUpdateTitle = document.createElement('h1');
-            lastUpdateTitle.textContent = 'Lần thống kê cuối: ' + lastUpdatedTime.toLocaleString();
+            const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+            const formattedDate = isEn ? lastUpdatedTime.toLocaleString('en-US') : lastUpdatedTime.toLocaleString('vi-VN');
+            lastUpdateTitle.textContent = _tr('lastStatsUpdatedPrefix', {}, 'Lần thống kê cuối: ') + formattedDate;
 
             if (isInPreviousWeek(lastUpdatedTime)) {
-                lastUpdateTitle.textContent += ' (Tuần trước)';
+                lastUpdateTitle.textContent += _tr('lastStatsPreviousWeekSuffix', {}, ' (Tuần trước)');
                 lastUpdateTitle.style.color = 'red';
             }
 
