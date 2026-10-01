@@ -121,11 +121,9 @@ PRIVACY & SECURITY FIRST:
 | **Extension Icon** | 128x128 px | PNG (transparent background) | `icon128.png` in project root |
 | **Small Promo Tile** | 440x280 px | PNG or JPEG | High-contrast branding with TimeLab logo & subtitle |
 | **Marquee Promo Tile** | 1400x560 px | PNG or JPEG | Hero banner featuring dashboard mockup and GitLab badge |
-| **Screenshot 1** | 1280x800 or 640x400 px | PNG or JPEG | Monthly KPI Dashboard & Interactive Analytics Charts |
-| **Screenshot 2** | 1280x800 or 640x400 px | PNG or JPEG | Timesheet Calendar Grid & Daily Spent Time Audit |
-| **Screenshot 3** | 1280x800 or 640x400 px | PNG or JPEG | GitLab Issue Page with Injected KPI Summary Modal |
-| **Screenshot 4** | 1280x800 or 640x400 px | PNG or JPEG | Kanban To-Do Board & Multi-Tab Sticky Notepad |
-| **Screenshot 5** | 1280x800 or 640x400 px | PNG or JPEG | Popup Login, Custom Server URL & Quick Pills |
+| **Screenshot 1** | 1280x800 px | PNG | Monthly KPI Dashboard & Work Items (`docs/store-assets/screenshot1_dashboard_1280x800.png` / `ui1_1280x800.png`) |
+| **Screenshot 2** | 1280x800 px | PNG | Monthly Analytics, KPI Cards & Timesheet Grid (`docs/store-assets/screenshot2_analytics_1280x800.png` / `ui2_1280x800.png`) |
+| **Screenshot 3** | 1280x800 px | PNG | GitLab Issue Page with Injected Sub-Tasks Summary Modal (`docs/store-assets/screenshot3_modal_1280x800.png` / `ui3_1280x800.png`) |
 
 ---
 
