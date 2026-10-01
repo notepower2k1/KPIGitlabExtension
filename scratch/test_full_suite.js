@@ -78,11 +78,13 @@ runSubSuite('Notepad Multi-Tab Dual-Mode Subsystem', 'scratch/test_notepad_dual_
 runSubSuite('Kanban To-Do Enhancements Subsystem', 'scratch/test_todo_enhancements.js');
 runSubSuite('GitLab Issue Summary Modal Subsystem', 'scratch/test_content_issue_summary.js');
 runSubSuite('End-of-Day Unadded Tasks Warning Subsystem', 'scratch/test_unadded_tasks_warning.js');
+runSubSuite('Multilingual (VI / EN) i18n Subsystem', 'scratch/test_i18n.js');
 
 // --- 2. EXTENSION-WIDE JS SYNTAX VALIDATION ---
 printHeader('EXTENSION-WIDE JAVASCRIPT SYNTAX VALIDATION');
 
 const jsFilesToValidate = [
+    'i18n.js',
     'page/page.js',
     'utils.js',
     'background.js',
@@ -226,12 +228,14 @@ check('DOM Containers and Warning Banner elements exist in popup/popup.html', ()
     const requiredIds = [
         'unaddedKpiBanner',
         'addAllUnaddedKpiBtn',
-        'kpiReminderEnabled'
+        'kpiReminderEnabled',
+        'appLangSelect'
     ];
 
     requiredIds.forEach(id => {
         assert(popupHtmlContent.includes(`id="${id}"`), `popup.html must contain element with id="${id}"`);
     });
+    assert(popupHtmlContent.includes('class="login-lang-switch"'), 'popup.html must contain login-lang-switch');
 });
 
 check('Required Offline Vendor Bundles exist and have proper minimum sizes', () => {
