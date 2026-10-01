@@ -79,6 +79,7 @@ runSubSuite('Kanban To-Do Enhancements Subsystem', 'scratch/test_todo_enhancemen
 runSubSuite('GitLab Issue Summary Modal Subsystem', 'scratch/test_content_issue_summary.js');
 runSubSuite('End-of-Day Unadded Tasks Warning Subsystem', 'scratch/test_unadded_tasks_warning.js');
 runSubSuite('Multilingual (VI / EN) i18n Subsystem', 'scratch/test_i18n.js');
+runSubSuite('Custom GitLab Server URL & Dynamic Routing Subsystem', 'scratch/test_gitlab_server_url.js');
 
 // --- 2. EXTENSION-WIDE JS SYNTAX VALIDATION ---
 printHeader('EXTENSION-WIDE JAVASCRIPT SYNTAX VALIDATION');
@@ -236,6 +237,21 @@ check('DOM Containers and Warning Banner elements exist in popup/popup.html', ()
         assert(popupHtmlContent.includes(`id="${id}"`), `popup.html must contain element with id="${id}"`);
     });
     assert(popupHtmlContent.includes('class="login-lang-switch"'), 'popup.html must contain login-lang-switch');
+});
+
+check('Server URL configuration elements and quick pills exist in popup/popup.html', () => {
+    const requiredServerIds = [
+        'gitlabServerUrlInput',
+        'tokenHelpLink',
+        'settingsServerUrlInput',
+        'saveServerUrlBtn'
+    ];
+    requiredServerIds.forEach(id => {
+        assert(popupHtmlContent.includes(`id="${id}"`), `popup.html must contain element with id="${id}"`);
+    });
+    assert(popupHtmlContent.includes('class="quick-url-pill"'), 'popup.html must contain quick-url-pill elements');
+    assert(popupHtmlContent.includes('data-url="https://gitlab.com"'), 'popup.html must contain quick-url-pill for gitlab.com');
+    assert(popupHtmlContent.includes('data-url="https://gitlab.widosoft.com"'), 'popup.html must contain quick-url-pill for gitlab.widosoft.com');
 });
 
 check('Required Offline Vendor Bundles exist and have proper minimum sizes', () => {
