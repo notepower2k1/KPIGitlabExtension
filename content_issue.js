@@ -2473,7 +2473,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
         function createRefreshButton() {
             const taskHeader = document.querySelector('#tasks > .crud-header');
-            if (!taskHeader) return;
+            if (!taskHeader || taskHeader.querySelector('button[title="Refresh"]')) return;
 
             const button = document.createElement('button');
             button.className = 'btn btn-sm btn-default gl-button';

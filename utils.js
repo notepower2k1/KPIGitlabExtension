@@ -840,6 +840,18 @@ function evaluateKpiReminderState(now, settings = {}, state = {}) {
     // If current time >= target: scan is enabled to update UI/cache
     const timeDiff = currentTotalMins - targetTotalMins;
 
+    // If already notified max times (count >= 2) or exceeded 60m window: mark done and stop scanning
+    if (curState.count >= 2 || timeDiff > 60) {
+        return {
+            shouldScan: false,
+            shouldNotify: false,
+            nextState: {
+                ...curState,
+                done: true
+            }
+        };
+    }
+
     // Snooze cooldown when already notified at least once (default: 10 mins if omitted)
     if (curState.count > 0 && curState.lastNotified) {
         const snoozeMinutes = (settings && typeof settings.snoozeMinutes === 'number' && settings.snoozeMinutes > 0)
@@ -847,27 +859,20 @@ function evaluateKpiReminderState(now, settings = {}, state = {}) {
             : 10;
         const minsSinceLast = (d.getTime() - new Date(curState.lastNotified).getTime()) / (60 * 1000);
         if (minsSinceLast < snoozeMinutes) {
-            return { shouldScan: true, shouldNotify: false, nextState: curState };
+            // In snooze cooldown: do not scan network, do not notify
+            return { shouldScan: false, shouldNotify: false, nextState: curState };
         }
     }
 
-    // Notify if count < 2 (max 2 alerts per day) and within 60 minutes of target
-    if (curState.count < 2 && timeDiff <= 60) {
-        return {
-            shouldScan: true,
-            shouldNotify: true,
-            nextState: {
-                ...curState,
-                count: curState.count + 1,
-                lastNotified: d.toISOString()
-            }
-        };
-    }
-
+    // Trigger scan and notification (alert 1 when count=0, alert 2 when count=1 after snooze)
     return {
         shouldScan: true,
-        shouldNotify: false,
-        nextState: curState
+        shouldNotify: true,
+        nextState: {
+            ...curState,
+            count: curState.count + 1,
+            lastNotified: d.toISOString()
+        }
     };
 }
 

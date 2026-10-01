@@ -902,10 +902,16 @@ if (typeof document !== 'undefined') {
             });
         });
 
-        const kpiInfoPromises = allItems.map(({ createAt, href, id, groupName, isMR, storedData }) => {
-            return getWorkItemDetailNew(createAt, href, groupName, id, isMR, storedData);
-        });
-        const kpiInfoRaw = await Promise.all(kpiInfoPromises);
+        const token = await getAccessToken();
+        const BATCH_SIZE = 6;
+        const kpiInfoRaw = [];
+        for (let i = 0; i < allItems.length; i += BATCH_SIZE) {
+            const batch = allItems.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.all(batch.map(({ createAt, href, id, groupName, isMR, storedData }) => {
+                return getWorkItemDetailNew(createAt, href, groupName, id, isMR, storedData, token);
+            }));
+            kpiInfoRaw.push(...batchResults);
+        }
         const kpiInfo = kpiInfoRaw.filter(item => item !== null);
 
         if (kpiInfo.length === 0) {
@@ -3144,12 +3150,12 @@ if (typeof document !== 'undefined') {
         await chrome.storage.local.set({ ['KpiStats']: params });
     }
 
-    async function getWorkItemDetailNew(createAt, projectUrl, groupName, id = null, isMergeRequest = false, storedData = {}) {
+    async function getWorkItemDetailNew(createAt, projectUrl, groupName, id = null, isMergeRequest = false, storedData = {}, cachedToken = null) {
         const parsedUrl = parseGitLabUrl(projectUrl);
         if (!parsedUrl) return null;
 
         const { projectPath, iid, type: itemType } = parsedUrl;
-        const token = await getAccessToken();
+        const token = cachedToken || await getAccessToken();
 
         let detailData;
         if (itemType === 'merge_request' || isMergeRequest) {

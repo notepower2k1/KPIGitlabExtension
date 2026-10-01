@@ -136,10 +136,6 @@ if (typeof document !== 'undefined') {
         // Initialize UI elements
         const todoInput = document.getElementById('todo-input');
         const deadlineInput = document.getElementById('deadline-input');
-        const reminderBeforeInput = document.getElementById('reminder-before');
-        const reminderRepeatInput = document.getElementById('reminder-repeat');
-        const toggleReminderBtn = document.getElementById('toggleReminderBtn');
-        const reminderSettingsPanel = document.getElementById('reminder-settings-panel');
 
         // Edit modal elements
         const editModal = document.getElementById('editModal');
@@ -172,15 +168,6 @@ if (typeof document !== 'undefined') {
             });
         }
 
-        // Load settings
-        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-            const { reminderMinutesBefore = 30, reminderRepeatMinutes = 10 } = await chrome.storage.local.get([
-                'reminderMinutesBefore',
-                'reminderRepeatMinutes'
-            ]);
-            if (reminderBeforeInput) reminderBeforeInput.value = reminderMinutesBefore;
-            if (reminderRepeatInput) reminderRepeatInput.value = reminderRepeatMinutes;
-        }
 
         // Dual-Mode Window/Tab Switcher
         const modeSwitchBtn = document.getElementById('modeSwitchBtn');
@@ -241,35 +228,7 @@ if (typeof document !== 'undefined') {
             });
         }
 
-        // Toggle reminder settings
-        if (toggleReminderBtn && reminderSettingsPanel) {
-            toggleReminderBtn.addEventListener('click', () => {
-                const isHidden = reminderSettingsPanel.style.display === 'none' || reminderSettingsPanel.classList.contains('collapsed');
-                if (isHidden) {
-                    reminderSettingsPanel.style.display = 'flex';
-                    reminderSettingsPanel.classList.remove('collapsed');
-                    toggleReminderBtn.classList.add('active');
-                } else {
-                    reminderSettingsPanel.style.display = 'none';
-                    reminderSettingsPanel.classList.add('collapsed');
-                    toggleReminderBtn.classList.remove('active');
-                }
-            });
-        }
 
-        // Save reminder settings
-        const saveSettingsBtn = document.getElementById('save-settings');
-        if (saveSettingsBtn) {
-            saveSettingsBtn.addEventListener('click', async () => {
-                const reminderBefore = parseInt(reminderBeforeInput.value) || 30;
-                const reminderRepeat = parseInt(reminderRepeatInput.value) || 10;
-                await chrome.storage.local.set({
-                    reminderMinutesBefore: reminderBefore,
-                    reminderRepeatMinutes: reminderRepeat
-                });
-                alert("✅ Đã lưu cấu hình nhắc việc!");
-            });
-        }
 
         // Clear all
         const clearBtn = document.getElementById('clear-btn');

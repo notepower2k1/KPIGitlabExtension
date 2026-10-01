@@ -370,7 +370,10 @@ async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null
             await chrome.storage.local.set({ kpiReminderState: evalResult.nextState });
         }
     } else {
-        await chrome.storage.local.set({ UnaddedTodayTasks: [] });
+        await chrome.storage.local.set({
+            UnaddedTodayTasks: [],
+            kpiReminderState: { ...currentState, done: true }
+        });
 
         if (chrome.action && chrome.action.setBadgeText) {
             chrome.action.setBadgeText({ text: '' });
@@ -383,16 +386,6 @@ async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalled) {
     chrome.runtime.onInstalled.addListener(async () => {
         chrome.alarms.create("checkTodos", { periodInMinutes: 1 });
-
-        // Cấu hình mặc định cho nhắc việc
-        const defaults = await chrome.storage.local.get(['reminderMinutesBefore', 'reminderRepeatMinutes']);
-        if (!defaults.reminderMinutesBefore) {
-            await chrome.storage.local.set({
-                reminderMinutesBefore: 30,
-                reminderRepeatMinutes: 10,
-                lastNotifiedMap: {}
-            });
-        }
 
         // Cấu hình mặc định cho Check-in & Check-out
         const checkInOutDefaults = await chrome.storage.local.get([
@@ -454,58 +447,9 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged)
 
 if (typeof chrome !== 'undefined' && chrome.alarms && chrome.alarms.onAlarm) {
     chrome.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name !== "checkTodos") return;
+        if (alarm.name !== "checkTodos") return;
 
-    // 1. Check To-Do Reminders
-    const { todos = [], reminderMinutesBefore = 30, reminderRepeatMinutes = 10, lastNotifiedMap = {}, appLanguage } = await chrome.storage.local.get([
-        'todos',
-        'reminderMinutesBefore',
-        'reminderRepeatMinutes',
-        'lastNotifiedMap',
-        'appLanguage'
-    ]);
-    const lang = resolveLanguage(appLanguage);
-
-    const now = new Date();
-    const updatedLastNotifiedMap = { ...lastNotifiedMap };
-
-    todos.forEach(todo => {
-        if (!todo.deadline || todo.status === 'done') return;
-
-        const deadline = new Date(todo.deadline);
-        const timeLeft = deadline - now;
-        const minutesLeft = timeLeft / (60 * 1000);
-
-        const lastNotifiedTime = updatedLastNotifiedMap[todo.id] ? new Date(updatedLastNotifiedMap[todo.id]) : null;
-        const timeSinceLastNotification = lastNotifiedTime ? (now - lastNotifiedTime) / (60 * 1000) : Infinity;
-
-        if (
-            Math.abs(minutesLeft) <= reminderMinutesBefore &&
-            timeSinceLastNotification >= reminderRepeatMinutes
-        ) {
-            const statusStr = minutesLeft < 0 ? _t('notifTodoOverdue', null, lang) : _t('notifTodoUpcoming', null, lang);
-            const title = _t('notifTodoReminderTitle', null, lang);
-            const message = _t('notifTodoReminderMsg', {
-                title: todo.title,
-                status: statusStr,
-                time: deadline.toLocaleTimeString()
-            }, lang);
-
-            chrome.notifications.create(todo.id, {
-                type: "basic",
-                iconUrl: chrome.runtime.getURL('icon48.png'),
-                title: title,
-                message: message,
-                priority: 2
-            });
-
-            updatedLastNotifiedMap[todo.id] = now.toISOString();
-        }
-    });
-
-    await chrome.storage.local.set({ lastNotifiedMap: updatedLastNotifiedMap });
-
-    // 2. Check Workday Check-in & Check-out Alerts
+        // 1. Check Workday Check-in & Check-out Alerts
     await checkCheckInOutAlerts();
 
     // 3. Check End-of-Day Unadded KPI Tasks Reminder

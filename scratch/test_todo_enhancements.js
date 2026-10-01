@@ -199,9 +199,9 @@ check('DOM: Contains Task Edit Modal (#editModal)', () => {
     assert(todoHtml.includes('id="cancel-edit-btn"'), 'Must contain cancel button #cancel-edit-btn');
 });
 
-check('DOM: Contains Collapsible Reminder Settings Toggle & Panel', () => {
-    assert(todoHtml.includes('id="toggleReminderBtn"'), 'Must contain reminder settings toggle button #toggleReminderBtn');
-    assert(todoHtml.includes('id="reminder-settings-panel"'), 'Must contain collapsible reminder container #reminder-settings-panel');
+check('DOM: Reminder settings panel removed per user requirement', () => {
+    assert(!todoHtml.includes('id="toggleReminderBtn"'), 'Should not contain reminder settings toggle button #toggleReminderBtn');
+    assert(!todoHtml.includes('id="reminder-settings-panel"'), 'Should not contain reminder settings panel #reminder-settings-panel');
 });
 
 // ---------------------------------------------------------

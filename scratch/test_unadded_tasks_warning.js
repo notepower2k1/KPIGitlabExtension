@@ -121,11 +121,12 @@ assert.strictEqual(triggerResult.shouldNotify, true);
 assert.strictEqual(triggerResult.nextState.count, 1);
 assert.strictEqual(triggerResult.nextState.done, false);
 
-// D. Already notified max times (e.g. count >= 2): should scan for UI refresh but should not dispatch sound/notification spam
+// D. Already notified max times (e.g. count >= 2): should stop scanning and mark done to prevent API spam
 const stateNotified = { lastDate: '2026-10-01', count: 2, done: false, lastNotified: thursdayTrigger.toISOString() };
 const repeatResult = evaluateKpiReminderState(new Date('2026-10-01T17:50:00'), { enabled: true, checkOutTime: '18:00', minutesBefore: 15 }, stateNotified);
-assert.strictEqual(repeatResult.shouldScan, true);
+assert.strictEqual(repeatResult.shouldScan, false);
 assert.strictEqual(repeatResult.shouldNotify, false);
+assert.strictEqual(repeatResult.nextState.done, true);
 
 // E. Feature disabled: should not scan or notify
 const disabledResult = evaluateKpiReminderState(thursdayTrigger, { enabled: false, checkOutTime: '18:00', minutesBefore: 15 }, {});
@@ -154,16 +155,16 @@ const stateAfterFirstAlert = {
     lastNotified: firstAlertTime.toISOString()
 };
 
-// 1 minute later (17:46): within 10 min default snooze -> should NOT notify
+// 1 minute later (17:46): within 10 min default snooze -> should NOT scan or notify
 const oneMinLater = new Date('2026-10-01T17:46:00');
 const snoozeResult1 = evaluateKpiReminderState(oneMinLater, { enabled: true, checkOutTime: '18:00', minutesBefore: 15 }, stateAfterFirstAlert);
-assert.strictEqual(snoozeResult1.shouldScan, true);
+assert.strictEqual(snoozeResult1.shouldScan, false);
 assert.strictEqual(snoozeResult1.shouldNotify, false, 'Should not notify during default 10-minute snooze cooldown');
 
-// 9 minutes later (17:54): within 10 min default snooze -> should NOT notify
+// 9 minutes later (17:54): within 10 min default snooze -> should NOT scan or notify
 const nineMinsLater = new Date('2026-10-01T17:54:00');
 const snoozeResult9 = evaluateKpiReminderState(nineMinsLater, { enabled: true, checkOutTime: '18:00', minutesBefore: 15 }, stateAfterFirstAlert);
-assert.strictEqual(snoozeResult9.shouldScan, true);
+assert.strictEqual(snoozeResult9.shouldScan, false);
 assert.strictEqual(snoozeResult9.shouldNotify, false, 'Should not notify at 9 minutes during default snooze');
 
 // 10 minutes later (17:55): snooze elapsed -> SHOULD notify (alert 2)
@@ -390,7 +391,7 @@ const mockFetch = async (url, opts) => {
             gitlabUrl: 'https://gitlab.example.com',
             checkOutTime: '18:00',
             kpiReminderMinutesBefore: 15,
-            kpiReminderEnabled: true,
+            UnaddedTodayTasks: [{ id: 10, title: 'Issue 10' }],
             WorkItemIds: [
                 { id: '11', href: 'https://gitlab.example.com/team/repo/-/issues/11' }
             ],
@@ -402,15 +403,21 @@ const mockFetch = async (url, opts) => {
             }
         };
         createdNotifications = [];
-        actionBadge = { text: null, color: null };
+        actionBadge = { text: '!', color: '#f59e0b' };
 
         const snoozeTime = new Date('2026-10-01T17:48:00'); // 3 minutes later
-        await background.checkUnaddedKpiTasksReminder(snoozeTime, mockGitlabFetch);
+        let fetchCalledDuringSnooze = false;
+        const spyFetch = async (url, opts) => {
+            fetchCalledDuringSnooze = true;
+            return mockGitlabFetch(url, opts);
+        };
+        await background.checkUnaddedKpiTasksReminder(snoozeTime, spyFetch);
 
+        assert.strictEqual(fetchCalledDuringSnooze, false, 'Should not execute network fetch during snooze cooldown');
         assert.strictEqual(mockStorage.UnaddedTodayTasks.length, 1);
         assert.strictEqual(actionBadge.text, '!');
         assert.strictEqual(createdNotifications.length, 0, 'Should not dispatch notification during snooze cooldown');
-        console.log('✔ Passed: Snooze cooldown suppresses duplicate notification while maintaining badge');
+        console.log('✔ Passed: Snooze cooldown suppresses duplicate notification and prevents API spam while maintaining badge');
     }
 
     // 2.5 Graceful exit when AccessToken is missing
