@@ -34,6 +34,10 @@ if (typeof document !== 'undefined') {
                 if (typeof applyFilter === 'function') {
                     await applyFilter();
                 }
+                const analyticsTab = document.getElementById('analyticsTab');
+                if (analyticsTab && analyticsTab.classList.contains('active') && typeof renderMonthlyAnalytics === 'function') {
+                    await renderMonthlyAnalytics();
+                }
             }
         });
     }
@@ -361,13 +365,14 @@ if (typeof document !== 'undefined') {
     }
 
     function calculateKpiScore(stats) {
+        const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
         if (!stats || !stats.totalTask || stats.totalTask === 0) {
             return {
                 totalScore: 0,
                 attitudeScore: 0,
                 volumeScore: 0,
                 qualityScore: 0,
-                badge: { text: "Chưa có dữ liệu", class: "badge-neutral", icon: "⚪" }
+                badge: { text: _tr("kpiBadgeNoData"), class: "badge-neutral", icon: "⚪" }
             };
         }
         const s15 = getAttitudeScore(parseFloat(stats.noEstimateRate || 0));
@@ -394,13 +399,13 @@ if (typeof document !== 'undefined') {
 
         const totalScore = parseFloat(total.toFixed(2));
 
-        let badge = { text: "Cần chú ý", class: "badge-danger", icon: "⚠️" };
+        let badge = { text: _tr("kpiBadgeAttention"), class: "badge-danger", icon: "⚠️" };
         if (totalScore >= 4.5) {
-            badge = { text: "Xuất sắc", class: "badge-success", icon: "🌟" };
+            badge = { text: _tr("kpiBadgeExcellent"), class: "badge-success", icon: "🌟" };
         } else if (totalScore >= 3.8) {
-            badge = { text: "Tốt", class: "badge-info", icon: "🟢" };
+            badge = { text: _tr("kpiBadgeGood"), class: "badge-info", icon: "🟢" };
         } else if (totalScore >= 3.0) {
-            badge = { text: "Khá", class: "badge-warning", icon: "🟡" };
+            badge = { text: _tr("kpiBadgeFair"), class: "badge-warning", icon: "🟡" };
         }
 
         return {
@@ -494,14 +499,15 @@ if (typeof document !== 'undefined') {
         }).join('');
 
         const isExpanded = !isHealthCollapsed;
+        const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
         container.innerHTML = `
             <div class="kpi-health-card">
                 <div class="kpi-health-header ${isExpanded ? 'expanded' : ''}" id="toggleHealthBtn" role="button" tabindex="0" title="Bấm để mở rộng / thu gọn chi tiết dự báo KPI">
                     <div class="kpi-health-title">
                         <span class="health-icon">🎯</span>
                         <div class="health-title-text">
-                            <h3>Dự Báo Điểm KPI & Sức Khỏe Hiệu Suất</h3>
-                            <span>Kỳ đánh giá: <strong>${periodLabel}</strong></span>
+                            <h3>${_tr('kpiHealthForecastTitle')}</h3>
+                            <span>${_tr('evaluationPeriod')}: <strong>${periodLabel}</strong></span>
                         </div>
                     </div>
                     <div class="kpi-health-header-right">
@@ -516,22 +522,22 @@ if (typeof document !== 'undefined') {
                     <div class="kpi-health-grid">
                         <!-- Col 1: Điểm dự báo -->
                         <div class="health-card-item">
-                            <div class="score-header-label">Dự báo điểm KPI (Thang 5.0)</div>
+                            <div class="score-header-label">${_tr('kpiForecastScale')}</div>
                             <div class="big-score-display">
                                 <span class="big-score">${scoreInfo.totalScore}</span>
                                 <span class="score-scale">/ 5.0</span>
                             </div>
                             <div class="score-pills">
                                 <div class="score-pill" title="Thái độ (Estimate, Spent, Ngày tháng): Hệ số 1.0">
-                                    <span class="pill-label">Thái độ</span>
+                                    <span class="pill-label">${_tr('attitudeScore')}</span>
                                     <span class="pill-val">${scoreInfo.attitudeScore}/5</span>
                                 </div>
                                 <div class="score-pill" title="Khối lượng (Giờ làm việc): Hệ số 3.0">
-                                    <span class="pill-label">Khối lượng</span>
+                                    <span class="pill-label">${_tr('volumeScore')}</span>
                                     <span class="pill-val">${scoreInfo.volumeScore}/5</span>
                                 </div>
                                 <div class="score-pill" title="Chất lượng (Đúng hạn & Reopen): Hệ số 6.0">
-                                    <span class="pill-label">Chất lượng</span>
+                                    <span class="pill-label">${_tr('qualityScore')}</span>
                                     <span class="pill-val">${scoreInfo.qualityScore}/5</span>
                                 </div>
                             </div>
@@ -3984,6 +3990,9 @@ function renderDailyTimesheet(timesheetData) {
     const chipsContainer = document.getElementById('timesheetSummaryChips');
     const gridContainer = document.getElementById('timesheetCalendarGrid');
 
+    const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
+    const daysUnit = _tr('daysUnit');
+
     if (chipsContainer) {
         chipsContainer.innerHTML = '';
         const { totalWorkingDays, totalTargetHours, totalSpentHours, deficitDaysCount, achievementRate } = timesheetData;
@@ -3991,13 +4000,13 @@ function renderDailyTimesheet(timesheetData) {
         // 1. Ngày làm việc
         const chipDays = document.createElement('div');
         chipDays.className = 'timesheet-chip chip-info';
-        chipDays.innerHTML = `📅 Ngày làm việc: <strong>${totalWorkingDays} ngày</strong>`;
+        chipDays.innerHTML = `📅 ${_tr('workingDaysLabel')}: <strong>${totalWorkingDays} ${daysUnit}</strong>`;
         chipsContainer.appendChild(chipDays);
 
         // 2. Tổng giờ / Chỉ tiêu
         const chipHours = document.createElement('div');
         chipHours.className = 'timesheet-chip chip-info';
-        chipHours.innerHTML = `⏱️ Tổng giờ: <strong>${totalSpentHours}h / ${totalTargetHours}h</strong>`;
+        chipHours.innerHTML = `⏱️ ${_tr('totalHoursLabel')}: <strong>${totalSpentHours}h / ${totalTargetHours}h</strong>`;
         chipsContainer.appendChild(chipHours);
 
         // 3. Tỷ lệ đạt
@@ -4006,17 +4015,17 @@ function renderDailyTimesheet(timesheetData) {
         if (achievementRate < 80) rateClass = 'chip-danger';
         else if (achievementRate < 100) rateClass = 'chip-warning';
         chipRate.className = `timesheet-chip ${rateClass}`;
-        chipRate.innerHTML = `🎯 Tỷ lệ đạt: <strong>${achievementRate}%</strong>`;
+        chipRate.innerHTML = `🎯 ${_tr('achievementRateLabel')}: <strong>${achievementRate}%</strong>`;
         chipsContainer.appendChild(chipRate);
 
         // 4. Số ngày thiếu giờ
         const chipDeficit = document.createElement('div');
         if (deficitDaysCount === 0) {
             chipDeficit.className = 'timesheet-chip chip-success';
-            chipDeficit.innerHTML = `✅ Không thiếu giờ`;
+            chipDeficit.innerHTML = `✅ ${_tr('noDeficitLabel')}`;
         } else {
             chipDeficit.className = 'timesheet-chip chip-danger';
-            chipDeficit.innerHTML = `⚠️ Thiếu giờ: <strong>${deficitDaysCount} ngày</strong>`;
+            chipDeficit.innerHTML = `⚠️ ${_tr('deficitDaysLabel')}: <strong>${deficitDaysCount} ${daysUnit}</strong>`;
         }
         chipsContainer.appendChild(chipDeficit);
 
@@ -4024,7 +4033,7 @@ function renderDailyTimesheet(timesheetData) {
         if (timesheetData.totalLeaveDays > 0) {
             const chipLeave = document.createElement('div');
             chipLeave.className = 'timesheet-chip chip-leave';
-            chipLeave.innerHTML = `🏖️ Nghỉ phép/Lễ: <strong>${timesheetData.totalLeaveDays} ngày (-${Math.round(timesheetData.totalLeaveDays * 8 * 10) / 10}h chỉ tiêu)</strong>`;
+            chipLeave.innerHTML = `🏖️ ${_tr('leaveDaysLabel')}: <strong>${timesheetData.totalLeaveDays} ${daysUnit} (-${Math.round(timesheetData.totalLeaveDays * 8 * 10) / 10}h)</strong>`;
             chipsContainer.appendChild(chipLeave);
         }
     }

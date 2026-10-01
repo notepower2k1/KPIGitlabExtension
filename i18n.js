@@ -303,7 +303,52 @@ const I18N_DICTIONARIES = {
         notifTodoUpcoming: "sắp đến hạn",
         notifTestSoundTitle: "🔔 Kiểm tra chuông nhắc việc",
         notifTestSoundMsgUrl: "Thông báo hoạt động tốt! Nhấn vào đây để thử mở link chấm công.",
-        notifTestSoundMsgNoUrl: "Thông báo hoạt động tốt! Bạn có thể lưu lại cài đặt."
+        notifTestSoundMsgNoUrl: "Thông báo hoạt động tốt! Bạn có thể lưu lại cài đặt.",
+
+        // --- Kanban Card Actions & States ---
+        noDeadline: "Không có hạn",
+        moveBack: "Trở lại",
+        moveForward: "Tiến hành",
+        editBtn: "Chỉnh sửa",
+        deleteBtn: "Xóa",
+
+        // --- KPI Health Forecast ---
+        kpiHealthForecastTitle: "Dự Báo Điểm KPI & Sức Khỏe Hiệu Suất",
+        evaluationPeriod: "Kỳ đánh giá",
+        kpiForecastScale: "Dự báo điểm KPI (Thang 5.0)",
+        kpiBadgeNoData: "Chưa có dữ liệu",
+        kpiBadgeAttention: "Cần chú ý",
+        kpiBadgeExcellent: "Xuất sắc",
+        kpiBadgeGood: "Tốt",
+        kpiBadgeFair: "Khá",
+
+        // --- Timesheet Summary ---
+        workingDaysLabel: "Ngày làm việc",
+        totalHoursLabel: "Tổng giờ",
+        achievementRateLabel: "Tỷ lệ đạt",
+        noDeficitLabel: "Không thiếu giờ",
+        deficitDaysLabel: "Thiếu giờ",
+        leaveDaysLabel: "Nghỉ phép/Lễ",
+        daysUnit: "ngày",
+
+        // --- GitLab In-Page Actions & Badges ---
+        removeFromKpi: "Xóa khỏi KPI",
+        removeBtnShort: "Xóa",
+        addBtnShort: "Thêm",
+        syncingDataGitlab: "⏳ Đang quét danh sách task con và đồng bộ số liệu từ GitLab...",
+        noMatchingTasksFound: "Không tìm thấy task con nào phù hợp",
+        noMyTasksFound: "Không tìm thấy task con nào thuộc về bạn trên trang này.",
+        noTitle: "Không có tiêu đề",
+        statusClosed: "Đã đóng",
+        statusOpen: "Đang mở",
+        statusOnTime: "Đúng hạn",
+        statusUnplanned: "Phát sinh",
+        statusPlanned: "Kế hoạch",
+        removeTaskFromKpiTooltip: "Xóa task này khỏi KPI",
+        addTaskToKpiTooltip: "Thêm task này vào KPI",
+        addedAllToKpiSuccess: "✔ Đã thêm tất cả vào KPI",
+        refreshing: "⏳ Đang làm mới...",
+        syncing: "⏳ Đang đồng bộ..."
     },
 
     en: {
@@ -605,7 +650,52 @@ const I18N_DICTIONARIES = {
         notifTodoUpcoming: "is due soon",
         notifTestSoundTitle: "🔔 Test Reminder Bell",
         notifTestSoundMsgUrl: "Notifications work great! Click here to test opening attendance link.",
-        notifTestSoundMsgNoUrl: "Notifications work great! You can now save your settings."
+        notifTestSoundMsgNoUrl: "Notifications work great! You can now save your settings.",
+
+        // --- Kanban Card Actions & States ---
+        noDeadline: "No deadline",
+        moveBack: "Back",
+        moveForward: "Proceed",
+        editBtn: "Edit",
+        deleteBtn: "Delete",
+
+        // --- KPI Health Forecast ---
+        kpiHealthForecastTitle: "KPI Score Forecast & Performance Health",
+        evaluationPeriod: "Evaluation Period",
+        kpiForecastScale: "KPI Score Forecast (5.0 Scale)",
+        kpiBadgeNoData: "No data",
+        kpiBadgeAttention: "Needs attention",
+        kpiBadgeExcellent: "Excellent",
+        kpiBadgeGood: "Good",
+        kpiBadgeFair: "Fair",
+
+        // --- Timesheet Summary ---
+        workingDaysLabel: "Working Days",
+        totalHoursLabel: "Total Hours",
+        achievementRateLabel: "Achievement Rate",
+        noDeficitLabel: "No deficit hours",
+        deficitDaysLabel: "Deficit Days",
+        leaveDaysLabel: "Leave/Holiday",
+        daysUnit: "days",
+
+        // --- GitLab In-Page Actions & Badges ---
+        removeFromKpi: "Remove from KPI",
+        removeBtnShort: "Delete",
+        addBtnShort: "Add",
+        syncingDataGitlab: "⏳ Scanning child tasks and syncing data from GitLab...",
+        noMatchingTasksFound: "No matching child tasks found",
+        noMyTasksFound: "No child tasks assigned to you found on this page.",
+        noTitle: "No title",
+        statusClosed: "Closed",
+        statusOpen: "Open",
+        statusOnTime: "On time",
+        statusUnplanned: "Unplanned",
+        statusPlanned: "Planned",
+        removeTaskFromKpiTooltip: "Remove this task from KPI",
+        addTaskToKpiTooltip: "Add this task to KPI",
+        addedAllToKpiSuccess: "✔ Added all to KPI",
+        refreshing: "⏳ Refreshing...",
+        syncing: "⏳ Syncing..."
     }
 };
 

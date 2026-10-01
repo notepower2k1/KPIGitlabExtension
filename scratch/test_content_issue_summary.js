@@ -2,6 +2,14 @@ const assert = require('assert');
 
 console.log('--- Running GitLab Issue Summary Unit Tests ---');
 
+let i18nModule;
+try {
+    i18nModule = require('../i18n.js');
+    if (i18nModule && typeof i18nModule.setLanguage === 'function') {
+        i18nModule.setLanguage('vi');
+    }
+} catch (_) {}
+
 let contentIssueModule;
 try {
     contentIssueModule = require('../content_issue.js');
@@ -245,7 +253,13 @@ console.log('✔ Passed: Exported functions existence check');
     const emptyHtml = renderSummaryModalHtml(calculateChildTaskMetrics([]), [], 'Empty Parent');
     assert.ok(emptyHtml.includes('id="gitlabKpiSummaryModal"'));
     assert.ok(emptyHtml.includes('id="glKpiTableBody"'));
-    assert.ok(emptyHtml.toLowerCase().includes('không tìm thấy') || emptyHtml.toLowerCase().includes('không có task'), 'Empty state message');
+    assert.ok(
+        emptyHtml.toLowerCase().includes('không tìm thấy') ||
+        emptyHtml.toLowerCase().includes('không có task') ||
+        emptyHtml.toLowerCase().includes('no matching') ||
+        emptyHtml.toLowerCase().includes('no child tasks'),
+        'Empty state message'
+    );
 
     console.log('✔ Passed: Modal HTML rendering and escaping');
 }
@@ -1160,7 +1174,11 @@ class MockDocument {
 
         // 8. renderTaskTableRows
         const emptyRowsHtml = renderTaskTableRows([]);
-        assert.ok(emptyRowsHtml.includes('Không tìm thấy task con nào phù hợp'), 'Should render empty message when tasks array is empty');
+        assert.ok(
+            emptyRowsHtml.includes('Không tìm thấy task con nào phù hợp') ||
+            emptyRowsHtml.includes('No matching child tasks'),
+            'Should render empty message when tasks array is empty'
+        );
 
         const populatedRowsHtml = renderTaskTableRows(sampleTasks.slice(0, 1));
         assert.ok(populatedRowsHtml.includes('Fix login button alignment'), 'Should render task title link');

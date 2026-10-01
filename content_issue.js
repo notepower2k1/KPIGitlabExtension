@@ -14,6 +14,29 @@ function roundToOneDecimal(val) {
     return Math.round((Number(val || 0) + Number.EPSILON) * 10) / 10;
 }
 
+let _contentIssueI18n;
+function _getI18nEngine() {
+    if (typeof t === 'function') return { t, getLanguage: (typeof getLanguage === 'function' ? getLanguage : (() => 'vi')) };
+    if (typeof window !== 'undefined' && typeof window.t === 'function') {
+        return { t: window.t, getLanguage: (typeof window.getLanguage === 'function' ? window.getLanguage : (() => 'vi')) };
+    }
+    if (!_contentIssueI18n && typeof require !== 'undefined') {
+        try {
+            _contentIssueI18n = require('./i18n.js');
+        } catch (_) {}
+    }
+    if (_contentIssueI18n) return _contentIssueI18n;
+    return null;
+}
+
+function _tr(key, params) {
+    const engine = _getI18nEngine();
+    if (engine && typeof engine.t === 'function') {
+        return engine.t(key, params);
+    }
+    return key;
+}
+
 function calculateChildTaskMetrics(tasks) {
     if (!Array.isArray(tasks) || tasks.length === 0) {
         return {
@@ -298,9 +321,8 @@ function syncAllButtonsOnPage(doc = (typeof document !== 'undefined' ? document 
         btn.className = isAdded
             ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
             : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
-        const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
-        const text = isAdded ? (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI') : (isEn ? 'Add to KPI' : 'Thêm vào KPI');
-        const title = isAdded ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI')) : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add to KPI' : 'Thêm vào KPI'));
+        const text = isAdded ? _tr('removeFromKpi') : _tr('addToKpi');
+        const title = isAdded ? _tr('removeTaskFromKpiTooltip') : _tr('addTaskToKpiTooltip');
         btn.title = title;
         btn.innerHTML = isAdded
             ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
@@ -322,9 +344,8 @@ function syncAllButtonsOnPage(doc = (typeof document !== 'undefined' ? document 
         if (btn.setAttribute) {
             btn.setAttribute('data-is-added', String(isAdded));
         }
-        const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
-        const text = isAdded ? (isEn ? 'Delete' : 'Xóa') : (isEn ? 'Add' : 'Thêm');
-        const title = isAdded ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI')) : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add to KPI' : 'Thêm vào KPI'));
+        const text = isAdded ? _tr('removeBtnShort') : _tr('addBtnShort');
+        const title = isAdded ? _tr('removeTaskFromKpiTooltip') : _tr('addTaskToKpiTooltip');
         btn.title = title;
         btn.innerHTML = isAdded
             ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
@@ -337,14 +358,12 @@ function renderTaskTableRows(tasks, options = {}) {
     const isFiltered = options ? (options.isFiltered !== undefined ? options.isFiltered : true) : true;
     const storedWorkItemIds = (options && (options.storedWorkItemIds || options.storedItems)) || [];
 
-    const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
-
     if (!tasks || tasks.length === 0) {
         const emptyMsg = isSyncing
-            ? (isEn ? '⏳ Scanning child tasks and syncing data from GitLab...' : '⏳ Đang quét danh sách task con và đồng bộ số liệu từ GitLab...')
+            ? _tr('syncingDataGitlab')
             : (isFiltered
-                ? (isEn ? 'No matching child tasks found' : 'Không tìm thấy task con nào phù hợp')
-                : (isEn ? 'No child tasks assigned to you found on this page.' : 'Không tìm thấy task con nào thuộc về bạn trên trang này.'));
+                ? _tr('noMatchingTasksFound')
+                : _tr('noMyTasksFound'));
         return `
             <tr>
                 <td colspan="12" class="gl-kpi-empty-cell" style="text-align: center; padding: 24px; color: #64748b;">
@@ -355,7 +374,7 @@ function renderTaskTableRows(tasks, options = {}) {
 
     return tasks.map(task => {
         const id = escapeHtml(String(task.id || ''));
-        const title = escapeHtml(task.title || (task.id ? `Task #${task.id}` : (isEn ? 'No title' : 'Không có tiêu đề')));
+        const title = escapeHtml(task.title || (task.id ? `Task #${task.id}` : _tr('noTitle')));
         const href = escapeHtml(task.href || '#');
         const est = (task.estimateHour !== undefined && task.estimateHour !== null) ? `${task.estimateHour}h` : '-';
         const spent = (task.spentHour !== undefined && task.spentHour !== null) ? `${task.spentHour}h` : '-';
@@ -379,25 +398,23 @@ function renderTaskTableRows(tasks, options = {}) {
 
         const state = (task.state || '').toLowerCase();
         const stateBadge = state === 'closed'
-            ? `<span class="gl-badge gl-badge-closed">${isEn ? 'Closed' : 'Đã đóng'}</span>`
-            : `<span class="gl-badge gl-badge-opened">${isEn ? 'Open' : 'Đang mở'}</span>`;
+            ? `<span class="gl-badge gl-badge-closed">${_tr('statusClosed')}</span>`
+            : `<span class="gl-badge gl-badge-opened">${_tr('statusOpen')}</span>`;
 
         const timelinessBadge = task.isLate
-            ? `<span class="gl-badge gl-badge-danger">${isEn ? 'Late' : 'Trễ hạn'}</span>`
-            : `<span class="gl-badge gl-badge-success">${isEn ? 'On time' : 'Đúng hạn'}</span>`;
+            ? `<span class="gl-badge gl-badge-danger">${_tr('statusLate')}</span>`
+            : `<span class="gl-badge gl-badge-success">${_tr('statusOnTime')}</span>`;
 
         const planBadge = task.isUnplanned
-            ? `<span class="gl-badge gl-badge-warning">${isEn ? 'Unplanned' : 'Phát sinh'}</span>`
-            : `<span class="gl-badge gl-badge-info">${isEn ? 'Planned' : 'Kế hoạch'}</span>`;
+            ? `<span class="gl-badge gl-badge-warning">${_tr('statusUnplanned')}</span>`
+            : `<span class="gl-badge gl-badge-info">${_tr('statusPlanned')}</span>`;
 
         const isAdded = isTaskInList(storedWorkItemIds, task);
         const actionBtnClass = isAdded ? 'btn-danger' : 'btn-default';
-        const addRowText = isEn ? 'Add' : 'Thêm';
-        const removeRowText = isEn ? 'Delete' : 'Xóa';
+        const addRowText = _tr('addBtnShort');
+        const removeRowText = _tr('removeBtnShort');
         const actionBtnText = isAdded ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${removeRowText}</span>` : `${kpiWorkItemPlusSvg}<span class="gl-button-text">${addRowText}</span>`;
-        const actionBtnTitle = isAdded
-            ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI'))
-            : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add this task to KPI' : 'Thêm task này vào KPI'));
+        const actionBtnTitle = isAdded ? _tr('removeTaskFromKpiTooltip') : _tr('addTaskToKpiTooltip');
 
         return `
             <tr>
@@ -1305,11 +1322,8 @@ function createWorkItemKpiButton(workItemInfo = {}, isAdded = false, onClickHand
         : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
     button.setAttribute('type', 'button');
     button.setAttribute('data-is-added', String(isAdded));
-    const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
-    const text = isAdded ? (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI') : (isEn ? 'Add to KPI' : 'Thêm vào KPI');
-    const title = isAdded
-        ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI'))
-        : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add this task to KPI' : 'Thêm task này vào KPI'));
+    const text = isAdded ? _tr('removeFromKpi') : _tr('addToKpi');
+    const title = isAdded ? _tr('removeTaskFromKpiTooltip') : _tr('addTaskToKpiTooltip');
     button.title = title;
     button.innerHTML = isAdded
         ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
@@ -1352,11 +1366,8 @@ function injectWorkItemButton(container, workItemInfo, isAdded, onClickHandler, 
         existingBtn.className = isAdded
             ? 'btn btn-danger btn-sm gl-button custom-work-item-kpi-btn'
             : 'btn btn-default btn-sm gl-button custom-work-item-kpi-btn';
-        const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
-        const text = isAdded ? (isEn ? 'Remove from KPI' : 'Xóa khỏi KPI') : (isEn ? 'Add to KPI' : 'Thêm vào KPI');
-        const title = isAdded
-            ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI'))
-            : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add this task to KPI' : 'Thêm task này vào KPI'));
+        const text = isAdded ? _tr('removeFromKpi') : _tr('addToKpi');
+        const title = isAdded ? _tr('removeTaskFromKpiTooltip') : _tr('addTaskToKpiTooltip');
         existingBtn.title = title;
         existingBtn.innerHTML = isAdded
             ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
@@ -1983,8 +1994,7 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                         window._storedWorkItemIds = updatedList;
                     }
                 }
-                const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
-                addAllBtn.innerText = isEn ? '✔ Added all to KPI' : '✔ Đã thêm tất cả vào KPI';
+                addAllBtn.innerText = _tr('addedAllToKpiSuccess');
                 if (addAllBtn.classList) {
                     addAllBtn.classList.remove('btn-success');
                     addAllBtn.classList.add('btn-default');
@@ -1998,8 +2008,8 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                     if (btn.setAttribute) {
                         btn.setAttribute('data-is-added', 'true');
                     }
-                    const removeRowText = isEn ? 'Delete' : 'Xóa';
-                    btn.title = (typeof t === 'function') ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI');
+                    const removeRowText = _tr('removeBtnShort');
+                    btn.title = _tr('removeTaskFromKpiTooltip');
                     btn.innerHTML = `${kpiWorkItemMinusSvg}<span class="gl-button-text">${removeRowText}</span>`;
                 });
 
@@ -2016,9 +2026,8 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
     const refreshBtn = modalOverlay.querySelector('#glKpiRefreshBtn');
     if (refreshBtn && typeof refreshBtn.addEventListener === 'function') {
         refreshBtn.addEventListener('click', async () => {
-            const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
             refreshBtn.disabled = true;
-            refreshBtn.innerText = isEn ? '⏳ Refreshing...' : '⏳ Đang làm mới...';
+            refreshBtn.innerText = _tr('refreshing');
             try {
                 await refreshSummaryModal(doc, safeParentInfo, {
                     userProfile: options.userProfile,
@@ -2030,7 +2039,7 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
             } catch (err) {
                 console.error('Error refreshing summary modal:', err);
                 refreshBtn.disabled = false;
-                refreshBtn.innerText = isEn ? '🔄 Refresh' : '🔄 Làm mới';
+                refreshBtn.innerText = _tr('refreshBtn');
             }
         });
     }
@@ -2055,11 +2064,10 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
         }
         const countEl = modalOverlay.querySelector ? modalOverlay.querySelector('#glKpiTaskCount') : null;
         if (countEl) {
-            const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
-            const countText = isEn
-                ? `Showing <strong>${filteredSorted.length}</strong> / ${tasks ? tasks.length : 0} tasks`
-                : `Hiển thị <strong>${filteredSorted.length}</strong> / ${tasks ? tasks.length : 0} task`;
-            countEl.innerHTML = countText;
+            countEl.innerHTML = _tr('showingTasksCount', {
+                shown: `<strong>${filteredSorted.length}</strong>`,
+                total: tasks ? tasks.length : 0
+            });
         }
         const headers = modalOverlay.querySelectorAll ? modalOverlay.querySelectorAll('th.gl-kpi-sortable') : [];
         if (headers && headers.forEach) {
@@ -2111,11 +2119,8 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                     if (btn.setAttribute) {
                         btn.setAttribute('data-is-added', String(isNowAdded));
                     }
-                    const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
-                    const text = isNowAdded ? (isEn ? 'Delete' : 'Xóa') : (isEn ? 'Add' : 'Thêm');
-                    btn.title = isNowAdded
-                        ? (typeof t === 'function' ? t('addedToKpi') : (isEn ? 'Remove this task from KPI' : 'Xóa task này khỏi KPI'))
-                        : (typeof t === 'function' ? t('addToKpi') : (isEn ? 'Add this task to KPI' : 'Thêm task này vào KPI'));
+                    const text = isNowAdded ? _tr('removeBtnShort') : _tr('addBtnShort');
+                    btn.title = isNowAdded ? _tr('removeTaskFromKpiTooltip') : _tr('addTaskToKpiTooltip');
                     btn.innerHTML = isNowAdded
                         ? `${kpiWorkItemMinusSvg}<span class="gl-button-text">${text}</span>`
                         : `${kpiWorkItemPlusSvg}<span class="gl-button-text">${text}</span>`;
@@ -2162,10 +2167,9 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
 
     // Auto-refresh in background if requested
     if (isAutoRefreshing) {
-        const isEn = typeof getLanguage === 'function' && getLanguage() === 'en';
         if (refreshBtn) {
             refreshBtn.disabled = true;
-            refreshBtn.innerText = isEn ? '⏳ Syncing...' : '⏳ Đang đồng bộ...';
+            refreshBtn.innerText = _tr('syncing');
         }
         setTimeout(() => {
             refreshSummaryModal(doc, safeParentInfo, {
@@ -2177,7 +2181,7 @@ function openSummaryModal(parentInfo = {}, preloadedTasks = null, doc = (typeof 
                 console.error('Auto refresh error:', err);
                 if (refreshBtn) {
                     refreshBtn.disabled = false;
-                    refreshBtn.innerText = isEn ? '🔄 Refresh' : '🔄 Làm mới';
+                    refreshBtn.innerText = _tr('refreshBtn');
                 }
             });
         }, 50);

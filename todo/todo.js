@@ -483,11 +483,18 @@ if (typeof document !== 'undefined') {
                     }
                 }
 
+                const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
+                const currentLang = (typeof getLanguage === 'function' ? getLanguage() : 'vi');
                 const formattedDeadline = todo.deadline
-                    ? new Date(todo.deadline).toLocaleString('vi-VN', {
+                    ? new Date(todo.deadline).toLocaleString(currentLang === 'vi' ? 'vi-VN' : 'en-US', {
                         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                     })
-                    : 'Không có hạn';
+                    : _tr('noDeadline');
+
+                const backText = `◀ ${_tr('moveBack')}`;
+                const forwardText = `${_tr('moveForward')} ▶`;
+                const editTitle = _tr('editBtn');
+                const deleteTitle = _tr('deleteBtn');
 
                 card.innerHTML = `
                     <div class="task-title">${escapeHtml(todo.title)}</div>
@@ -497,14 +504,14 @@ if (typeof document !== 'undefined') {
                     </div>
                     <div class="task-footer">
                         <div class="task-actions">
-                            ${status !== 'todo' ? `<button class="btn-move move-left" data-id="${todo.id}" data-target="${status === 'done' ? 'processing' : 'todo'}">◀ Trở lại</button>` : ''}
-                            ${status !== 'done' ? `<button class="btn-move move-right" data-id="${todo.id}" data-target="${status === 'todo' ? 'processing' : 'done'}">Tiến hành ▶</button>` : ''}
+                            ${status !== 'todo' ? `<button class="btn-move move-left" data-id="${todo.id}" data-target="${status === 'done' ? 'processing' : 'todo'}">${backText}</button>` : ''}
+                            ${status !== 'done' ? `<button class="btn-move move-right" data-id="${todo.id}" data-target="${status === 'todo' ? 'processing' : 'done'}">${forwardText}</button>` : ''}
                         </div>
                         <div class="task-card-buttons">
-                            <button class="btn-edit-task" data-id="${todo.id}" title="Chỉnh sửa">
+                            <button class="btn-edit-task" data-id="${todo.id}" title="${editTitle}">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                             </button>
-                            <button class="btn-delete-task" data-id="${todo.id}" title="Xóa">
+                            <button class="btn-delete-task" data-id="${todo.id}" title="${deleteTitle}">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                             </button>
                         </div>
