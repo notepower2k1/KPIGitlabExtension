@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="thumb.jpg" alt="TimeLab - GitLab KPI & Timesheet Tracker" width="100%">
+</p>
+
 # TimeLab - GitLab KPI, Timesheet & Spent Time Tracker ⏱️📊
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-brightgreen.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)

@@ -120,7 +120,7 @@ PRIVACY & SECURITY FIRST:
 | :--- | :--- | :--- | :--- |
 | **Extension Icon** | 128x128 px | PNG (transparent background) | `icon128.png` in project root |
 | **Small Promo Tile** | 440x280 px | PNG or JPEG | High-contrast branding with TimeLab logo & subtitle |
-| **Marquee Promo Tile** | 1400x560 px | PNG or JPEG | Hero banner featuring dashboard mockup and GitLab badge |
+| **Marquee Promo Tile** | 1400x560 px (or responsive) | JPEG | Hero banner featuring dashboard mockup, popup, modal and key value propositions (`thumb.jpg` / `docs/store-assets/thumb.jpg`) |
 | **Screenshot 1** | 1280x800 px | PNG | Monthly KPI Dashboard & Work Items (`docs/store-assets/screenshot1_dashboard_1280x800.png` / `ui1_1280x800.png`) |
 | **Screenshot 2** | 1280x800 px | PNG | Monthly Analytics, KPI Cards & Timesheet Grid (`docs/store-assets/screenshot2_analytics_1280x800.png` / `ui2_1280x800.png`) |
 | **Screenshot 3** | 1280x800 px | PNG | GitLab Issue Page with Injected Sub-Tasks Summary Modal (`docs/store-assets/screenshot3_modal_1280x800.png` / `ui3_1280x800.png`) |
