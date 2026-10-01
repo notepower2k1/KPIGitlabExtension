@@ -898,6 +898,65 @@ async function fetchTodayCreatedIssues(token, baseUrl, todayStartIso, customFetc
     }
 }
 
+function sanitizeGitlabUrl(rawUrl, defaultUrl = 'https://gitlab.com') {
+    if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) {
+        return defaultUrl;
+    }
+    let trimmed = rawUrl.trim();
+    if (!/^https?:\/\//i.test(trimmed)) {
+        trimmed = `https://${trimmed}`;
+    }
+    try {
+        const parsed = new URL(trimmed);
+        if (parsed.origin && parsed.origin !== 'null') {
+            return parsed.origin;
+        }
+        return defaultUrl;
+    } catch (e) {
+        return defaultUrl;
+    }
+}
+
+function getTokenGenerationUrl(serverUrl) {
+    const baseUrl = sanitizeGitlabUrl(serverUrl);
+    return `${baseUrl}/-/user_settings/personal_access_tokens`;
+}
+
+async function getGitlabServerUrl(storageArea = null, fallback = 'https://gitlab.com') {
+    const targetStorage = storageArea || (typeof chrome !== 'undefined' && chrome.storage ? chrome.storage.local : null);
+    if (targetStorage && typeof targetStorage.get === 'function') {
+        try {
+            const data = await new Promise((resolve, reject) => {
+                let resolved = false;
+                try {
+                    const res = targetStorage.get(['gitlabServerUrl'], (result) => {
+                        if (!resolved) {
+                            resolved = true;
+                            resolve(result);
+                        }
+                    });
+                    if (res && typeof res.then === 'function') {
+                        res.then((val) => {
+                            if (!resolved) {
+                                resolved = true;
+                                resolve(val);
+                            }
+                        }).catch(reject);
+                    }
+                } catch (err) {
+                    reject(err);
+                }
+            });
+            if (data && data.gitlabServerUrl) {
+                return sanitizeGitlabUrl(data.gitlabServerUrl, fallback);
+            }
+        } catch (e) {
+            // fallback
+        }
+    }
+    return sanitizeGitlabUrl(fallback, 'https://gitlab.com');
+}
+
 if (typeof window !== 'undefined') {
     window.deletelocalStorage = deletelocalStorage;
     window.getStoredIds = getStoredIds;
@@ -934,6 +993,21 @@ if (typeof window !== 'undefined') {
     window.filterUnaddedTasks = filterUnaddedTasks;
     window.evaluateKpiReminderState = evaluateKpiReminderState;
     window.fetchTodayCreatedIssues = fetchTodayCreatedIssues;
+    window.sanitizeGitlabUrl = sanitizeGitlabUrl;
+    window.getTokenGenerationUrl = getTokenGenerationUrl;
+    window.getGitlabServerUrl = getGitlabServerUrl;
+}
+
+const _rootScope = typeof window !== 'undefined'
+    ? window
+    : (typeof self !== 'undefined'
+        ? self
+        : (typeof globalThis !== 'undefined' ? globalThis : null));
+
+if (_rootScope) {
+    _rootScope.sanitizeGitlabUrl = sanitizeGitlabUrl;
+    _rootScope.getTokenGenerationUrl = getTokenGenerationUrl;
+    _rootScope.getGitlabServerUrl = getGitlabServerUrl;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -972,7 +1046,10 @@ if (typeof module !== 'undefined' && module.exports) {
         isTaskAlreadyAdded,
         filterUnaddedTasks,
         evaluateKpiReminderState,
-        fetchTodayCreatedIssues
+        fetchTodayCreatedIssues,
+        sanitizeGitlabUrl,
+        getTokenGenerationUrl,
+        getGitlabServerUrl
     };
 }
 

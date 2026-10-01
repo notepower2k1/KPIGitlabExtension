@@ -24,6 +24,11 @@ const I18N_DICTIONARIES = {
         // --- Auth & Login ---
         welcomeTitle: "Chào bạn 👋",
         welcomeDesc: "Nhập Personal Access Token để bắt đầu",
+        gitlabServerUrlLabel: "GitLab Server URL:",
+        gitlabServerUrlPlaceholder: "https://gitlab.com hoặc server riêng...",
+        invalidServerUrl: "Vui lòng nhập GitLab Server URL hợp lệ",
+        serverUrlSaved: "Đã lưu GitLab Server URL thành công",
+        getTokenHelp: "Lấy Access Token tại server này",
         tokenPlaceholder: "Nhập Personal Access Token...",
         connectBtn: "Kết nối ngay",
         tutorialBtn: "Hướng dẫn sử dụng",
@@ -371,6 +376,11 @@ const I18N_DICTIONARIES = {
         // --- Auth & Login ---
         welcomeTitle: "Welcome 👋",
         welcomeDesc: "Enter Personal Access Token to get started",
+        gitlabServerUrlLabel: "GitLab Server URL:",
+        gitlabServerUrlPlaceholder: "https://gitlab.com or self-hosted server...",
+        invalidServerUrl: "Please enter a valid GitLab Server URL",
+        serverUrlSaved: "GitLab Server URL saved successfully",
+        getTokenHelp: "Get Access Token from this server",
         tokenPlaceholder: "Enter Personal Access Token...",
         connectBtn: "Connect Now",
         tutorialBtn: "User Guide",
