@@ -21,6 +21,25 @@ if (typeof document !== 'undefined') {
     if (typeof applyI18n === 'function') {
         applyI18n(document);
     }
+
+    let gitlabServerUrl = 'https://gitlab.com';
+    if (typeof getGitlabServerUrl === 'function') {
+        try {
+            gitlabServerUrl = await getGitlabServerUrl();
+        } catch (e) {
+            gitlabServerUrl = 'https://gitlab.com';
+        }
+    } else if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        try {
+            const storedUrl = await chrome.storage.local.get(['gitlabServerUrl']);
+            if (storedUrl && storedUrl.gitlabServerUrl) {
+                gitlabServerUrl = (typeof sanitizeGitlabUrl === 'function')
+                    ? sanitizeGitlabUrl(storedUrl.gitlabServerUrl)
+                    : storedUrl.gitlabServerUrl;
+            }
+        } catch (e) {}
+    }
+
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
         chrome.storage.onChanged.addListener(async (changes, areaName) => {
             if (areaName === 'local' && changes.appLanguage) {
@@ -38,6 +57,11 @@ if (typeof document !== 'undefined') {
                 if (analyticsTab && analyticsTab.classList.contains('active') && typeof renderMonthlyAnalytics === 'function') {
                     await renderMonthlyAnalytics();
                 }
+            }
+            if (areaName === 'local' && changes.gitlabServerUrl) {
+                gitlabServerUrl = (typeof sanitizeGitlabUrl === 'function')
+                    ? sanitizeGitlabUrl(changes.gitlabServerUrl.newValue)
+                    : (changes.gitlabServerUrl.newValue || 'https://gitlab.com');
             }
         });
     }
@@ -3206,7 +3230,7 @@ if (typeof document !== 'undefined') {
                 if (widgetHierarchy && widgetHierarchy.parent) {
                     parentTitle = widgetHierarchy.parent.title || '';
                     if (widgetHierarchy.parent.iid) {
-                        parentUrl = `https://gitlab.widosoft.com/${projectPath}/-/issues/${widgetHierarchy.parent.iid}`;
+                        parentUrl = `${gitlabServerUrl}/${projectPath}/-/issues/${widgetHierarchy.parent.iid}`;
                     } else if (widgetHierarchy.parent.webUrl) {
                         parentUrl = widgetHierarchy.parent.webUrl;
                     }
@@ -3465,7 +3489,7 @@ fragment Author on User {
             `
         };
 
-        const response = await fetch('https://gitlab.widosoft.com/api/graphql', {
+        const response = await fetch(`${gitlabServerUrl}/api/graphql`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -3591,7 +3615,7 @@ fragment User on User {
 }
             `
         };
-        const response = await fetch('https://gitlab.widosoft.com/api/graphql', {
+        const response = await fetch(`${gitlabServerUrl}/api/graphql`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -3675,7 +3699,7 @@ fragment TimelogFragment on Timelog {
 `
         };
 
-        const response = await fetch('https://gitlab.widosoft.com/api/graphql', {
+        const response = await fetch(`${gitlabServerUrl}/api/graphql`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

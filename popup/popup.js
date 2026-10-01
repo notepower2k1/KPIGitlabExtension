@@ -502,26 +502,32 @@ async function fetchUserProfile(token, serverUrl = 'https://gitlab.com', fetchFn
         const quickTodosBtn = document.getElementById("quickTodosBtn");
 
         if (quickIssuesBtn) {
-            quickIssuesBtn.onclick = () => {
+            quickIssuesBtn.onclick = async () => {
+                const currentServerUrl = await getServerUrlFn();
+                const baseUrl = currentServerUrl || 'https://gitlab.com';
                 const url = gitlabUsername
-                    ? `${gitlabBaseUrl}/dashboard/issues?assignee_username=${encodeURIComponent(gitlabUsername)}`
-                    : `${gitlabBaseUrl}/dashboard/issues`;
+                    ? `${baseUrl}/dashboard/issues?assignee_username=${encodeURIComponent(gitlabUsername)}`
+                    : `${baseUrl}/dashboard/issues`;
                 chrome.tabs.create({ url });
             };
         }
 
         if (quickMRsBtn) {
-            quickMRsBtn.onclick = () => {
+            quickMRsBtn.onclick = async () => {
+                const currentServerUrl = await getServerUrlFn();
+                const baseUrl = currentServerUrl || 'https://gitlab.com';
                 const url = gitlabUsername
-                    ? `${gitlabBaseUrl}/dashboard/merge_requests?assignee_username=${encodeURIComponent(gitlabUsername)}`
-                    : `${gitlabBaseUrl}/dashboard/merge_requests`;
+                    ? `${baseUrl}/dashboard/merge_requests?assignee_username=${encodeURIComponent(gitlabUsername)}`
+                    : `${baseUrl}/dashboard/merge_requests`;
                 chrome.tabs.create({ url });
             };
         }
 
         if (quickTodosBtn) {
-            quickTodosBtn.onclick = () => {
-                chrome.tabs.create({ url: `${gitlabBaseUrl}/dashboard/todos` });
+            quickTodosBtn.onclick = async () => {
+                const currentServerUrl = await getServerUrlFn();
+                const baseUrl = currentServerUrl || 'https://gitlab.com';
+                chrome.tabs.create({ url: `${baseUrl}/dashboard/todos` });
             };
         }
 

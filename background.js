@@ -21,6 +21,8 @@ if (typeof importScripts === 'function') {
         if (typeof filterUnaddedTasks === 'undefined') global.filterUnaddedTasks = u.filterUnaddedTasks;
         if (typeof evaluateKpiReminderState === 'undefined') global.evaluateKpiReminderState = u.evaluateKpiReminderState;
         if (typeof fetchTodayCreatedIssues === 'undefined') global.fetchTodayCreatedIssues = u.fetchTodayCreatedIssues;
+        if (typeof sanitizeGitlabUrl === 'undefined') global.sanitizeGitlabUrl = u.sanitizeGitlabUrl;
+        if (typeof getGitlabServerUrl === 'undefined') global.getGitlabServerUrl = u.getGitlabServerUrl;
 
         const i18n = require('./i18n.js');
         if (typeof t === 'undefined') global.t = i18n.t;
@@ -33,6 +35,8 @@ const _getTodayStartIso = (typeof getTodayStartIso === 'function') ? getTodaySta
 const _filterUnaddedTasks = (typeof filterUnaddedTasks === 'function') ? filterUnaddedTasks : ((typeof global !== 'undefined' && global.filterUnaddedTasks) || (typeof require !== 'undefined' && require('./utils.js').filterUnaddedTasks));
 const _evaluateKpiReminderState = (typeof evaluateKpiReminderState === 'function') ? evaluateKpiReminderState : ((typeof global !== 'undefined' && global.evaluateKpiReminderState) || (typeof require !== 'undefined' && require('./utils.js').evaluateKpiReminderState));
 const _fetchTodayCreatedIssues = (typeof fetchTodayCreatedIssues === 'function') ? fetchTodayCreatedIssues : ((typeof global !== 'undefined' && global.fetchTodayCreatedIssues) || (typeof require !== 'undefined' && require('./utils.js').fetchTodayCreatedIssues));
+const _sanitizeGitlabUrl = (typeof sanitizeGitlabUrl === 'function') ? sanitizeGitlabUrl : ((typeof global !== 'undefined' && global.sanitizeGitlabUrl) || (typeof require !== 'undefined' && require('./utils.js').sanitizeGitlabUrl));
+const _getGitlabServerUrl = (typeof getGitlabServerUrl === 'function') ? getGitlabServerUrl : ((typeof global !== 'undefined' && global.getGitlabServerUrl) || (typeof require !== 'undefined' && require('./utils.js').getGitlabServerUrl));
 const _t = (typeof t === 'function') ? t : ((typeof global !== 'undefined' && global.t) || ((typeof require !== 'undefined') ? require('./i18n.js').t : (k => k)));
 const _detectBrowserLanguage = (typeof detectBrowserLanguage === 'function') ? detectBrowserLanguage : ((typeof global !== 'undefined' && global.detectBrowserLanguage) || ((typeof require !== 'undefined') ? require('./i18n.js').detectBrowserLanguage : (() => 'en')));
 
@@ -224,6 +228,63 @@ async function checkCheckInOutAlerts(now = new Date()) {
     }
 }
 
+// --- Dynamic Content Script Registration for Custom GitLab Domains ---
+
+async function syncDynamicContentScript(serverUrl) {
+    if (typeof chrome === 'undefined' || !chrome.scripting) {
+        return false;
+    }
+    let targetUrl = serverUrl;
+    if (!targetUrl && typeof _getGitlabServerUrl === 'function') {
+        try {
+            targetUrl = await _getGitlabServerUrl();
+        } catch (e) {
+            targetUrl = 'https://gitlab.com';
+        }
+    }
+    const sanitized = _sanitizeGitlabUrl ? _sanitizeGitlabUrl(targetUrl || 'https://gitlab.com') : (targetUrl || 'https://gitlab.com');
+
+    // Unregister existing custom dynamic script first to avoid duplication
+    try {
+        if (typeof chrome.scripting.unregisterContentScripts === 'function') {
+            await chrome.scripting.unregisterContentScripts({ ids: ['custom-gitlab-scripts'] });
+        }
+    } catch (e) {
+        // Ignored if not previously registered
+    }
+
+    try {
+        const parsed = new URL(sanitized);
+        const origin = parsed.origin;
+        const hostname = parsed.hostname.toLowerCase();
+
+        // Static domains already covered in manifest.json
+        if (hostname === 'gitlab.com' || hostname === 'gitlab.widosoft.com') {
+            return true;
+        }
+
+        // Custom domain: register content scripts
+        if (typeof chrome.scripting.registerContentScripts === 'function') {
+            await chrome.scripting.registerContentScripts([
+                {
+                    id: 'custom-gitlab-scripts',
+                    matches: [
+                        `${origin}/*/-/issues/*`,
+                        `${origin}/*/-/work_items/*`,
+                        `${origin}/*/-/merge_requests/*`
+                    ],
+                    js: ['utils.js', 'i18n.js', 'content_issue.js'],
+                    runAt: 'document_idle'
+                }
+            ]);
+        }
+        return true;
+    } catch (err) {
+        console.error('Error syncing dynamic content script:', err);
+        return false;
+    }
+}
+
 // --- End-of-Day Unadded KPI Tasks Helper Function ---
 
 async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null) {
@@ -235,6 +296,7 @@ async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null
         'kpiReminderMinutesBefore',
         'kpiReminderState',
         'WorkItemIds',
+        'gitlabServerUrl',
         'gitlabUrl',
         'appLanguage'
     ]);
@@ -271,7 +333,8 @@ async function checkUnaddedKpiTasksReminder(now = new Date(), customFetch = null
     }
 
     const todayStartIso = _getTodayStartIso(now);
-    const gitlabUrl = data.gitlabUrl || 'https://gitlab.widosoft.com';
+    const rawGitlabUrl = data.gitlabServerUrl || data.gitlabUrl || 'https://gitlab.com';
+    const gitlabUrl = _sanitizeGitlabUrl ? _sanitizeGitlabUrl(rawGitlabUrl) : rawGitlabUrl;
     const apiIssues = await _fetchTodayCreatedIssues(data.AccessToken, gitlabUrl, todayStartIso, customFetch);
     const unaddedTasks = _filterUnaddedTasks(apiIssues, data.WorkItemIds || []);
 
@@ -355,12 +418,30 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
         if (Object.keys(kpiToSet).length > 0) {
             await chrome.storage.local.set(kpiToSet);
         }
+
+        // Đồng bộ content script động cho domain GitLab tùy chỉnh
+        const serverUrlData = await chrome.storage.local.get(['gitlabServerUrl']);
+        if (serverUrlData && serverUrlData.gitlabServerUrl) {
+            await syncDynamicContentScript(serverUrlData.gitlabServerUrl);
+        }
     });
 }
 
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onStartup) {
-    chrome.runtime.onStartup.addListener(() => {
+    chrome.runtime.onStartup.addListener(async () => {
         chrome.alarms.create("checkTodos", { periodInMinutes: 1 });
+        const serverUrlData = await chrome.storage.local.get(['gitlabServerUrl']);
+        if (serverUrlData && serverUrlData.gitlabServerUrl) {
+            await syncDynamicContentScript(serverUrlData.gitlabServerUrl);
+        }
+    });
+}
+
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener(async (changes, area) => {
+        if (area === 'local' && changes.gitlabServerUrl) {
+            await syncDynamicContentScript(changes.gitlabServerUrl.newValue);
+        }
     });
 }
 
@@ -483,6 +564,7 @@ if (typeof module !== 'undefined' && module.exports) {
         evaluateAlertState,
         checkCheckInOutAlerts,
         handleNotificationClick,
-        checkUnaddedKpiTasksReminder
+        checkUnaddedKpiTasksReminder,
+        syncDynamicContentScript
     };
 }

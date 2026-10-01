@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "TimeLab",
-    "version": "1.0.5",
-    "description": "Tracking Spent Time & Estimate Issue",
+    "version": "1.0.6",
+    "description": "TimeLab - GitLab KPI, Timesheet & Spent Time Tracker",
     "permissions": [
         "tabs",
         "scripting",
@@ -19,6 +19,8 @@
     "content_scripts": [
         {
             "matches": [
+                "*://gitlab.com/*/-/issues/*",
+                "*://gitlab.com/*/-/work_items/*",
                 "*://gitlab.widosoft.com/*/-/issues/*",
                 "*://gitlab.widosoft.com/*/-/work_items/*"
             ],
@@ -30,6 +32,7 @@
         },
         {
             "matches": [
+                "*://gitlab.com/*/-/merge_requests/*",
                 "*://gitlab.widosoft.com/*/-/merge_requests/*"
             ],
             "js": [

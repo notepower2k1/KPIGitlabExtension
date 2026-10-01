@@ -351,6 +351,174 @@ const { getGitlabServerUrl } = utils;
     }
 
     console.log('\n🎉 ALL TASK 2 TESTS PASSED! 🎉\n');
+
+    // =========================================================================
+    // TASK 3: BACKGROUND SERVICE WORKER DYNAMIC REGISTRATION & DYNAMIC ROUTING
+    // =========================================================================
+    console.log('\n================================================================================');
+    console.log('=== Running Suite: Task 3 - Dynamic Script Registration & Dynamic API Routing ===');
+    console.log('================================================================================');
+
+    // 9. Testing Dynamic Content Script Registration in background.js
+    console.log('\n--- 9. Testing syncDynamicContentScript in background.js ---');
+    const bg = require('../background.js');
+    assert.strictEqual(typeof bg.syncDynamicContentScript, 'function', 'syncDynamicContentScript must be exported by background.js');
+
+    // Mock chrome.scripting for testing syncDynamicContentScript
+    let registeredScripts = [];
+    let unregisteredIds = [];
+    global.chrome = {
+        scripting: {
+            registerContentScripts: async (scripts) => {
+                registeredScripts.push(...scripts);
+            },
+            unregisterContentScripts: async (filter) => {
+                if (filter && filter.ids) {
+                    unregisteredIds.push(...filter.ids);
+                }
+            }
+        },
+        storage: {
+            local: {
+                get: async () => ({})
+            }
+        }
+    };
+
+    // 9.1 Static domain: gitlab.com -> should unregister dynamic script and not register
+    registeredScripts = [];
+    unregisteredIds = [];
+    const staticResult1 = await bg.syncDynamicContentScript('https://gitlab.com');
+    assert.strictEqual(staticResult1, true);
+    assert.ok(unregisteredIds.includes('custom-gitlab-scripts'), 'Must unregister custom-gitlab-scripts for gitlab.com');
+    assert.strictEqual(registeredScripts.length, 0, 'Must not register dynamic scripts for static gitlab.com');
+
+    // 9.2 Static domain: gitlab.widosoft.com -> should unregister dynamic script and not register
+    registeredScripts = [];
+    unregisteredIds = [];
+    const staticResult2 = await bg.syncDynamicContentScript('https://gitlab.widosoft.com');
+    assert.strictEqual(staticResult2, true);
+    assert.ok(unregisteredIds.includes('custom-gitlab-scripts'), 'Must unregister custom-gitlab-scripts for gitlab.widosoft.com');
+    assert.strictEqual(registeredScripts.length, 0, 'Must not register dynamic scripts for static gitlab.widosoft.com');
+
+    // 9.3 Custom domain: gitlab.acme.corp -> should unregister previous and register custom-gitlab-scripts
+    registeredScripts = [];
+    unregisteredIds = [];
+    const customResult = await bg.syncDynamicContentScript('https://gitlab.acme.corp/deep/subpath');
+    assert.strictEqual(customResult, true);
+    assert.ok(unregisteredIds.includes('custom-gitlab-scripts'), 'Must unregister previous script before registering new');
+    assert.strictEqual(registeredScripts.length, 1, 'Must register exactly 1 dynamic content script config');
+    assert.strictEqual(registeredScripts[0].id, 'custom-gitlab-scripts');
+    assert.deepStrictEqual(registeredScripts[0].matches, [
+        'https://gitlab.acme.corp/*/-/issues/*',
+        'https://gitlab.acme.corp/*/-/work_items/*',
+        'https://gitlab.acme.corp/*/-/merge_requests/*'
+    ]);
+    assert.deepStrictEqual(registeredScripts[0].js, ['utils.js', 'i18n.js', 'content_issue.js']);
+    assert.strictEqual(registeredScripts[0].runAt, 'document_idle');
+    console.log('✔ Passed: syncDynamicContentScript registers custom domains and cleans static domains');
+
+    // 10. Testing manifest.json Metadata & Content Script Matches
+    console.log('\n--- 10. Testing manifest.json Metadata & Content Scripts ---');
+    const manifestPath = path.resolve(__dirname, '../manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+    assert.strictEqual(manifest.version, '1.0.6', 'manifest.json version must be bumped to 1.0.6');
+    assert.strictEqual(
+        manifest.description,
+        'TimeLab - GitLab KPI, Timesheet & Spent Time Tracker',
+        'manifest.json description must match Chrome Web Store branding'
+    );
+
+    assert.ok(Array.isArray(manifest.content_scripts), 'content_scripts must be an array');
+    assert.ok(manifest.content_scripts.length >= 2, 'content_scripts must have at least 2 entries');
+
+    const issuesScript = manifest.content_scripts[0];
+    assert.ok(issuesScript.matches.includes('*://gitlab.com/*/-/issues/*'), 'content_scripts[0] must match gitlab.com issues');
+    assert.ok(issuesScript.matches.includes('*://gitlab.com/*/-/work_items/*'), 'content_scripts[0] must match gitlab.com work_items');
+    assert.ok(issuesScript.matches.includes('*://gitlab.widosoft.com/*/-/issues/*'), 'content_scripts[0] must match widosoft issues');
+    assert.ok(issuesScript.matches.includes('*://gitlab.widosoft.com/*/-/work_items/*'), 'content_scripts[0] must match widosoft work_items');
+
+    const mrScript = manifest.content_scripts[1];
+    assert.ok(mrScript.matches.includes('*://gitlab.com/*/-/merge_requests/*'), 'content_scripts[1] must match gitlab.com MRs');
+    assert.ok(mrScript.matches.includes('*://gitlab.widosoft.com/*/-/merge_requests/*'), 'content_scripts[1] must match widosoft MRs');
+    console.log('✔ Passed: manifest.json version 1.0.6, description, and content_scripts static domains verified');
+
+    // 11. Testing dynamic API routing in background checkUnaddedKpiTasksReminder
+    console.log('\n--- 11. Testing dynamic API routing in background.js ---');
+    {
+        let fetchCalls = [];
+        const mockFetch = async (url, opts) => {
+            fetchCalls.push({ url, opts });
+            return {
+                ok: true,
+                json: async () => []
+            };
+        };
+
+        global.chrome = {
+            storage: {
+                local: {
+                    get: async () => ({
+                        AccessToken: 'valid-test-token',
+                        gitlabServerUrl: 'https://gitlab.custom-host.vn:8443',
+                        kpiReminderEnabled: true,
+                        checkOutTime: '18:00',
+                        kpiReminderMinutesBefore: 15,
+                        kpiReminderState: {},
+                        WorkItemIds: []
+                    }),
+                    set: async () => {}
+                }
+            },
+            action: {
+                setBadgeText: () => {},
+                setBadgeBackgroundColor: () => {}
+            },
+            notifications: {
+                create: () => {}
+            },
+            runtime: {
+                getURL: (p) => p
+            }
+        };
+
+        const testTime = new Date('2026-10-01T17:50:00');
+        await bg.checkUnaddedKpiTasksReminder(testTime, mockFetch);
+        assert.strictEqual(fetchCalls.length, 1, 'Should call fetch once for today issues');
+        assert.ok(
+            fetchCalls[0].url.startsWith('https://gitlab.custom-host.vn:8443/api/v4/issues'),
+            `API URL should start with custom gitlabServerUrl, received: ${fetchCalls[0].url}`
+        );
+        console.log('✔ Passed: checkUnaddedKpiTasksReminder dynamically queries custom gitlabServerUrl');
+    }
+
+    // 12. Testing Zero Hardcoded widosoft URLs in page/page.js and content_issue.js
+    console.log('\n--- 12. Testing Zero Hardcoded gitlab.widosoft.com in Production Logic ---');
+    const pageJsPath = path.resolve(__dirname, '../page/page.js');
+    const pageJsContent = fs.readFileSync(pageJsPath, 'utf8');
+
+    assert.ok(!pageJsContent.includes('https://gitlab.widosoft.com'), 'page/page.js must have zero hardcoded https://gitlab.widosoft.com');
+    assert.ok(pageJsContent.includes('${gitlabServerUrl}/api/graphql') || pageJsContent.includes('`${gitlabServerUrl}/api/graphql`'), 'page/page.js must use dynamic gitlabServerUrl for GraphQL');
+
+    const contentIssuePath = path.resolve(__dirname, '../content_issue.js');
+    const contentIssueContent = fs.readFileSync(contentIssuePath, 'utf8');
+    assert.ok(!contentIssueContent.includes('https://gitlab.widosoft.com/api/graphql'), 'content_issue.js must have zero hardcoded widosoft GraphQL fallback');
+
+    console.log('✔ Passed: Zero hardcoded gitlab.widosoft.com in page.js and content_issue.js');
+
+    // 13. Testing dynamic evaluation of gitlabServerUrl in popup.js quick action buttons
+    console.log('\n--- 13. Testing dynamic gitlabServerUrl in popup quick buttons ---');
+    const popupJsPath = path.resolve(__dirname, '../popup/popup.js');
+    const popupJsContent = fs.readFileSync(popupJsPath, 'utf8');
+
+    assert.ok(
+        popupJsContent.includes('const currentServerUrl = await getServerUrlFn();'),
+        'popup.js must dynamically evaluate server url inside quick action buttons'
+    );
+    console.log('✔ Passed: popup.js dynamically evaluates gitlabServerUrl on quick link clicks');
+
+    console.log('\n🎉 ALL TASK 3 TESTS PASSED! 🎉\n');
 })().catch(err => {
     console.error('Test Suite Failed:', err);
     process.exit(1);
