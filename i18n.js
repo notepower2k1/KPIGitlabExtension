@@ -482,7 +482,34 @@ const I18N_DICTIONARIES = {
         addTaskToKpiTooltip: "Thêm task này vào KPI",
         addedAllToKpiSuccess: "✔ Đã thêm tất cả vào KPI",
         refreshing: "⏳ Đang làm mới...",
-        syncing: "⏳ Đang đồng bộ..."
+        syncing: "⏳ Đang đồng bộ...",
+
+        // --- KPI Forecast, Health & Prompts Extras ---
+        toggleHealthBtnTitle: "Bấm để mở rộng / thu gọn chi tiết dự báo KPI",
+        attitudeTooltip: "Thái độ (Estimate, Spent, Ngày tháng): Hệ số 1.0",
+        volumeTooltip: "Khối lượng (Giờ làm việc): Hệ số 3.0",
+        qualityTooltip: "Chất lượng (Đúng hạn & Reopen): Hệ số 6.0",
+        reachPrefix: "Đạt",
+        confirmOpenMultipleTabs: "Bạn có muốn mở đồng thời {count} tab công việc trên trình duyệt không?",
+        alertNoFilteredUrlsToOpen: "Không có công việc nào trong danh sách đang lọc để mở.",
+        pressStatsToCalculateKpi: "Bấm nút \"📊 Thống kê\" ở góc trên để bắt đầu tính toán KPI.",
+        noStoredTasksOrMrs: "Chưa có task hoặc Merge Request nào được lưu trữ.",
+        alertNoItemsToDelete: "Không có công việc nào để xóa.",
+        taskOpenTitle: "Task chưa đóng (Open)",
+        noTasksRecordedForDay: "Chưa có công việc nào ghi nhận trong ngày này.",
+        deleteRangeConfirm: "Bạn có chắc muốn xóa toàn bộ {count} công việc (bao gồm cả Task và Merge Request) trong \"{target}\"?",
+        deleteMonthConfirm: "⚠️ CẢNH BÁO: Bạn có chắc muốn xóa TOÀN BỘ {count} công việc (bao gồm cả Task và Merge Request) trong {target}?",
+        alertNoTasksInMonthToDelete: "Tháng {month} không có công việc nào để xóa.",
+        alertInvalidSelection: "Lựa chọn không hợp lệ.",
+        alertUndeterminedWeekRange: "Không xác định được phạm vi tuần cần xóa.",
+        selectWeekToDeletePrompt: "Chọn tuần trong tháng {month} bạn muốn xóa:\n\n",
+        enterWeekPrompt: "\nNhập số thứ tự tuần (1 - {total}) hoặc nhấn Hủy:",
+        alertNoItemsInRangeOrMonth: "Không có công việc hoặc Merge Request nào trong \"{target}\" để xóa.",
+        alertNoTasksInMonthToDeleteGeneral: "Không có công việc hoặc Merge Request nào trong tháng này để xóa.",
+        alertNoActiveWeeksInMonth: "Tháng {month} không có tuần nào có dữ liệu công việc.",
+        selectWeekToExportPrompt: "Chọn tuần bạn muốn xuất KPI trong tháng {month}:\n\n",
+        alertNoKpiDataToExport: "Chưa có dữ liệu thống kê KPI. Vui lòng bấm \"Thống kê\" trước khi xuất file!",
+        alertNoMonthDataToExport: "Tháng {month} không có dữ liệu công việc."
     },
 
     en: {
@@ -963,7 +990,34 @@ const I18N_DICTIONARIES = {
         addTaskToKpiTooltip: "Add this task to KPI",
         addedAllToKpiSuccess: "✔ Added all to KPI",
         refreshing: "⏳ Refreshing...",
-        syncing: "⏳ Syncing..."
+        syncing: "⏳ Syncing...",
+
+        // --- KPI Forecast, Health & Prompts Extras ---
+        toggleHealthBtnTitle: "Click to expand / collapse KPI forecast details",
+        attitudeTooltip: "Attitude (Estimate, Spent, Dates): Weight 1.0",
+        volumeTooltip: "Volume (Working hours): Weight 3.0",
+        qualityTooltip: "Quality (On-time & Reopen): Weight 6.0",
+        reachPrefix: "Reached",
+        confirmOpenMultipleTabs: "Do you want to open {count} work item tabs simultaneously in your browser?",
+        alertNoFilteredUrlsToOpen: "No work items in the filtered list to open.",
+        pressStatsToCalculateKpi: "Click the \"📊 Calculate\" button at the top to calculate KPI.",
+        noStoredTasksOrMrs: "No tasks or Merge Requests stored yet.",
+        alertNoItemsToDelete: "No work items to delete.",
+        taskOpenTitle: "Task is not closed (Open)",
+        noTasksRecordedForDay: "No work items recorded on this day.",
+        deleteRangeConfirm: "Are you sure you want to delete all {count} work items (including Tasks and Merge Requests) in \"{target}\"?",
+        deleteMonthConfirm: "⚠️ WARNING: Are you sure you want to delete ALL {count} work items (including Tasks and Merge Requests) in {target}?",
+        alertNoTasksInMonthToDelete: "Month {month} has no work items to delete.",
+        alertInvalidSelection: "Invalid selection.",
+        alertUndeterminedWeekRange: "Unable to determine week range to delete.",
+        selectWeekToDeletePrompt: "Select the week in month {month} you want to delete:\n\n",
+        enterWeekPrompt: "\nEnter week number (1 - {total}) or click Cancel:",
+        alertNoItemsInRangeOrMonth: "No tasks or Merge Requests in \"{target}\" to delete.",
+        alertNoTasksInMonthToDeleteGeneral: "No tasks or Merge Requests in this month to delete.",
+        alertNoActiveWeeksInMonth: "Month {month} has no weeks with work item data.",
+        selectWeekToExportPrompt: "Select the week you want to export KPI for in month {month}:\n\n",
+        alertNoKpiDataToExport: "No KPI calculation data yet. Please click \"Calculate\" before exporting file!",
+        alertNoMonthDataToExport: "Month {month} has no work item data."
     }
 };
 

@@ -316,13 +316,13 @@ if (typeof document !== 'undefined') {
     if (openFilteredTabsBtn) {
         openFilteredTabsBtn.addEventListener('click', () => {
             if (!currentFilteredUrls || currentFilteredUrls.length === 0) {
-                alert('Không có công việc nào trong danh sách đang lọc để mở.');
+                alert(_tr('alertNoFilteredUrlsToOpen', {}, 'Không có công việc nào trong danh sách đang lọc để mở.'));
                 return;
             }
 
             const count = currentFilteredUrls.length;
             if (count > 5) {
-                const confirmed = confirm(`Bạn có muốn mở đồng thời ${count} tab công việc trên trình duyệt không?`);
+                const confirmed = confirm(_tr('confirmOpenMultipleTabs', { count }, `Bạn có muốn mở đồng thời ${count} tab công việc trên trình duyệt không?`));
                 if (!confirmed) return;
             }
 
@@ -594,7 +594,7 @@ if (typeof document !== 'undefined') {
         const isExpanded = !isHealthCollapsed;
         container.innerHTML = `
             <div class="kpi-health-card">
-                <div class="kpi-health-header ${isExpanded ? 'expanded' : ''}" id="toggleHealthBtn" role="button" tabindex="0" title="Bấm để mở rộng / thu gọn chi tiết dự báo KPI">
+                <div class="kpi-health-header ${isExpanded ? 'expanded' : ''}" id="toggleHealthBtn" role="button" tabindex="0" title="${_tr('toggleHealthBtnTitle', {}, 'Bấm để mở rộng / thu gọn chi tiết dự báo KPI')}">
                     <div class="kpi-health-title">
                         <span class="health-icon">🎯</span>
                         <div class="health-title-text">
@@ -620,15 +620,15 @@ if (typeof document !== 'undefined') {
                                 <span class="score-scale">/ 5.0</span>
                             </div>
                             <div class="score-pills">
-                                <div class="score-pill" title="Thái độ (Estimate, Spent, Ngày tháng): Hệ số 1.0">
+                                <div class="score-pill" title="${_tr('attitudeTooltip', {}, 'Thái độ (Estimate, Spent, Ngày tháng): Hệ số 1.0')}">
                                     <span class="pill-label">${_tr('attitudeScore')}</span>
                                     <span class="pill-val">${scoreInfo.attitudeScore}/5</span>
                                 </div>
-                                <div class="score-pill" title="Khối lượng (Giờ làm việc): Hệ số 3.0">
+                                <div class="score-pill" title="${_tr('volumeTooltip', {}, 'Khối lượng (Giờ làm việc): Hệ số 3.0')}">
                                     <span class="pill-label">${_tr('volumeScore')}</span>
                                     <span class="pill-val">${scoreInfo.volumeScore}/5</span>
                                 </div>
-                                <div class="score-pill" title="Chất lượng (Đúng hạn & Reopen): Hệ số 6.0">
+                                <div class="score-pill" title="${_tr('qualityTooltip', {}, 'Chất lượng (Đúng hạn & Reopen): Hệ số 6.0')}">
                                     <span class="pill-label">${_tr('qualityScore')}</span>
                                     <span class="pill-val">${scoreInfo.qualityScore}/5</span>
                                 </div>
@@ -638,21 +638,21 @@ if (typeof document !== 'undefined') {
                         <!-- Col 2: Tiến độ giờ làm việc -->
                         <div class="health-card-item">
                             <div class="hours-meta-top">
-                                <span class="hours-title">⌛ Tiến độ giờ làm việc</span>
+                                <span class="hours-title">${_tr('hoursProgressTitle', {}, '⌛ Tiến độ giờ làm việc')}</span>
                                 <span class="hours-numbers"><strong>${periodStats.totalSpent}h</strong> / ${targetHours}h</span>
                             </div>
                             <div class="hours-track">
                                 <div class="hours-bar ${hoursBarClass}" style="width: ${Math.min(100, spentPercent)}%;"></div>
                             </div>
                             <div class="hours-meta-bottom">
-                                <span>Đạt <strong>${spentPercent.toFixed(1)}%</strong> tiêu chuẩn</span>
-                                <span>Kế hoạch: ${periodStats.totalSpentPlannedTask}h • Phát sinh: ${periodStats.totalSpentUnplannedTask}h</span>
+                                <span>${_tr('reachPrefix', {}, 'Đạt')} <strong>${spentPercent.toFixed(1)}%</strong> ${_tr('hoursStandardTarget', {}, 'tiêu chuẩn')}</span>
+                                <span>${_tr('hoursPlanned', {}, 'Kế hoạch:')} ${periodStats.totalSpentPlannedTask}h • ${_tr('hoursUnplanned', {}, 'Phát sinh:')} ${periodStats.totalSpentUnplannedTask}h</span>
                             </div>
                         </div>
 
                         <!-- Col 3: Cảnh báo & Đề xuất xử lý -->
                         <div class="health-card-item">
-                            <div class="alerts-title">🛡️ Sức khỏe KPI & Lối tắt xử lý</div>
+                            <div class="alerts-title">${_tr('healthAlertsTitle', {}, '🛡️ Sức khỏe KPI & Lối tắt xử lý')}</div>
                             <div class="health-alerts-list">
                                 ${alertsHtml}
                             </div>
@@ -777,16 +777,16 @@ if (typeof document !== 'undefined') {
         const storedTasks = await getStoredIds(WORK_ITEM_KEY);
         const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
         if ((storedTasks && storedTasks.length > 0) || (storedMRs && storedMRs.length > 0)) {
-            document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">Bấm nút "📊 Thống kê" ở góc trên để bắt đầu tính toán KPI.</div>';
+            document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">' + _tr('pressStatsToCalculateKpi', {}, 'Bấm nút "📊 Thống kê" ở góc trên để bắt đầu tính toán KPI.') + '</div>';
         } else {
-            document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">Chưa có task hoặc Merge Request nào được lưu trữ.</div>';
+            document.getElementById('kpiContainer').innerHTML = '<div class="report-section" style="text-align: center; color: var(--text-muted); padding: 40px;">' + _tr('noStoredTasksOrMrs', {}, 'Chưa có task hoặc Merge Request nào được lưu trữ.') + '</div>';
         }
         await refreshMonthlyAnalytics(monthSelect ? monthSelect.value : currentMonthIso, []);
     }
 
     async function deleteKpiItems(itemsToDelete, confirmMsg = null) {
         if (!itemsToDelete || itemsToDelete.length === 0) {
-            alert('Không có công việc nào để xóa.');
+            alert(_tr('alertNoItemsToDelete', {}, 'Không có công việc nào để xóa.'));
             return;
         }
 
@@ -893,7 +893,7 @@ if (typeof document !== 'undefined') {
 
         const totalCount = Math.max(tasksToDelete.length + mrsToDelete.length, kpiToDelete.length);
         if (totalCount === 0) {
-            alert('Không có công việc hoặc Merge Request nào trong tháng này để xóa.');
+            alert(_tr('alertNoTasksInMonthToDeleteGeneral', {}, 'Không có công việc hoặc Merge Request nào trong tháng này để xóa.'));
             return;
         }
 
@@ -1039,27 +1039,29 @@ if (typeof document !== 'undefined') {
                 targetStart = parts[1];
                 targetEnd = parts[2];
                 const found = monthWeeks.find(w => w.start === targetStart && w.end === targetEnd);
-                targetLabel = found ? found.label : `Tuần (${formatDate(targetStart)} - ${formatDate(targetEnd)})`;
+                const weekPrefix = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en') ? 'Week' : 'Tuần';
+                targetLabel = found ? found.label : `${weekPrefix} (${formatDate(targetStart)} - ${formatDate(targetEnd)})`;
             } else if (filterVal.startsWith('day:')) {
                 const dayIso = filterVal.replace('day:', '');
                 targetStart = dayIso;
                 targetEnd = dayIso;
-                targetLabel = `Ngày ${formatDate(dayIso)}`;
+                const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+                targetLabel = (isEn ? 'Day ' : 'Ngày ') + formatDate(dayIso);
             } else if (filterVal === 'custom_range') {
                 targetStart = startDateInput?.value;
                 targetEnd = endDateInput?.value;
                 if (!targetStart || !targetEnd) {
-                    alert('Vui lòng chọn ngày bắt đầu và kết thúc ở bộ lọc khoảng ngày.');
+                    alert(_tr('customRangePrompt', {}, 'Vui lòng chọn ngày bắt đầu và kết thúc ở bộ lọc khoảng ngày.'));
                     return;
                 }
-                targetLabel = `Khoảng ngày ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
+                targetLabel = `${_tr('dateRangePrefix', {}, 'Khoảng ngày')} ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
             } else if (filterVal === 'all_month') {
                 const storedKpi = await getStoredIds('KpiInfo');
                 const monthItems = (storedKpi || []).filter(item => matchesFilter(item.addedAt, 'all_month', selectedMonth, '', ''));
                 const activeWeeks = monthWeeks.filter(w => monthItems.some(item => isDateInWeek(item.addedAt, w.start, w.end)));
 
                 if (activeWeeks.length === 0) {
-                    alert(`Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có công việc nào để xóa.`);
+                    alert(_tr('alertNoTasksInMonthToDelete', { month: `${String(selMonth).padStart(2, '0')}/${selYear}` }, `Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có công việc nào để xóa.`));
                     return;
                 }
 
@@ -1068,12 +1070,12 @@ if (typeof document !== 'undefined') {
                     targetEnd = activeWeeks[0].end;
                     targetLabel = activeWeeks[0].label;
                 } else {
-                    let promptText = `Chọn tuần trong tháng ${String(selMonth).padStart(2, '0')}/${selYear} bạn muốn xóa:\n\n`;
+                    let promptText = _tr('selectWeekToDeletePrompt', { month: `${String(selMonth).padStart(2, '0')}/${selYear}` }, `Chọn tuần trong tháng ${String(selMonth).padStart(2, '0')}/${selYear} bạn muốn xóa:\n\n`);
                     activeWeeks.forEach((w, idx) => {
                         const itemsCount = monthItems.filter(item => isDateInWeek(item.addedAt, w.start, w.end)).length;
-                        promptText += `${idx + 1}. ${w.label} (${itemsCount} công việc)\n`;
+                        promptText += `${idx + 1}. ${w.label} (${itemsCount} ${_tr('workItemsUnit', {}, 'công việc')})\n`;
                     });
-                    promptText += `\nNhập số thứ tự tuần (1 - ${activeWeeks.length}) hoặc nhấn Hủy:`;
+                    promptText += _tr('enterWeekPrompt', { total: activeWeeks.length }, `\nNhập số thứ tự tuần (1 - ${activeWeeks.length}) hoặc nhấn Hủy:`);
                     const choice = prompt(promptText);
                     if (!choice) return;
                     const chosenIdx = parseInt(choice, 10) - 1;
@@ -1082,14 +1084,14 @@ if (typeof document !== 'undefined') {
                         targetEnd = activeWeeks[chosenIdx].end;
                         targetLabel = activeWeeks[chosenIdx].label;
                     } else {
-                        alert('Lựa chọn không hợp lệ.');
+                        alert(_tr('alertInvalidSelection', {}, 'Lựa chọn không hợp lệ.'));
                         return;
                     }
                 }
             }
 
             if (!targetStart || !targetEnd) {
-                alert('Không xác định được phạm vi tuần cần xóa.');
+                alert(_tr('alertUndeterminedWeekRange', {}, 'Không xác định được phạm vi tuần cần xóa.'));
                 return;
             }
 
@@ -1104,11 +1106,11 @@ if (typeof document !== 'undefined') {
 
             const totalCount = Math.max(taskCount + mrCount, kpiItems.length);
             if (totalCount === 0) {
-                alert(`Không có công việc hoặc Merge Request nào trong "${targetLabel}" để xóa.`);
+                alert(_tr('alertNoItemsInRangeOrMonth', { target: targetLabel }, `Không có công việc hoặc Merge Request nào trong "${targetLabel}" để xóa.`));
                 return;
             }
 
-            const msg = `Bạn có chắc muốn xóa toàn bộ ${totalCount} công việc (bao gồm cả Task và Merge Request) trong "${targetLabel}"?`;
+            const msg = _tr('deleteRangeConfirm', { count: totalCount, target: targetLabel }, `Bạn có chắc muốn xóa toàn bộ ${totalCount} công việc (bao gồm cả Task và Merge Request) trong "${targetLabel}"?`);
             await deleteByDateRange(targetStart, targetEnd, msg);
         });
     }
@@ -1118,7 +1120,8 @@ if (typeof document !== 'undefined') {
         deleteMonthBtn.addEventListener('click', async () => {
             const selectedMonth = monthSelect.value;
             const [selYear, selMonth] = selectedMonth.split('-').map(Number);
-            const monthLabel = `Tháng ${String(selMonth).padStart(2, '0')}/${selYear}`;
+            const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+            const monthLabel = (isEn ? 'Month ' : 'Tháng ') + `${String(selMonth).padStart(2, '0')}/${selYear}`;
 
             const storedTasks = await getStoredIds(WORK_ITEM_KEY);
             const storedMRs = await getStoredIds(MERGE_ITEM_KEY);
@@ -1135,11 +1138,11 @@ if (typeof document !== 'undefined') {
 
             const totalCount = Math.max(taskCount + mrCount, kpiItems.length);
             if (totalCount === 0) {
-                alert(`Không có công việc hoặc Merge Request nào trong ${monthLabel} để xóa.`);
+                alert(_tr('alertNoItemsInRangeOrMonth', { target: monthLabel }, `Không có công việc hoặc Merge Request nào trong ${monthLabel} để xóa.`));
                 return;
             }
 
-            const msg = `⚠️ CẢNH BÁO: Bạn có chắc muốn xóa TOÀN BỘ ${totalCount} công việc (bao gồm cả Task và Merge Request) trong ${monthLabel}?`;
+            const msg = _tr('deleteMonthConfirm', { count: totalCount, target: monthLabel }, `⚠️ CẢNH BÁO: Bạn có chắc muốn xóa TOÀN BỘ ${totalCount} công việc (bao gồm cả Task và Merge Request) trong ${monthLabel}?`);
             await deleteByMonth(selectedMonth, msg);
         });
     }
@@ -1755,7 +1758,7 @@ if (typeof document !== 'undefined') {
                     const redDot = document.createElement("span");
                     redDot.className = "badge-dot-red";
                     redDot.textContent = "🔴";
-                    redDot.title = "Task chưa đóng (Open)";
+                    redDot.title = _tr('taskOpenTitle', {}, "Task chưa đóng (Open)");
                     taskTd.appendChild(redDot);
                     row.classList.add("row-unclosed");
                 }
@@ -1765,7 +1768,10 @@ if (typeof document !== 'undefined') {
                     carryBadge.className = "badge-carryover";
                     carryBadge.textContent = "🔄 " + getStatusBadgeText('carryOver');
                     const originDate = item.addedAt ? formatDate(parseToIsoDate(item.addedAt)) : '';
-                    carryBadge.title = `Công việc chuyển tiếp từ tuần trước${originDate ? ` (Tạo ngày ${originDate})` : ''}`;
+                    const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+                    carryBadge.title = isEn
+                        ? `Work item carried over from previous week${originDate ? ` (Created on ${originDate})` : ''}`
+                        : `Công việc chuyển tiếp từ tuần trước${originDate ? ` (Tạo ngày ${originDate})` : ''}`;
                     taskTd.appendChild(carryBadge);
                 }
 
@@ -2676,8 +2682,10 @@ if (typeof document !== 'undefined') {
         let targetEnd = null;
         let targetLabel = '';
 
+        const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+        const weekPrefix = isEn ? 'Week' : 'Tuần';
         if (filterVal === 'current_week') {
-            const cw = getCurrentWeekRange();
+            const cw = getCurrentWeekRange(today, activeLang);
             targetStart = cw.start;
             targetEnd = cw.end;
             targetLabel = cw.label;
@@ -2686,7 +2694,7 @@ if (typeof document !== 'undefined') {
             targetStart = parts[1];
             targetEnd = parts[2];
             const found = monthWeeks.find(w => w.start === targetStart && w.end === targetEnd);
-            targetLabel = found ? found.label : `Tuần ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
+            targetLabel = found ? found.label : `${weekPrefix} ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
         } else if (filterVal.startsWith('day:')) {
             const targetDay = filterVal.replace('day:', '');
             const d = new Date(targetDay);
@@ -2695,21 +2703,21 @@ if (typeof document !== 'undefined') {
             sun.setDate(sun.getDate() + 6);
             targetStart = parseToIsoDate(mon);
             targetEnd = parseToIsoDate(sun);
-            targetLabel = `Tuần (${formatDate(targetStart)} - ${formatDate(targetEnd)})`;
+            targetLabel = `${weekPrefix} (${formatDate(targetStart)} - ${formatDate(targetEnd)})`;
         } else if (filterVal === 'custom_range') {
             targetStart = startDateInput?.value;
             targetEnd = endDateInput?.value;
             if (!targetStart || !targetEnd) {
-                alert('Vui lòng chọn khoảng ngày bắt đầu và kết thúc.');
+                alert(_tr('customRangePrompt', {}, 'Vui lòng chọn khoảng ngày bắt đầu và kết thúc.'));
                 return;
             }
-            targetLabel = `Khoảng ngày ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
+            targetLabel = `${_tr('dateRangePrefix', {}, 'Khoảng ngày')} ${formatDate(targetStart)} - ${formatDate(targetEnd)}`;
         } else if (filterVal === 'all_month') {
             const monthItems = storedKpi.filter(item => isItemActiveInFilter(item, 'all_month', selectedMonth, '', ''));
             const activeWeeks = monthWeeks.filter(w => monthItems.some(item => isItemActiveInWeek(item, w.start, w.end)));
 
             if (activeWeeks.length === 0) {
-                alert(`Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có tuần nào có dữ liệu công việc.`);
+                alert(_tr('alertNoActiveWeeksInMonth', { month: `${String(selMonth).padStart(2, '0')}/${selYear}` }, `Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có tuần nào có dữ liệu công việc.`));
                 return;
             }
 
@@ -2718,11 +2726,11 @@ if (typeof document !== 'undefined') {
                 targetEnd = activeWeeks[0].end;
                 targetLabel = activeWeeks[0].label;
             } else {
-                let promptText = `Chọn tuần bạn muốn xuất KPI trong tháng ${String(selMonth).padStart(2, '0')}/${selYear}:\n\n`;
+                let promptText = _tr('selectWeekToExportPrompt', { month: `${String(selMonth).padStart(2, '0')}/${selYear}` }, `Chọn tuần bạn muốn xuất KPI trong tháng ${String(selMonth).padStart(2, '0')}/${selYear}:\n\n`);
                 activeWeeks.forEach((w, idx) => {
                     promptText += `${idx + 1}. ${w.label}\n`;
                 });
-                promptText += `\nNhập số thứ tự tuần (1 - ${activeWeeks.length}) hoặc nhấn Hủy:`;
+                promptText += _tr('enterWeekPrompt', { total: activeWeeks.length }, `\nNhập số thứ tự tuần (1 - ${activeWeeks.length}) hoặc nhấn Hủy:`);
                 const choice = prompt(promptText);
                 if (!choice) return;
                 const chosenIdx = parseInt(choice, 10) - 1;
@@ -2731,7 +2739,7 @@ if (typeof document !== 'undefined') {
                     targetEnd = activeWeeks[chosenIdx].end;
                     targetLabel = activeWeeks[chosenIdx].label;
                 } else {
-                    alert('Lựa chọn không hợp lệ.');
+                    alert(_tr('alertInvalidSelection', {}, 'Lựa chọn không hợp lệ.'));
                     return;
                 }
             }
@@ -2939,7 +2947,7 @@ if (typeof document !== 'undefined') {
 
         const storedKpi = await getStoredIds('KpiInfo');
         if (!storedKpi || storedKpi.length === 0) {
-            alert('Chưa có dữ liệu thống kê KPI. Vui lòng bấm "Thống kê" trước khi xuất file!');
+            alert(_tr('alertNoKpiDataToExport', {}, 'Chưa có dữ liệu thống kê KPI. Vui lòng bấm "Thống kê" trước khi xuất file!'));
             return;
         }
 
@@ -2950,7 +2958,7 @@ if (typeof document !== 'undefined') {
         // Lọc tất cả task/MR của tháng
         const monthItems = storedKpi.filter(item => isItemActiveInFilter(item, 'all_month', selectedMonth, '', ''));
         if (monthItems.length === 0) {
-            alert(`Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có dữ liệu công việc.`);
+            alert(_tr('alertNoMonthDataToExport', { month: `${String(selMonth).padStart(2, '0')}/${selYear}` }, `Tháng ${String(selMonth).padStart(2, '0')}/${selYear} không có dữ liệu công việc.`));
             return;
         }
 
@@ -3839,8 +3847,10 @@ fragment TimelogFragment on Timelog {
             badge.style.display = 'inline-flex';
             const detailTexts = [];
             if (pendingTasks.length > 0) detailTexts.push(`${pendingTasks.length} task`);
-            if (pendingMRs.length > 0) detailTexts.push(`${pendingMRs.length} MR`);
-            badge.title = `Có ${totalPending} công việc (${detailTexts.join(', ')}) mới thêm chưa được thống kê`;
+            const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+            badge.title = isEn
+                ? `There are ${totalPending} newly added work items (${detailTexts.join(', ')}) not yet calculated in KPI`
+                : `Có ${totalPending} công việc (${detailTexts.join(', ')}) mới thêm chưa được thống kê`;
         } else {
             badge.style.display = 'none';
             badge.textContent = '0';
@@ -4273,7 +4283,8 @@ function renderDailyTimesheet(timesheetData) {
                     headerLine,
                     '─────────────────────────',
                     ...day.taskItems.map((it, idx) => {
-                        const title = it.title || it.taskUrl || `Công việc #${idx + 1}`;
+                        const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof getLanguage === 'function' && getLanguage() === 'en');
+                        const title = it.title || it.taskUrl || (isEn ? `Work item #${idx + 1}` : `Công việc #${idx + 1}`);
                         const sp = typeof it.spent === 'number' ? it.spent : (parseFloat(it.spent) || 0);
                         return `• [${sp}h] ${title}`;
                     }),
@@ -4419,7 +4430,7 @@ function openDayDetailModal(day) {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'modal-task-item';
                 const sp = typeof it.spent === 'number' ? it.spent : (parseFloat(it.spent) || 0);
-                const title = it.title || it.taskUrl || 'Công việc';
+                const title = it.title || it.taskUrl || _tr('tableTasks', {}, 'Công việc');
                 itemDiv.innerHTML = `
                     <span class="task-item-title" title="${title}">${title}</span>
                     <span class="task-item-spent">${sp}h</span>
@@ -4427,7 +4438,7 @@ function openDayDetailModal(day) {
                 listEl.appendChild(itemDiv);
             });
         } else {
-            listEl.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">Chưa có công việc nào ghi nhận trong ngày này.</div>';
+            listEl.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">' + _tr('noTasksRecordedForDay', {}, 'Chưa có công việc nào ghi nhận trong ngày này.') + '</div>';
         }
     }
 
@@ -5124,7 +5135,7 @@ function renderMonthlyKpiSummaryCards(monthItems = [], selYear, selMonth, timesh
     const unplannedRate = totalWorkItems > 0 ? Math.round((unplannedCount / totalWorkItems) * 1000) / 10 : 0;
 
     let totalScore = 0;
-    let badge = { text: 'Chưa có dữ liệu', class: 'badge-neutral', icon: '⚪' };
+    let badge = { text: _tr('ratingNoData', {}, 'Chưa có dữ liệu'), class: 'badge-neutral', icon: '⚪' };
 
     if (totalWorkItems > 0) {
         const getAttitudeScoreHelper = pct => {
