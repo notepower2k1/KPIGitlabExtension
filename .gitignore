@@ -1,0 +1,6 @@
+# Build releases and staging
+release/
+
+# Temporary and development files
+*.log
+.superpowers/
