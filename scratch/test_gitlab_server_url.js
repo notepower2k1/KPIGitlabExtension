@@ -185,9 +185,174 @@ const { getGitlabServerUrl } = utils;
     assert.strictEqual(i18n.t('invalidServerUrl', null, 'en'), 'Please enter a valid GitLab Server URL');
 
     console.log('✔ Passed: All 5 required dictionary tokens exist in VI and EN with 100% parity');
-
     console.log('\n🎉 ALL TASK 1 TESTS PASSED! 🎉\n');
+
+    // =========================================================================
+    // TASK 2: POPUP LOGIN SCREEN & SETTINGS CARD INTEGRATION
+    // =========================================================================
+    console.log('\n=============================================================');
+    console.log('=== Running Suite: Task 2 - Popup Login Screen & Settings ===');
+    console.log('=============================================================');
+
+    const fs = require('fs');
+
+    // 6. Testing popup/popup.html markup
+    console.log('\n--- 6. Testing popup/popup.html Markup for Server URL ---');
+    const popupHtmlPath = path.resolve(__dirname, '../popup/popup.html');
+    const popupHtml = fs.readFileSync(popupHtmlPath, 'utf8');
+
+    // 6.1 Server URL input on login screen
+    assert.ok(popupHtml.includes('id="gitlabServerUrlInput"'), 'popup.html must have #gitlabServerUrlInput');
+    assert.ok(popupHtml.includes('data-i18n="gitlabServerUrlLabel"'), 'popup.html must have label with data-i18n="gitlabServerUrlLabel"');
+    assert.ok(popupHtml.includes('data-i18n-placeholder="gitlabServerUrlPlaceholder"'), 'popup.html must have data-i18n-placeholder="gitlabServerUrlPlaceholder"');
+
+    // 6.2 Quick Select Pills
+    assert.ok(popupHtml.includes('class="quick-url-pills"') || popupHtml.includes("class='quick-url-pills'"), 'popup.html must have container .quick-url-pills');
+    assert.ok(popupHtml.includes('data-url="https://gitlab.com"'), 'popup.html must have quick pill with data-url="https://gitlab.com"');
+    assert.ok(popupHtml.includes('data-url="https://gitlab.widosoft.com"'), 'popup.html must have quick pill with data-url="https://gitlab.widosoft.com"');
+    assert.ok(popupHtml.includes('quick-url-pill'), 'popup.html must have .quick-url-pill classes');
+
+    // 6.3 Dynamic Token Help Link
+    assert.ok(popupHtml.includes('id="tokenHelpLink"'), 'popup.html must have #tokenHelpLink');
+    assert.ok(popupHtml.includes('target="_blank"'), 'tokenHelpLink must open in new tab (target="_blank")');
+    assert.ok(popupHtml.includes('data-i18n="getTokenHelp"'), 'tokenHelpLink or its inner text must use data-i18n="getTokenHelp"');
+
+    // 6.4 Settings Card / Tab Server URL Controls
+    assert.ok(popupHtml.includes('id="settingsServerUrlInput"'), 'popup.html must have #settingsServerUrlInput in settings');
+    assert.ok(popupHtml.includes('id="saveServerUrlBtn"'), 'popup.html must have #saveServerUrlBtn');
+    assert.ok(popupHtml.includes('id="settings-tab"') || popupHtml.includes('class="server-settings-card"'), 'popup.html must have settings-tab or server-settings-card');
+    assert.ok(popupHtml.includes('id="saveServerUrlMsg"'), 'popup.html must have feedback message container #saveServerUrlMsg');
+
+    console.log('✔ Passed: popup.html contains all required server URL elements, quick pills, and settings controls');
+
+    // 7. Testing popup/popup.css Styling
+    console.log('\n--- 7. Testing popup/popup.css Styles for Server URL ---');
+    const popupCssPath = path.resolve(__dirname, '../popup/popup.css');
+    const popupCss = fs.readFileSync(popupCssPath, 'utf8');
+
+    assert.ok(popupCss.includes('.server-url-group'), 'popup.css must style .server-url-group');
+    assert.ok(popupCss.includes('.quick-url-pills'), 'popup.css must style .quick-url-pills');
+    assert.ok(popupCss.includes('.quick-url-pill'), 'popup.css must style .quick-url-pill');
+    assert.ok(popupCss.includes('.quick-url-pill.active'), 'popup.css must style .quick-url-pill.active');
+    assert.ok(popupCss.includes('.token-help-link'), 'popup.css must style .token-help-link');
+
+    console.log('✔ Passed: popup.css contains styling rules for server URL groups, pills, and dynamic token link');
+
+    // 8. Testing popup/popup.js Logic & Helpers
+    console.log('\n--- 8. Testing popup/popup.js Helpers & Logic ---');
+    const popupModule = require('../popup/popup.js');
+
+    assert.strictEqual(typeof popupModule.updateTokenHelpLink, 'function', 'popup.js must export updateTokenHelpLink');
+    assert.strictEqual(typeof popupModule.handleSaveServerUrl, 'function', 'popup.js must export handleSaveServerUrl');
+    assert.strictEqual(typeof popupModule.fetchUserProfile, 'function', 'popup.js must export fetchUserProfile');
+
+    // 8.1 Testing updateTokenHelpLink with mock document
+    {
+        class MockClassList {
+            constructor() { this.classes = new Set(); }
+            add(c) { this.classes.add(c); }
+            remove(c) { this.classes.delete(c); }
+            contains(c) { return this.classes.has(c); }
+        }
+
+        const pill1 = {
+            getAttribute: (attr) => attr === 'data-url' ? 'https://gitlab.com' : null,
+            classList: new MockClassList()
+        };
+        const pill2 = {
+            getAttribute: (attr) => attr === 'data-url' ? 'https://gitlab.widosoft.com' : null,
+            classList: new MockClassList()
+        };
+
+        const mockLink = {
+            href: '',
+            setAttribute(k, v) { this[k] = v; }
+        };
+
+        const mockDoc = {
+            elements: {
+                tokenHelpLink: mockLink
+            },
+            getElementById(id) { return this.elements[id] || null; },
+            querySelectorAll(sel) {
+                if (sel === '.quick-url-pill') return [pill1, pill2];
+                return [];
+            }
+        };
+
+        // When server is gitlab.com
+        popupModule.updateTokenHelpLink('https://gitlab.com', mockDoc);
+        assert.strictEqual(mockLink.href, 'https://gitlab.com/-/user_settings/personal_access_tokens');
+        assert.ok(pill1.classList.contains('active'), 'pill1 should be active for gitlab.com');
+        assert.ok(!pill2.classList.contains('active'), 'pill2 should not be active for gitlab.com');
+
+        // When server is gitlab.widosoft.com
+        popupModule.updateTokenHelpLink('gitlab.widosoft.com', mockDoc);
+        assert.strictEqual(mockLink.href, 'https://gitlab.widosoft.com/-/user_settings/personal_access_tokens');
+        assert.ok(!pill1.classList.contains('active'), 'pill1 should not be active for widosoft');
+        assert.ok(pill2.classList.contains('active'), 'pill2 should be active for widosoft');
+
+        // When server is a custom third-party domain
+        popupModule.updateTokenHelpLink('https://gitlab.customcorp.vn/subpath', mockDoc);
+        assert.strictEqual(mockLink.href, 'https://gitlab.customcorp.vn/-/user_settings/personal_access_tokens');
+        assert.ok(!pill1.classList.contains('active'), 'neither pill should be active');
+        assert.ok(!pill2.classList.contains('active'), 'neither pill should be active');
+
+        console.log('✔ Passed: updateTokenHelpLink correctly updates link href and active pill state');
+    }
+
+    // 8.2 Testing handleSaveServerUrl
+    {
+        let stored = {};
+        const mockStorage = {
+            set: async (obj) => { Object.assign(stored, obj); }
+        };
+
+        const savedUrl = await popupModule.handleSaveServerUrl('gitlab.mycorp.io:8080/deep/path', mockStorage);
+        assert.strictEqual(savedUrl, 'https://gitlab.mycorp.io:8080', 'should sanitize and return origin with port');
+        assert.strictEqual(stored.gitlabServerUrl, 'https://gitlab.mycorp.io:8080', 'should persist sanitized url in storage');
+
+        // Test fallback on empty input
+        const fallbackUrl = await popupModule.handleSaveServerUrl('', mockStorage);
+        assert.strictEqual(fallbackUrl, 'https://gitlab.com', 'empty should fallback to gitlab.com');
+        assert.strictEqual(stored.gitlabServerUrl, 'https://gitlab.com');
+
+        console.log('✔ Passed: handleSaveServerUrl normalizes and stores server URL');
+    }
+
+    // 8.3 Testing fetchUserProfile with custom serverUrl and mock fetch
+    {
+        const calls = [];
+        const mockFetchSuccess = async (url, opts) => {
+            calls.push({ url, opts });
+            return {
+                ok: true,
+                json: async () => ({ id: 42, username: 'testuser', avatar_url: 'https://avatar.png' })
+            };
+        };
+
+        const user = await popupModule.fetchUserProfile('my-token-123', 'gitlab.custom.lan:9090', mockFetchSuccess);
+        assert.ok(user, 'should return user profile');
+        assert.strictEqual(user.username, 'testuser');
+        assert.strictEqual(calls.length, 1);
+        assert.strictEqual(calls[0].url, 'https://gitlab.custom.lan:9090/api/v4/user');
+        assert.strictEqual(calls[0].opts.headers['PRIVATE-TOKEN'], 'my-token-123');
+
+        // Test 401 Unauthorized
+        const mockFetch401 = async (url, opts) => ({
+            ok: false,
+            status: 401,
+            json: async () => ({ message: '401 Unauthorized' })
+        });
+        const unauthorizedUser = await popupModule.fetchUserProfile('bad-token', 'https://gitlab.com', mockFetch401);
+        assert.strictEqual(unauthorizedUser, null, '401 response should return null');
+
+        console.log('✔ Passed: fetchUserProfile targets dynamic server URL and handles authorization responses');
+    }
+
+    console.log('\n🎉 ALL TASK 2 TESTS PASSED! 🎉\n');
 })().catch(err => {
     console.error('Test Suite Failed:', err);
     process.exit(1);
 });
+

@@ -109,6 +109,104 @@ body {
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
+/* Server URL Group on Login Screen */
+.server-url-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+    text-align: left;
+}
+
+.server-url-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.server-url-group input {
+    margin-bottom: 6px;
+}
+
+.quick-url-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 2px;
+}
+
+.quick-url-pill {
+    background: var(--bg-sub);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    font-family: inherit;
+}
+
+.quick-url-pill:hover {
+    color: var(--primary);
+    border-color: var(--primary);
+    background: #eef2ff;
+}
+
+.quick-url-pill.active {
+    background: #e0e7ff;
+    color: var(--primary);
+    border-color: var(--primary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(99, 102, 241, 0.12);
+}
+
+/* Dynamic Token Help Link */
+.token-help-container {
+    text-align: right;
+    margin-top: -8px;
+    margin-bottom: 14px;
+}
+
+.token-help-link {
+    font-size: 0.75rem;
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.token-help-link:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+/* Settings Tab Server URL Row */
+.server-settings-card {
+    padding: 14px;
+}
+
+.server-url-setting-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 6px;
+}
+
+.server-url-setting-row input {
+    flex: 1;
+}
+
+.server-url-setting-row button {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 /* User Screen Header */
 .user-header {
     margin-bottom: 20px;

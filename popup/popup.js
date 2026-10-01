@@ -164,6 +164,113 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
     }
 }
 
+let _utils = {};
+if (typeof require === 'function') {
+    try {
+        _utils = require('../utils.js');
+    } catch (e) {
+        _utils = {};
+    }
+}
+
+function _resolveSanitizeUrl() {
+    if (typeof sanitizeGitlabUrl === 'function') return sanitizeGitlabUrl;
+    if (typeof window !== 'undefined' && typeof window.sanitizeGitlabUrl === 'function') return window.sanitizeGitlabUrl;
+    if (_utils && typeof _utils.sanitizeGitlabUrl === 'function') return _utils.sanitizeGitlabUrl;
+    return (u, def = 'https://gitlab.com') => (u && typeof u === 'string' && u.trim()) ? u.trim() : def;
+}
+
+function _resolveGetTokenGenUrl() {
+    if (typeof getTokenGenerationUrl === 'function') return getTokenGenerationUrl;
+    if (typeof window !== 'undefined' && typeof window.getTokenGenerationUrl === 'function') return window.getTokenGenerationUrl;
+    if (_utils && typeof _utils.getTokenGenerationUrl === 'function') return _utils.getTokenGenerationUrl;
+    const sFn = _resolveSanitizeUrl();
+    return (u) => `${sFn(u)}/-/user_settings/personal_access_tokens`;
+}
+
+function _resolveGetServerUrl() {
+    if (typeof getGitlabServerUrl === 'function') return getGitlabServerUrl;
+    if (typeof window !== 'undefined' && typeof window.getGitlabServerUrl === 'function') return window.getGitlabServerUrl;
+    if (_utils && typeof _utils.getGitlabServerUrl === 'function') return _utils.getGitlabServerUrl;
+    return async () => 'https://gitlab.com';
+}
+
+function updateTokenHelpLink(serverUrl, doc = (typeof document !== 'undefined' ? document : null)) {
+    if (!doc) return;
+    const sanitize = _resolveSanitizeUrl();
+    const getTokenGen = _resolveGetTokenGenUrl();
+    const sanitized = sanitize(serverUrl);
+    const tokenHelpLink = doc.getElementById('tokenHelpLink');
+    if (tokenHelpLink) {
+        const genUrl = getTokenGen(sanitized);
+        tokenHelpLink.href = genUrl;
+        if (typeof tokenHelpLink.setAttribute === 'function') {
+            tokenHelpLink.setAttribute('href', genUrl);
+        }
+    }
+    const pills = doc.querySelectorAll ? doc.querySelectorAll('.quick-url-pill') : [];
+    if (pills && pills.length) {
+        pills.forEach(pill => {
+            const pillUrl = pill.getAttribute ? pill.getAttribute('data-url') : '';
+            if (pillUrl === sanitized) {
+                if (pill.classList && pill.classList.add) pill.classList.add('active');
+            } else {
+                if (pill.classList && pill.classList.remove) pill.classList.remove('active');
+            }
+        });
+    }
+}
+
+async function handleSaveServerUrl(rawUrl, storageArea = null) {
+    const sanitize = _resolveSanitizeUrl();
+    const sanitized = sanitize(rawUrl);
+    const targetStorage = storageArea || (typeof chrome !== 'undefined' && chrome.storage ? chrome.storage.local : null);
+    if (targetStorage && typeof targetStorage.set === 'function') {
+        const res = targetStorage.set({ gitlabServerUrl: sanitized });
+        if (res && typeof res.then === 'function') {
+            await res;
+        }
+    }
+    return sanitized;
+}
+
+async function saveUserProfile(userProfile) {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.set({ ['UserProfile']: userProfile });
+    }
+}
+
+async function addAccessToken(accessToken) {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.set({ ['AccessToken']: accessToken });
+    }
+}
+
+async function fetchUserProfile(token, serverUrl = 'https://gitlab.com', fetchFn = (typeof fetch !== 'undefined' ? fetch : null)) {
+    if (!token) return null;
+    const sanitize = _resolveSanitizeUrl();
+    const baseUrl = sanitize(serverUrl);
+    const doFetch = fetchFn || (typeof fetch !== 'undefined' ? fetch : null);
+    if (!doFetch) return null;
+
+    try {
+        const res = await doFetch(`${baseUrl}/api/v4/user`, {
+            headers: { 'PRIVATE-TOKEN': token }
+        });
+        if (!res || !res.ok) {
+            return null;
+        }
+        const response = await res.json();
+        if (response && (response.message === '401 Unauthorized' || response.error)) {
+            return null;
+        }
+        await saveUserProfile(response);
+        return response;
+    } catch (e) {
+        return null;
+    }
+}
+
 (async () => {
     if (typeof document === 'undefined') {
         return;
@@ -256,6 +363,69 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
         });
     }
 
+    // Khởi tạo Server URL và các liên kết
+    const getServerUrlFn = _resolveGetServerUrl();
+    const currentServerUrl = await getServerUrlFn();
+
+    const loginServerUrlInput = document.getElementById('gitlabServerUrlInput');
+    if (loginServerUrlInput) {
+        loginServerUrlInput.value = currentServerUrl;
+        loginServerUrlInput.addEventListener('input', (e) => {
+            updateTokenHelpLink(e.target.value, document);
+        });
+        loginServerUrlInput.addEventListener('change', (e) => {
+            updateTokenHelpLink(e.target.value, document);
+        });
+    }
+
+    document.querySelectorAll('.quick-url-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+            const pillUrl = pill.getAttribute('data-url');
+            if (pillUrl && loginServerUrlInput) {
+                loginServerUrlInput.value = pillUrl;
+                updateTokenHelpLink(pillUrl, document);
+            }
+        });
+    });
+
+    updateTokenHelpLink(currentServerUrl, document);
+
+    // Cài đặt Server URL trong tab settings
+    function initServerUrlSettings(initialUrl) {
+        const settingsInput = document.getElementById('settingsServerUrlInput');
+        const saveBtn = document.getElementById('saveServerUrlBtn');
+        const saveMsg = document.getElementById('saveServerUrlMsg');
+
+        if (settingsInput) {
+            settingsInput.value = initialUrl;
+        }
+
+        if (saveBtn && !saveBtn._hasServerUrlListener) {
+            saveBtn._hasServerUrlListener = true;
+            saveBtn.addEventListener('click', async () => {
+                const rawVal = settingsInput ? settingsInput.value : '';
+                const sanitized = await handleSaveServerUrl(rawVal);
+                if (settingsInput) {
+                    settingsInput.value = sanitized;
+                }
+                if (loginServerUrlInput) {
+                    loginServerUrlInput.value = sanitized;
+                }
+                updateTokenHelpLink(sanitized, document);
+
+                if (saveMsg) {
+                    const curL = (typeof getLanguage === 'function') ? getLanguage() : 'vi';
+                    saveMsg.textContent = (typeof t === 'function') ? t('serverUrlSaved', null, curL) : '✔ Đã lưu GitLab Server URL thành công';
+                    saveMsg.style.display = 'block';
+                    setTimeout(() => {
+                        saveMsg.style.display = 'none';
+                    }, 2500);
+                }
+            });
+        }
+    }
+    initServerUrlSettings(currentServerUrl);
+
     if (typeof getUserProfile !== 'function' || typeof document === 'undefined') {
         return;
     }
@@ -268,22 +438,28 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
     }
 
     document.getElementById("login-btn").addEventListener("click", async () => {
-        const token = document.getElementById("token").value;
+        const tokenInput = document.getElementById("token");
+        const token = tokenInput ? tokenInput.value.trim() : '';
+        const urlInput = document.getElementById("gitlabServerUrlInput");
+        const rawServerUrl = urlInput ? urlInput.value : '';
+        const sanitize = _resolveSanitizeUrl();
+        const serverUrl = sanitize(rawServerUrl);
 
         if (!token) {
             alert(typeof t === 'function' ? t('tokenRequired') : "Vui lòng nhập token");
             return;
         }
 
-        // Giả lập gọi API lấy thông tin user từ token
-        await fetchUserProfile(token).then(user => {
-            if (user) {
-                renderUserProfile(user);
-            } else {
-                alert(typeof t === 'function' ? t('connectFailed') : "Token không hợp lệ!");
+        const user = await fetchUserProfile(token, serverUrl);
+        if (user) {
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                await chrome.storage.local.set({ gitlabServerUrl: serverUrl });
             }
-        });
-        await addAccessToken(token);
+            await addAccessToken(token);
+            renderUserProfile(user);
+        } else {
+            alert(typeof t === 'function' ? t('connectFailed') : "Token không hợp lệ!");
+        }
     });
 
     document.getElementById("logout-btn").addEventListener("click", () => {
@@ -316,7 +492,10 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
         };
 
         const gitlabUsername = user?.username || '';
-        const gitlabBaseUrl = 'https://gitlab.widosoft.com';
+        const getServerUrlFn = _resolveGetServerUrl();
+        const serverUrl = await getServerUrlFn();
+        const gitlabBaseUrl = serverUrl || 'https://gitlab.com';
+        initServerUrlSettings(gitlabBaseUrl);
 
         const quickIssuesBtn = document.getElementById("quickIssuesBtn");
         const quickMRsBtn = document.getElementById("quickMRsBtn");
@@ -714,28 +893,6 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
         }
     }
 
-    async function fetchUserProfile(token) {
-        const res = await fetch(`https://gitlab.widosoft.com/api/v4/user`, { headers: { 'PRIVATE-TOKEN': token } });
-        const response = await res.json();
-
-        if (response.message == '401 Unauthorized') {
-            return null;
-        }
-
-        await saveUserProfile(response);
-        return response;
-    }
-
-
-    async function saveUserProfile(userProfile) {
-        await chrome.storage.local.set({ ['UserProfile']: userProfile });
-    }
-
-
-    async function addAccessToken(accessToken) {
-        await chrome.storage.local.set({ ['AccessToken']: accessToken });
-    }
-
     chrome.storage.local.getBytesInUse(null, (bytesInUse) => {
         const usedKB = (bytesInUse / 1024).toFixed(2);
         const maxKB = (chrome.storage.local.QUOTA_BYTES / 1024).toFixed(0);
@@ -751,6 +908,9 @@ function renderUnaddedKpiBanner(tasks, doc = (typeof document !== 'undefined' ? 
 if (typeof window !== 'undefined') {
     window.batchAddTasksToWorkItemIds = batchAddTasksToWorkItemIds;
     window.renderUnaddedKpiBanner = renderUnaddedKpiBanner;
+    window.updateTokenHelpLink = updateTokenHelpLink;
+    window.handleSaveServerUrl = handleSaveServerUrl;
+    window.fetchUserProfile = fetchUserProfile;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -760,7 +920,10 @@ if (typeof module !== 'undefined' && module.exports) {
         openTodoWindow,
         openTodoTab,
         batchAddTasksToWorkItemIds,
-        renderUnaddedKpiBanner
+        renderUnaddedKpiBanner,
+        updateTokenHelpLink,
+        handleSaveServerUrl,
+        fetchUserProfile
     };
 }
 
