@@ -225,6 +225,15 @@ check('Security: No external CDN or remote script references in popup/popup.html
     });
 });
 
+const tutorialHtmlPath = path.resolve(ROOT_DIR, 'tutorial/tutorial.html');
+
+check('tutorial/tutorial.html exists and has zero remote fonts or scripts', () => {
+    assert(fs.existsSync(tutorialHtmlPath), 'tutorial/tutorial.html must exist');
+    const tutorialContent = fs.readFileSync(tutorialHtmlPath, 'utf8');
+    assert(!tutorialContent.includes('fonts.googleapis.com'), 'Must not contain remote google fonts');
+    assert(!tutorialContent.includes('http://') && !tutorialContent.includes('https://fonts.'), 'Must not contain remote font stylesheets');
+});
+
 check('DOM Containers and Warning Banner elements exist in popup/popup.html', () => {
     const requiredIds = [
         'unaddedKpiBanner',
@@ -314,6 +323,14 @@ check('Manifest V3 validity & security configuration in manifest.json', () => {
 
     assert.strictEqual(manifestJson.manifest_version, 3, 'Must be Manifest V3');
     assert.strictEqual(manifestJson.background?.service_worker, 'background.js', 'Service worker must be background.js');
+
+    // Principle of Least Privilege: zero tabs permission and scoped host permissions
+    assert.ok(!manifestJson.permissions?.includes('tabs'), 'Must NOT request tabs permission');
+    assert.ok(!manifestJson.host_permissions?.includes('<all_urls>'), 'Must NOT request broad <all_urls>');
+    assert.ok(manifestJson.host_permissions?.includes('*://gitlab.com/*'), 'Must include *://gitlab.com/* in host_permissions');
+    assert.ok(manifestJson.host_permissions?.includes('*://gitlab.widosoft.com/*'), 'Must include *://gitlab.widosoft.com/* in host_permissions');
+    assert.ok(Array.isArray(manifestJson.optional_host_permissions), 'Must have optional_host_permissions');
+    assert.ok(manifestJson.optional_host_permissions.includes('https://*/*'), 'Must have https://*/* in optional_host_permissions');
 
     // Verify background worker file
     assert(fs.existsSync(path.resolve(ROOT_DIR, manifestJson.background.service_worker)), 'background.js file must exist');

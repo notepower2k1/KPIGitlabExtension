@@ -221,9 +221,33 @@ function updateTokenHelpLink(serverUrl, doc = (typeof document !== 'undefined' ?
     }
 }
 
+async function requestHostPermissionIfNeeded(serverUrl) {
+    if (typeof chrome === 'undefined' || !chrome.permissions || typeof chrome.permissions.request !== 'function') {
+        return true;
+    }
+    try {
+        const sanitize = _resolveSanitizeUrl();
+        const origin = sanitize(serverUrl);
+        if (origin === 'https://gitlab.com' || origin === 'https://gitlab.widosoft.com') {
+            return true;
+        }
+        const matchPattern = `${origin}/*`;
+        if (typeof chrome.permissions.contains === 'function') {
+            const hasPerm = await chrome.permissions.contains({ origins: [matchPattern] });
+            if (hasPerm) return true;
+        }
+        const granted = await chrome.permissions.request({ origins: [matchPattern] });
+        return !!granted;
+    } catch (e) {
+        console.warn('Host permission request failed or rejected:', e);
+        return false;
+    }
+}
+
 async function handleSaveServerUrl(rawUrl, storageArea = null) {
     const sanitize = _resolveSanitizeUrl();
     const sanitized = sanitize(rawUrl);
+    await requestHostPermissionIfNeeded(sanitized);
     const targetStorage = storageArea || (typeof chrome !== 'undefined' && chrome.storage ? chrome.storage.local : null);
     if (targetStorage && typeof targetStorage.set === 'function') {
         const res = targetStorage.set({ gitlabServerUrl: sanitized });
@@ -447,6 +471,13 @@ async function fetchUserProfile(token, serverUrl = 'https://gitlab.com', fetchFn
 
         if (!token) {
             alert(typeof t === 'function' ? t('tokenRequired') : "Vui lòng nhập token");
+            return;
+        }
+
+        const permOk = await requestHostPermissionIfNeeded(serverUrl);
+        if (!permOk) {
+            const curL = (typeof getLanguage === 'function') ? getLanguage() : 'vi';
+            alert(typeof t === 'function' ? t('hostPermissionRequired', null, curL) : "Cần cấp quyền truy cập vào máy chủ GitLab này để tiếp tục!");
             return;
         }
 
@@ -917,6 +948,7 @@ if (typeof window !== 'undefined') {
     window.updateTokenHelpLink = updateTokenHelpLink;
     window.handleSaveServerUrl = handleSaveServerUrl;
     window.fetchUserProfile = fetchUserProfile;
+    window.requestHostPermissionIfNeeded = requestHostPermissionIfNeeded;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -929,7 +961,8 @@ if (typeof module !== 'undefined' && module.exports) {
         renderUnaddedKpiBanner,
         updateTokenHelpLink,
         handleSaveServerUrl,
-        fetchUserProfile
+        fetchUserProfile,
+        requestHostPermissionIfNeeded
     };
 }
 

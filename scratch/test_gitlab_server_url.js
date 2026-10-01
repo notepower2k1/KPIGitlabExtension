@@ -539,7 +539,50 @@ const { getGitlabServerUrl } = utils;
     );
     console.log('✔ Passed: popup.js dynamically evaluates gitlabServerUrl on quick link clicks');
 
-    console.log('\n🎉 ALL TASK 3 TESTS PASSED! 🎉\n');
+    // 14. Testing Least Privilege Permissions, CSP & requestHostPermissionIfNeeded
+    console.log('\n--- 14. Testing Least Privilege Permissions, CSP & requestHostPermissionIfNeeded ---');
+    {
+        assert.ok(!manifest.permissions.includes('tabs'), 'manifest.json must NOT declare "tabs" permission (Principle of Least Privilege)');
+        assert.ok(!manifest.host_permissions.includes('<all_urls>'), 'manifest.json must NOT declare broad <all_urls>');
+        assert.ok(manifest.host_permissions.includes('*://gitlab.com/*'), 'manifest.json must include *://gitlab.com/* in host_permissions');
+        assert.ok(manifest.host_permissions.includes('*://gitlab.widosoft.com/*'), 'manifest.json must include *://gitlab.widosoft.com/* in host_permissions');
+        assert.ok(Array.isArray(manifest.optional_host_permissions), 'manifest.json must have optional_host_permissions');
+        assert.ok(manifest.optional_host_permissions.includes('https://*/*'), 'optional_host_permissions must include https://*/*');
+
+        // Test tutorial.html has zero external links/fonts
+        const tutorialHtmlPath = path.resolve(__dirname, '../tutorial/tutorial.html');
+        const tutorialHtml = fs.readFileSync(tutorialHtmlPath, 'utf8');
+        assert.ok(!tutorialHtml.includes('fonts.googleapis.com'), 'tutorial.html must not load remote google fonts');
+
+        // Test requestHostPermissionIfNeeded
+        const popupMod = require('../popup/popup.js');
+        assert.strictEqual(typeof popupMod.requestHostPermissionIfNeeded, 'function', 'requestHostPermissionIfNeeded must be a function');
+
+        // Test 14.1 Known hosts need no runtime prompt
+        const resGitlabCom = await popupMod.requestHostPermissionIfNeeded('https://gitlab.com');
+        assert.strictEqual(resGitlabCom, true, 'gitlab.com should not trigger prompt');
+
+        const resWidosoft = await popupMod.requestHostPermissionIfNeeded('https://gitlab.widosoft.com');
+        assert.strictEqual(resWidosoft, true, 'gitlab.widosoft.com should not trigger prompt');
+
+        // Test 14.2 Custom host triggers runtime request
+        let requestedOrigins = [];
+        global.chrome.permissions = {
+            contains: async (query) => false,
+            request: async (query) => {
+                requestedOrigins.push(...query.origins);
+                return true;
+            }
+        };
+
+        const resCustom = await popupMod.requestHostPermissionIfNeeded('https://git.internal-corp.vn/sub');
+        assert.strictEqual(resCustom, true);
+        assert.deepStrictEqual(requestedOrigins, ['https://git.internal-corp.vn/*']);
+
+        console.log('✔ Passed: Least privilege permissions, strict CSP and runtime permission requests verified');
+    }
+
+    console.log('\n🎉 ALL TASK TESTS PASSED! 🎉\n');
 })().catch(err => {
     console.error('Test Suite Failed:', err);
     process.exit(1);
