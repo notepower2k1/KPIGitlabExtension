@@ -385,38 +385,50 @@ const { getGitlabServerUrl } = utils;
         }
     };
 
-    // 9.1 Static domain: gitlab.com -> should unregister dynamic script and not register
+    // 9.1 Static domain: gitlab.com -> should unregister dynamic scripts and not register
     registeredScripts = [];
     unregisteredIds = [];
     const staticResult1 = await bg.syncDynamicContentScript('https://gitlab.com');
     assert.strictEqual(staticResult1, true);
     assert.ok(unregisteredIds.includes('custom-gitlab-scripts'), 'Must unregister custom-gitlab-scripts for gitlab.com');
+    assert.ok(unregisteredIds.includes('custom-gitlab-mr-scripts'), 'Must unregister custom-gitlab-mr-scripts for gitlab.com');
     assert.strictEqual(registeredScripts.length, 0, 'Must not register dynamic scripts for static gitlab.com');
 
-    // 9.2 Static domain: gitlab.widosoft.com -> should unregister dynamic script and not register
+    // 9.2 Static domain: gitlab.widosoft.com -> should unregister dynamic scripts and not register
     registeredScripts = [];
     unregisteredIds = [];
     const staticResult2 = await bg.syncDynamicContentScript('https://gitlab.widosoft.com');
     assert.strictEqual(staticResult2, true);
     assert.ok(unregisteredIds.includes('custom-gitlab-scripts'), 'Must unregister custom-gitlab-scripts for gitlab.widosoft.com');
+    assert.ok(unregisteredIds.includes('custom-gitlab-mr-scripts'), 'Must unregister custom-gitlab-mr-scripts for gitlab.widosoft.com');
     assert.strictEqual(registeredScripts.length, 0, 'Must not register dynamic scripts for static gitlab.widosoft.com');
 
-    // 9.3 Custom domain: gitlab.acme.corp -> should unregister previous and register custom-gitlab-scripts
+    // 9.3 Custom domain: gitlab.acme.corp -> should unregister previous and register both custom scripts
     registeredScripts = [];
     unregisteredIds = [];
     const customResult = await bg.syncDynamicContentScript('https://gitlab.acme.corp/deep/subpath');
     assert.strictEqual(customResult, true);
-    assert.ok(unregisteredIds.includes('custom-gitlab-scripts'), 'Must unregister previous script before registering new');
-    assert.strictEqual(registeredScripts.length, 1, 'Must register exactly 1 dynamic content script config');
-    assert.strictEqual(registeredScripts[0].id, 'custom-gitlab-scripts');
-    assert.deepStrictEqual(registeredScripts[0].matches, [
+    assert.ok(unregisteredIds.includes('custom-gitlab-scripts'), 'Must unregister custom-gitlab-scripts before registering new');
+    assert.ok(unregisteredIds.includes('custom-gitlab-mr-scripts'), 'Must unregister custom-gitlab-mr-scripts before registering new');
+    assert.strictEqual(registeredScripts.length, 2, 'Must register 2 dynamic content script configs (issues & MRs)');
+    
+    const issueConfig = registeredScripts.find(s => s.id === 'custom-gitlab-scripts');
+    assert.ok(issueConfig, 'Must have custom-gitlab-scripts registered');
+    assert.deepStrictEqual(issueConfig.matches, [
         'https://gitlab.acme.corp/*/-/issues/*',
-        'https://gitlab.acme.corp/*/-/work_items/*',
+        'https://gitlab.acme.corp/*/-/work_items/*'
+    ]);
+    assert.deepStrictEqual(issueConfig.js, ['utils.js', 'i18n.js', 'content_issue.js']);
+    assert.strictEqual(issueConfig.runAt, 'document_idle');
+
+    const mrConfig = registeredScripts.find(s => s.id === 'custom-gitlab-mr-scripts');
+    assert.ok(mrConfig, 'Must have custom-gitlab-mr-scripts registered');
+    assert.deepStrictEqual(mrConfig.matches, [
         'https://gitlab.acme.corp/*/-/merge_requests/*'
     ]);
-    assert.deepStrictEqual(registeredScripts[0].js, ['utils.js', 'i18n.js', 'content_issue.js']);
-    assert.strictEqual(registeredScripts[0].runAt, 'document_idle');
-    console.log('✔ Passed: syncDynamicContentScript registers custom domains and cleans static domains');
+    assert.deepStrictEqual(mrConfig.js, ['utils.js', 'content_request.js']);
+    assert.strictEqual(mrConfig.runAt, 'document_idle');
+    console.log('✔ Passed: syncDynamicContentScript registers custom domains (issues + MRs) and cleans static domains');
 
     // 10. Testing manifest.json Metadata & Content Script Matches
     console.log('\n--- 10. Testing manifest.json Metadata & Content Scripts ---');
@@ -501,11 +513,20 @@ const { getGitlabServerUrl } = utils;
     assert.ok(!pageJsContent.includes('https://gitlab.widosoft.com'), 'page/page.js must have zero hardcoded https://gitlab.widosoft.com');
     assert.ok(pageJsContent.includes('${gitlabServerUrl}/api/graphql') || pageJsContent.includes('`${gitlabServerUrl}/api/graphql`'), 'page/page.js must use dynamic gitlabServerUrl for GraphQL');
 
+    // Test group extraction regex on various domains
+    const groupRegex = /https?:\/\/[^\/]+\/[^\/]+\/([^\/]+)\//;
+    const testTaskUrl1 = 'https://gitlab.com/company/team-project/-/work_items/456';
+    const testTaskUrl2 = 'https://gitlab.my-corp.net:8443/enterprise/core-repo/-/issues/789';
+    const testTaskUrl3 = 'https://gitlab.widosoft.com/agency/mobile-app/-/merge_requests/12';
+    assert.strictEqual((testTaskUrl1.match(groupRegex) || [])[1], 'team-project');
+    assert.strictEqual((testTaskUrl2.match(groupRegex) || [])[1], 'core-repo');
+    assert.strictEqual((testTaskUrl3.match(groupRegex) || [])[1], 'mobile-app');
+
     const contentIssuePath = path.resolve(__dirname, '../content_issue.js');
     const contentIssueContent = fs.readFileSync(contentIssuePath, 'utf8');
     assert.ok(!contentIssueContent.includes('https://gitlab.widosoft.com/api/graphql'), 'content_issue.js must have zero hardcoded widosoft GraphQL fallback');
 
-    console.log('✔ Passed: Zero hardcoded gitlab.widosoft.com in page.js and content_issue.js');
+    console.log('✔ Passed: Zero hardcoded gitlab.widosoft.com in page.js and content_issue.js, and group regex works across all hosts');
 
     // 13. Testing dynamic evaluation of gitlabServerUrl in popup.js quick action buttons
     console.log('\n--- 13. Testing dynamic gitlabServerUrl in popup quick buttons ---');

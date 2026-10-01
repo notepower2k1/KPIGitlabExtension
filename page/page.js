@@ -877,7 +877,7 @@ if (typeof document !== 'undefined') {
         const allItems = [];
         (storedTasks || []).forEach(task => {
             const { id, href, createAt, parentTitle, parentUrl, parentIid, taskTitle } = task;
-            const match = href.match(/gitlab\.widosoft\.com\/[^\/]+\/([^\/]+)\//);
+            const match = href.match(/https?:\/\/[^\/]+\/[^\/]+\/([^\/]+)\//);
             const groupName = match ? match[1] : 'Khác';
             allItems.push({
                 id,
@@ -890,7 +890,7 @@ if (typeof document !== 'undefined') {
         });
         (storedMRs || []).forEach(mr => {
             const { id, href, createAt, parentTitle, parentUrl, title } = mr;
-            const match = href.match(/gitlab\.widosoft\.com\/[^\/]+\/([^\/]+)\//);
+            const match = href.match(/https?:\/\/[^\/]+\/[^\/]+\/([^\/]+)\//);
             const groupName = match ? match[1] : 'Khác';
             allItems.push({
                 id,

@@ -244,10 +244,10 @@ async function syncDynamicContentScript(serverUrl) {
     }
     const sanitized = _sanitizeGitlabUrl ? _sanitizeGitlabUrl(targetUrl || 'https://gitlab.com') : (targetUrl || 'https://gitlab.com');
 
-    // Unregister existing custom dynamic script first to avoid duplication
+    // Unregister existing custom dynamic scripts first to avoid duplication
     try {
         if (typeof chrome.scripting.unregisterContentScripts === 'function') {
-            await chrome.scripting.unregisterContentScripts({ ids: ['custom-gitlab-scripts'] });
+            await chrome.scripting.unregisterContentScripts({ ids: ['custom-gitlab-scripts', 'custom-gitlab-mr-scripts'] });
         }
     } catch (e) {
         // Ignored if not previously registered
@@ -270,10 +270,17 @@ async function syncDynamicContentScript(serverUrl) {
                     id: 'custom-gitlab-scripts',
                     matches: [
                         `${origin}/*/-/issues/*`,
-                        `${origin}/*/-/work_items/*`,
-                        `${origin}/*/-/merge_requests/*`
+                        `${origin}/*/-/work_items/*`
                     ],
                     js: ['utils.js', 'i18n.js', 'content_issue.js'],
+                    runAt: 'document_idle'
+                },
+                {
+                    id: 'custom-gitlab-mr-scripts',
+                    matches: [
+                        `${origin}/*/-/merge_requests/*`
+                    ],
+                    js: ['utils.js', 'content_request.js'],
                     runAt: 'document_idle'
                 }
             ]);
