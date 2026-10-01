@@ -172,9 +172,19 @@ function getMonday(d) {
     return date;
 }
 
-function getCurrentWeekRange() {
-    const today = new Date();
-    const monday = getMonday(today);
+function getCurrentWeekRange(now = new Date(), lang = null) {
+    let targetDate = now;
+    let targetLang = lang;
+    if (typeof now === 'string' && (now === 'vi' || now === 'en')) {
+        targetLang = now;
+        targetDate = new Date();
+    } else if (!targetDate) {
+        targetDate = new Date();
+    }
+    const activeLang = targetLang || ((typeof getLanguage === 'function') ? getLanguage() : 'vi');
+    const isEn = activeLang === 'en';
+
+    const monday = getMonday(targetDate);
     const sunday = new Date(monday);
     sunday.setDate(sunday.getDate() + 6);
 
@@ -183,22 +193,26 @@ function getCurrentWeekRange() {
     const startDisplay = `${String(monday.getDate()).padStart(2, '0')}/${String(monday.getMonth() + 1).padStart(2, '0')}`;
     const endDisplay = `${String(sunday.getDate()).padStart(2, '0')}/${String(sunday.getMonth() + 1).padStart(2, '0')}`;
 
+    const curWeekLabel = isEn ? '⭐ Current week' : '⭐ Tuần hiện tại';
+
     return {
         start,
         end,
         startDisplay,
         endDisplay,
-        label: `⭐ Tuần hiện tại (${startDisplay} - ${endDisplay})`
+        label: `${curWeekLabel} (${startDisplay} - ${endDisplay})`
     };
 }
 
-function getWeeksOfMonth(year, month) {
+function getWeeksOfMonth(year, month, lang = null) {
+    const activeLang = lang || ((typeof getLanguage === 'function') ? getLanguage() : 'vi');
+    const isEn = activeLang === 'en';
     const weeks = [];
     const firstDay = new Date(year, month - 1, 1);
     const lastDay = new Date(year, month, 0);
 
     let currentMonday = getMonday(firstDay);
-    const currentWeekRange = getCurrentWeekRange();
+    const currentWeekRange = getCurrentWeekRange(new Date(), activeLang);
 
     let weekNum = 1;
     while (currentMonday <= lastDay) {
@@ -212,7 +226,9 @@ function getWeeksOfMonth(year, month) {
         const endDisplay = `${String(sunday.getDate()).padStart(2, '0')}/${String(sunday.getMonth() + 1).padStart(2, '0')}`;
 
         const isCurrent = (start === currentWeekRange.start && end === currentWeekRange.end);
-        const label = `Tuần ${weekNum} (${startDisplay} - ${endDisplay})${isCurrent ? ' (Tuần này)' : ''}`;
+        const weekPrefix = isEn ? 'Week' : 'Tuần';
+        const thisWeekText = isEn ? ' (This week)' : ' (Tuần này)';
+        const label = `${weekPrefix} ${weekNum} (${startDisplay} - ${endDisplay})${isCurrent ? thisWeekText : ''}`;
 
         weeks.push({
             weekNum,
@@ -230,7 +246,9 @@ function getWeeksOfMonth(year, month) {
     return weeks;
 }
 
-function getRecentMonths(count = 6) {
+function getRecentMonths(count = 6, lang = null) {
+    const activeLang = lang || ((typeof getLanguage === 'function') ? getLanguage() : 'vi');
+    const isEn = activeLang === 'en';
     const months = [];
     const today = new Date();
     for (let i = 0; i < count; i++) {
@@ -238,13 +256,17 @@ function getRecentMonths(count = 6) {
         const year = d.getFullYear();
         const month = d.getMonth() + 1;
         const val = `${year}-${String(month).padStart(2, '0')}`;
-        const label = `Tháng ${String(month).padStart(2, '0')}/${year}${i === 0 ? ' (Tháng này)' : ''}`;
+        const monthPrefix = isEn ? 'Month' : 'Tháng';
+        const thisMonthText = isEn ? ' (This Month)' : ' (Tháng này)';
+        const label = `${monthPrefix} ${String(month).padStart(2, '0')}/${year}${i === 0 ? thisMonthText : ''}`;
         months.push({ year, month, value: val, label });
     }
     return months;
 }
 
-function getAvailableMonths(storedTasks = [], storedMRs = [], storedKpi = []) {
+function getAvailableMonths(storedTasks = [], storedMRs = [], storedKpi = [], lang = null) {
+    const activeLang = lang || ((typeof getLanguage === 'function') ? getLanguage() : 'vi');
+    const isEn = activeLang === 'en';
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth() + 1;
@@ -278,11 +300,13 @@ function getAvailableMonths(storedTasks = [], storedMRs = [], storedKpi = []) {
     return sortedMonths.map(val => {
         const [year, month] = val.split('-');
         const isCurrent = (val === currentIsoMonth);
+        const monthPrefix = isEn ? 'Month' : 'Tháng';
+        const thisMonthText = isEn ? ' (This Month)' : ' (Tháng này)';
         return {
             year: parseInt(year),
             month: parseInt(month),
             value: val,
-            label: `Tháng ${month}/${year}${isCurrent ? ' (Tháng này)' : ''}`,
+            label: `${monthPrefix} ${month}/${year}${isCurrent ? thisMonthText : ''}`,
             isCurrent
         };
     });

@@ -3,12 +3,17 @@ const fs = require('fs');
 
 console.log('--- Running Tab Controller & Synchronization Unit Tests ---');
 
-// Load utils.js to provide helper functions in Node
+// Load i18n.js and utils.js to provide helper functions in Node
 try {
+    const i18nCode = fs.readFileSync('i18n.js', 'utf8');
+    eval(i18nCode);
+    if (typeof setLanguage === 'function') {
+        setLanguage('vi');
+    }
     const utilsCode = fs.readFileSync('utils.js', 'utf8');
     eval(utilsCode);
 } catch (e) {
-    console.warn('Note: Could not eval utils.js:', e.message);
+    console.warn('Note: Could not eval i18n.js / utils.js:', e.message);
 }
 
 // Require page.js before defining document so top-level browser IIFE does not auto-run
@@ -160,7 +165,14 @@ console.log('✔ Passed: Tab controller functions exist and are exported');
 
     updateAnalyticsMonthBadge('2027-01');
     assert.strictEqual(badge.textContent, 'Tháng 01/2027', 'Badge text for 2027-01 should be Tháng 01/2027');
-    console.log('✔ Passed: Month badge format test');
+
+    if (typeof setLanguage === 'function') {
+        setLanguage('en');
+        updateAnalyticsMonthBadge('2026-09');
+        assert.strictEqual(badge.textContent, 'Month 09/2026', 'Badge text for 2026-09 in EN should be Month 09/2026');
+        setLanguage('vi');
+    }
+    console.log('✔ Passed: Month badge format test (VI & EN)');
 }
 
 // 3. Tab Switching Behavior Test

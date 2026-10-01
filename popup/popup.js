@@ -495,7 +495,7 @@ async function fetchUserProfile(token, serverUrl = 'https://gitlab.com', fetchFn
 
     document.getElementById("logout-btn").addEventListener("click", () => {
         document.getElementById("user-screen").style.display = "none";
-        document.getElementById("login-screen").style.display = "flex"; // hoặc "block"
+        document.getElementById("login-screen").style.display = "block";
 
         deletelocalStorage('AccessToken');
         deletelocalStorage('UserProfile');

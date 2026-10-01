@@ -11,6 +11,39 @@ function getStatusBadgeText(status) {
     }
 }
 
+function _tr(key, params = {}, fallback = '') {
+    if (typeof t === 'function') {
+        const res = t(key, params);
+        if (res !== key) return res;
+    }
+    if (typeof window !== 'undefined' && typeof window.t === 'function') {
+        const res = window.t(key, params);
+        if (res !== key) return res;
+    }
+    if (typeof i18n !== 'undefined' && typeof i18n.t === 'function') {
+        const res = i18n.t(key, params);
+        if (res !== key) return res;
+    }
+    if (typeof require === 'function') {
+        try {
+            const i18nModule = require('../i18n.js');
+            if (i18nModule && typeof i18nModule.t === 'function') {
+                const res = i18nModule.t(key, params);
+                if (res !== key) return res;
+            }
+        } catch (e) {
+            try {
+                const i18nModule = require('./i18n.js');
+                if (i18nModule && typeof i18nModule.t === 'function') {
+                    const res = i18nModule.t(key, params);
+                    if (res !== key) return res;
+                }
+            } catch (e2) {}
+        }
+    }
+    return fallback || key;
+}
+
 if (typeof document !== 'undefined') {
 (async () => {
     console.log('Loading page.js');
@@ -50,12 +83,24 @@ if (typeof document !== 'undefined') {
                 if (typeof applyI18n === 'function') {
                     applyI18n(document);
                 }
+                if (typeof populateMonthOptions === 'function') {
+                    await populateMonthOptions();
+                }
+                if (typeof updateTimeFilterOptions === 'function') {
+                    updateTimeFilterOptions();
+                }
+                if (typeof updateControlsSummary === 'function') {
+                    updateControlsSummary();
+                }
+                if (typeof updateAnalyticsMonthBadge === 'function') {
+                    updateAnalyticsMonthBadge(monthSelect ? monthSelect.value : null);
+                }
                 if (typeof applyFilter === 'function') {
                     await applyFilter();
                 }
-                const analyticsTab = document.getElementById('analyticsTab');
-                if (analyticsTab && analyticsTab.classList.contains('active') && typeof renderMonthlyAnalytics === 'function') {
-                    await renderMonthlyAnalytics();
+                const tabAnalyticsBtn = document.getElementById('tabAnalyticsBtn');
+                if (tabAnalyticsBtn && tabAnalyticsBtn.classList.contains('active') && typeof refreshMonthlyAnalytics === 'function') {
+                    await refreshMonthlyAnalytics();
                 }
             }
             if (areaName === 'local' && changes.gitlabServerUrl) {
@@ -117,17 +162,21 @@ if (typeof document !== 'undefined') {
 
     function updateControlsSummary() {
         if (!controlsActiveSummary) return;
+        const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
         const filterText = currentQuickFilter !== 'all' ? getFilterLabel(currentQuickFilter) : '';
         const searchText = currentSearchQuery ? `"${currentSearchQuery}"` : '';
 
+        const filterPrefix = _tr('filterSummaryPrefix');
+        const searchPrefix = _tr('searchSummaryPrefix');
+
         if (filterText && searchText) {
-            controlsActiveSummary.textContent = `Lọc: ${filterText} • ${searchText}`;
+            controlsActiveSummary.textContent = `${filterPrefix} ${filterText} • ${searchText}`;
             controlsActiveSummary.style.display = 'inline-flex';
         } else if (filterText) {
-            controlsActiveSummary.textContent = `Lọc: ${filterText}`;
+            controlsActiveSummary.textContent = `${filterPrefix} ${filterText}`;
             controlsActiveSummary.style.display = 'inline-flex';
         } else if (searchText) {
-            controlsActiveSummary.textContent = `Tìm: ${searchText}`;
+            controlsActiveSummary.textContent = `${searchPrefix} ${searchText}`;
             controlsActiveSummary.style.display = 'inline-flex';
         } else {
             controlsActiveSummary.style.display = 'none';
@@ -145,26 +194,40 @@ if (typeof document !== 'undefined') {
         });
     }
 
-    // Populate month options (quét thông minh toàn bộ tháng năm nay + các tháng có task)
-    const storedTasksForMonths = await getStoredIds(WORK_ITEM_KEY);
-    const storedMRsForMonths = await getStoredIds(MERGE_ITEM_KEY);
-    const storedKpiForMonths = await getStoredIds('KpiInfo');
+    async function populateMonthOptions() {
+        const storedTasksForMonths = await getStoredIds(WORK_ITEM_KEY);
+        const storedMRsForMonths = await getStoredIds(MERGE_ITEM_KEY);
+        const storedKpiForMonths = await getStoredIds('KpiInfo');
 
-    const availableMonths = getAvailableMonths(storedTasksForMonths, storedMRsForMonths, storedKpiForMonths);
-    const currentMonthIso = parseToIsoDate(today).slice(0, 7);
+        const activeLang = (typeof getLanguage === 'function') ? getLanguage() : 'vi';
+        const availableMonths = getAvailableMonths(storedTasksForMonths, storedMRsForMonths, storedKpiForMonths, activeLang);
+        const previousVal = monthSelect.value;
+        const currentMonthIso = parseToIsoDate(today).slice(0, 7);
 
-    availableMonths.forEach(m => {
-        const option = document.createElement('option');
-        option.value = m.value;
-        option.textContent = m.label;
-        monthSelect.appendChild(option);
-    });
+        monthSelect.innerHTML = '';
+        availableMonths.forEach(m => {
+            const option = document.createElement('option');
+            option.value = m.value;
+            option.textContent = m.label;
+            monthSelect.appendChild(option);
+        });
 
-    monthSelect.value = currentMonthIso;
+        if (previousVal && Array.from(monthSelect.options).some(o => o.value === previousVal)) {
+            monthSelect.value = previousVal;
+        } else {
+            monthSelect.value = currentMonthIso;
+        }
+    }
+
+    await populateMonthOptions();
     initTabs();
-    updateAnalyticsMonthBadge(currentMonthIso);
+    updateAnalyticsMonthBadge(monthSelect.value);
 
     function updateTimeFilterOptions() {
+        const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
+        const activeLang = (typeof getLanguage === 'function') ? getLanguage() : 'vi';
+        const isEn = activeLang === 'en';
+        const previousVal = timeFilterSelect.value;
         timeFilterSelect.innerHTML = '';
         const selectedMonth = monthSelect.value;
         const [selYear, selMonth] = selectedMonth.split('-').map(Number);
@@ -173,10 +236,10 @@ if (typeof document !== 'undefined') {
 
         // Group 1: Phạm vi chính
         const mainGroup = document.createElement('optgroup');
-        mainGroup.label = 'Phạm vi xem';
+        mainGroup.label = _tr('filterScopeMain');
 
         if (isCurrentMonth) {
-            const cw = getCurrentWeekRange();
+            const cw = getCurrentWeekRange(today, activeLang);
             const curWeekOpt = document.createElement('option');
             curWeekOpt.value = 'current_week';
             curWeekOpt.textContent = cw.label;
@@ -185,20 +248,20 @@ if (typeof document !== 'undefined') {
 
         const allMonthOpt = document.createElement('option');
         allMonthOpt.value = 'all_month';
-        allMonthOpt.textContent = `📅 Cả tháng (${String(selMonth).padStart(2, '0')}/${selYear})`;
+        allMonthOpt.textContent = _tr('filterScopeAllMonth', { month: String(selMonth).padStart(2, '0'), year: selYear });
         mainGroup.appendChild(allMonthOpt);
 
         const customRangeOpt = document.createElement('option');
         customRangeOpt.value = 'custom_range';
-        customRangeOpt.textContent = '🗓️ Tùy chọn khoảng ngày...';
+        customRangeOpt.textContent = _tr('filterScopeCustomRange');
         mainGroup.appendChild(customRangeOpt);
 
         timeFilterSelect.appendChild(mainGroup);
 
         // Group 2: Các tuần trong tháng
         const weeksGroup = document.createElement('optgroup');
-        weeksGroup.label = '── Các tuần trong tháng ──';
-        const weeks = getWeeksOfMonth(selYear, selMonth);
+        weeksGroup.label = _tr('filterWeeksInMonth');
+        const weeks = getWeeksOfMonth(selYear, selMonth, activeLang);
         weeks.forEach(w => {
             const opt = document.createElement('option');
             opt.value = `week:${w.start}:${w.end}`;
@@ -209,31 +272,35 @@ if (typeof document !== 'undefined') {
 
         // Group 3: Các ngày trong tháng
         const daysGroup = document.createElement('optgroup');
-        daysGroup.label = '── Lọc theo ngày cụ thể ──';
+        daysGroup.label = _tr('filterSpecificDays');
         const lastDayOfMonth = new Date(selYear, selMonth, 0).getDate();
         const todayIso = parseToIsoDate(today);
 
+        const dateLocale = isEn ? 'en-US' : 'vi-VN';
+        const todaySuffix = _tr('todaySuffix');
         for (let d = 1; d <= lastDayOfMonth; d++) {
             const dateObj = new Date(selYear, selMonth - 1, d);
             const dayIso = parseToIsoDate(dateObj);
             const isToday = (dayIso === todayIso);
-            const dayName = dateObj.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
+            const dayName = dateObj.toLocaleDateString(dateLocale, { weekday: 'short', day: '2-digit', month: '2-digit' });
             const opt = document.createElement('option');
             opt.value = `day:${dayIso}`;
-            opt.textContent = `${dayName}${isToday ? ' (Hôm nay)' : ''}`;
+            opt.textContent = `${dayName}${isToday ? todaySuffix : ''}`;
             daysGroup.appendChild(opt);
         }
         timeFilterSelect.appendChild(daysGroup);
 
-        // Default: current_week if current month, else all_month
-        if (isCurrentMonth) {
+        // Default or restore
+        if (previousVal && Array.from(timeFilterSelect.options).some(o => o.value === previousVal)) {
+            timeFilterSelect.value = previousVal;
+        } else if (isCurrentMonth) {
             timeFilterSelect.value = 'current_week';
         } else {
             timeFilterSelect.value = 'all_month';
         }
 
         if (customRangeCard) {
-            customRangeCard.style.display = 'none';
+            customRangeCard.style.display = timeFilterSelect.value === 'custom_range' ? 'block' : 'none';
         }
 
         if (startDateInput && !startDateInput.value) {
@@ -320,15 +387,16 @@ if (typeof document !== 'undefined') {
     }
 
     function getFilterLabel(key) {
+        const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
         switch (key) {
             case 'mr': return '🚀 Merge Requests';
-            case 'late': return '🔴 Trễ hạn';
-            case 'missing_time': return '⚠️ Thiếu Estimate / Spent';
-            case 'missing_date': return '📅 Thiếu Ngày';
-            case 'reopen': return '🔄 Bị Reopen';
-            case 'unplanned': return '⚡ Phát sinh';
-            case 'open': return '⏳ Đang mở';
-            default: return 'Tất cả';
+            case 'late': return _tr('chipLate');
+            case 'missing_time': return _tr('chipMissingTime');
+            case 'missing_date': return _tr('chipMissingDate');
+            case 'reopen': return _tr('chipReopen');
+            case 'unplanned': return _tr('chipUnplanned');
+            case 'open': return _tr('chipOpen');
+            default: return _tr('filterAll');
         }
     }
 
@@ -460,6 +528,7 @@ if (typeof document !== 'undefined') {
         else if (spentPercent >= 75) hoursBarClass = 'bar-blue';
         else if (spentPercent >= 50) hoursBarClass = 'bar-amber';
 
+        const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
         // Build actionable checklist items
         const alerts = [];
 
@@ -467,13 +536,13 @@ if (typeof document !== 'undefined') {
             alerts.push({
                 type: 'danger',
                 filter: 'late',
-                text: `🔴 Có <strong>${periodStats.totalTaskLate}</strong> công việc trễ hạn (${periodStats.lateRate}%)`,
-                actionText: 'Xem lỗi ➔'
+                text: _tr('kpiLateAlert', { count: periodStats.totalTaskLate, rate: periodStats.lateRate }),
+                actionText: _tr('viewErrorsAction')
             });
         } else {
             alerts.push({
                 type: 'success',
-                text: `🟢 100% công việc đúng hạn`
+                text: _tr('allInTimeAlert')
             });
         }
 
@@ -483,13 +552,13 @@ if (typeof document !== 'undefined') {
             alerts.push({
                 type: 'warning',
                 filter: 'missing_time',
-                text: `⚠️ Thiếu Estimate: <strong>${missingEstCount}</strong> • Thiếu Spent: <strong>${missingSpentCount}</strong>`,
-                actionText: 'Xem lỗi ➔'
+                text: _tr('missingTimeAlert', { est: missingEstCount, spent: missingSpentCount }),
+                actionText: _tr('viewErrorsAction')
             });
         } else {
             alerts.push({
                 type: 'success',
-                text: `🟢 Đầy đủ Estimate và Spent`
+                text: _tr('allTimeProvidedAlert')
             });
         }
 
@@ -498,8 +567,8 @@ if (typeof document !== 'undefined') {
             alerts.push({
                 type: 'warning',
                 filter: 'missing_date',
-                text: `📅 Có <strong>${missingDateCount}</strong> công việc thiếu Ngày`,
-                actionText: 'Xem lỗi ➔'
+                text: _tr('missingDateAlert', { count: missingDateCount }),
+                actionText: _tr('viewErrorsAction')
             });
         }
 
@@ -507,15 +576,15 @@ if (typeof document !== 'undefined') {
             alerts.push({
                 type: 'info',
                 filter: 'reopen',
-                text: `🔄 Có <strong>${periodStats.totalTaskReopen}</strong> công việc bị reopen (${periodStats.reopenRate}%)`,
-                actionText: 'Xem lỗi ➔'
+                text: _tr('reopenAlert', { count: periodStats.totalTaskReopen, rate: periodStats.reopenRate }),
+                actionText: _tr('viewErrorsAction')
             });
         }
 
         const alertsHtml = alerts.map(a => {
             const isClickable = Boolean(a.filter);
             return `
-                <div class="health-alert-item alert-${a.type} ${isClickable ? 'clickable' : ''}" ${isClickable ? `data-alert-filter="${a.filter}"` : ''} title="${isClickable ? 'Bấm để lọc các công việc này' : ''}">
+                <div class="health-alert-item alert-${a.type} ${isClickable ? 'clickable' : ''}" ${isClickable ? `data-alert-filter="${a.filter}"` : ''} title="${isClickable ? _tr('clickToFilterAlertTitle') : ''}">
                     <span>${a.text}</span>
                     ${isClickable ? `<span class="alert-action-pill">${a.actionText}</span>` : ''}
                 </div>
@@ -523,7 +592,6 @@ if (typeof document !== 'undefined') {
         }).join('');
 
         const isExpanded = !isHealthCollapsed;
-        const _tr = (typeof t === 'function' ? t : (typeof window !== 'undefined' && typeof window.t === 'function' ? window.t : (k => k)));
         container.innerHTML = `
             <div class="kpi-health-card">
                 <div class="kpi-health-header ${isExpanded ? 'expanded' : ''}" id="toggleHealthBtn" role="button" tabindex="0" title="Bấm để mở rộng / thu gọn chi tiết dự báo KPI">
@@ -1541,7 +1609,7 @@ if (typeof document !== 'undefined') {
             emptyNotice.style.textAlign = "center";
             emptyNotice.style.padding = "40px";
             emptyNotice.style.color = "var(--text-muted)";
-            emptyNotice.textContent = "Không có task hoặc Merge Request nào trong khoảng thời gian đã chọn.";
+            emptyNotice.textContent = _tr('emptyNoTasksInPeriod', {}, "Không có task hoặc Merge Request nào trong khoảng thời gian đã chọn.");
             container.appendChild(emptyNotice);
             await renderKpiStats(calculateStats([], filterVal, selectedMonth));
             return;
@@ -1551,21 +1619,22 @@ if (typeof document !== 'undefined') {
             if (searchResultCount) {
                 if (currentSearchQuery) {
                     searchResultCount.style.display = 'inline-flex';
-                    searchResultCount.innerHTML = `Tìm thấy <strong>0</strong> task`;
+                    searchResultCount.innerHTML = _tr('searchFoundZero', {}, `Tìm thấy <strong>0</strong> task`);
                 } else {
                     searchResultCount.style.display = 'none';
                 }
             }
 
+            const emptyQueryText = currentSearchQuery ? _tr('emptyQuerySub', { query: currentSearchQuery }, ` hoặc từ khóa "<strong>${currentSearchQuery}</strong>"`) : '';
+            const emptySubtitle = _tr('emptyNoMatchingSub', { filter: getFilterLabel(currentQuickFilter), query: emptyQueryText }, `Không có công việc nào khớp với bộ lọc "<strong>${getFilterLabel(currentQuickFilter)}</strong>"${emptyQueryText} trong kỳ này.`);
+
             const emptyState = document.createElement("div");
             emptyState.className = "filter-empty-state";
             emptyState.innerHTML = `
                 <div class="filter-empty-icon">🔍</div>
-                <div class="filter-empty-title">Không tìm thấy công việc phù hợp</div>
-                <div class="filter-empty-subtitle">
-                    Không có công việc nào khớp với bộ lọc "<strong>${getFilterLabel(currentQuickFilter)}</strong>"${currentSearchQuery ? ` hoặc từ khóa "<strong>${currentSearchQuery}</strong>"` : ''} trong kỳ này.
-                </div>
-                <button id="btnResetFilters" class="btn-reset-filters">✕ Đặt lại bộ lọc</button>
+                <div class="filter-empty-title">${_tr('emptyNoMatchingTitle', {}, 'Không tìm thấy công việc phù hợp')}</div>
+                <div class="filter-empty-subtitle">${emptySubtitle}</div>
+                <button id="btnResetFilters" class="btn-reset-filters">${_tr('btnResetFilters', {}, '✕ Đặt lại bộ lọc')}</button>
             `;
             container.appendChild(emptyState);
 
@@ -1758,8 +1827,8 @@ if (typeof document !== 'undefined') {
                 } else {
                     const unclosedBadge = document.createElement("span");
                     unclosedBadge.className = "badge-unclosed";
-                    unclosedBadge.innerHTML = "🔴 Chưa đóng";
-                    unclosedBadge.title = "Task này hiện chưa được đóng trên GitLab";
+                    unclosedBadge.innerHTML = "🔴 " + _tr('statusUnclosed', {}, 'Chưa đóng');
+                    unclosedBadge.title = _tr('statusUnclosedTitle', {}, 'Task này hiện chưa được đóng trên GitLab');
                     closeTd.appendChild(unclosedBadge);
                 }
                 row.appendChild(closeTd);
@@ -1786,17 +1855,29 @@ if (typeof document !== 'undefined') {
                 // 10. Loại task
                 const typeTd = document.createElement("td");
                 typeTd.className = "text-center";
-                typeTd.textContent = item.type || '';
-                if (item.type === 'Kế hoạch') typeTd.classList.add('text-success');
-                else if (item.type === 'Phát sinh') typeTd.classList.add('text-accent');
+                let typeDisplay = item.type || '';
+                if (item.type === 'Kế hoạch') {
+                    typeDisplay = _tr('typePlanned', {}, 'Kế hoạch');
+                    typeTd.classList.add('text-success');
+                } else if (item.type === 'Phát sinh') {
+                    typeDisplay = _tr('typeUnplanned', {}, 'Phát sinh');
+                    typeTd.classList.add('text-accent');
+                }
+                typeTd.textContent = typeDisplay;
                 row.appendChild(typeTd);
 
                 // 11. Tiến độ
                 const progTd = document.createElement("td");
                 progTd.className = "text-center";
-                progTd.textContent = item.progress || '';
-                if (item.progress === 'Đúng hạn') progTd.classList.add('text-success');
-                else if (item.progress === 'Trễ hạn') progTd.classList.add('text-danger');
+                let progDisplay = item.progress || '';
+                if (item.progress === 'Đúng hạn') {
+                    progDisplay = _tr('statusInTime', {}, 'Đúng hạn');
+                    progTd.classList.add('text-success');
+                } else if (item.progress === 'Trễ hạn') {
+                    progDisplay = _tr('statusLate', {}, 'Trễ hạn');
+                    progTd.classList.add('text-danger');
+                }
+                progTd.textContent = progDisplay;
                 row.appendChild(progTd);
 
                 // 12. Thao tác (Xóa 🗑️)
@@ -1805,7 +1886,7 @@ if (typeof document !== 'undefined') {
                 const delBtn = document.createElement("button");
                 delBtn.className = "btn-delete-row";
                 delBtn.innerHTML = "🗑️";
-                delBtn.title = "Xóa task này khỏi danh sách";
+                delBtn.title = _tr('actionDeleteTaskTitle', {}, "Xóa task này khỏi danh sách");
                 delBtn.addEventListener("click", async (e) => {
                     e.stopPropagation();
                     await deleteKpiItem(item);
@@ -1823,7 +1904,7 @@ if (typeof document !== 'undefined') {
             // colSpan 6: Tasks, Tên Work Item, Issue cha, Start date, Due date, Closed date
             const totalLabel = document.createElement("td");
             totalLabel.colSpan = 6;
-            totalLabel.textContent = "TỔNG CỘNG";
+            totalLabel.textContent = _tr('tableTotalLabel', {}, "TỔNG CỘNG");
             totalLabel.style.fontWeight = "600";
             totalLabel.style.textAlign = "right";
             totalLabel.style.paddingRight = "16px";
@@ -2168,9 +2249,9 @@ if (typeof document !== 'undefined') {
                     }).length;
 
                 if (totalItems > uniqueFound) {
-                    searchResultCount.innerHTML = `Tìm thấy <strong>${uniqueFound}</strong> task <span class="search-repeat-count" title="Công việc lặp lại ở nhiều tuần khác nhau do tiếp diễn">(${totalItems} dòng)</span> / <strong>${scopeTotal}</strong>`;
+                    searchResultCount.innerHTML = _tr('searchFoundWithRows', { found: uniqueFound, rows: totalItems, total: scopeTotal }, `Tìm thấy <strong>${uniqueFound}</strong> task <span class="search-repeat-count" title="Công việc lặp lại ở nhiều tuần khác nhau do tiếp diễn">(${totalItems} dòng)</span> / <strong>${scopeTotal}</strong>`);
                 } else {
-                    searchResultCount.innerHTML = `Tìm thấy <strong>${uniqueFound}</strong> / <strong>${scopeTotal}</strong> task`;
+                    searchResultCount.innerHTML = _tr('searchFoundCount', { found: uniqueFound, total: scopeTotal }, `Tìm thấy <strong>${uniqueFound}</strong> / <strong>${scopeTotal}</strong> task`);
                 }
             } else {
                 searchResultCount.style.display = 'none';
@@ -2322,7 +2403,13 @@ if (typeof document !== 'undefined') {
 
         const textSpan = document.createElement("span");
         const displayStart = totalItems === 0 ? 0 : startIdx + 1;
-        textSpan.innerHTML = `Hiển thị <strong>${displayStart}</strong> - <strong>${endIdx}</strong> trong tổng số <strong>${totalItems}</strong> công việc <span style="color:var(--text-muted);margin-left:4px;">(Trang ${curPage}/${numPages})</span>`;
+        textSpan.innerHTML = _tr('paginationShowing', {
+            start: displayStart,
+            end: endIdx,
+            total: totalItems,
+            page: curPage,
+            pages: numPages
+        }, `Hiển thị <strong>${displayStart}</strong> - <strong>${endIdx}</strong> trong tổng số <strong>${totalItems}</strong> công việc <span style="color:var(--text-muted);margin-left:4px;">(Trang ${curPage}/${numPages})</span>`);
         infoDiv.appendChild(textSpan);
 
         const sizeWrapper = document.createElement("label");
@@ -2332,7 +2419,7 @@ if (typeof document !== 'undefined') {
         sizeWrapper.style.marginLeft = "8px";
 
         const sizeLabel = document.createElement("span");
-        sizeLabel.textContent = "Mỗi trang:";
+        sizeLabel.textContent = _tr('paginationPerPage', {}, "Mỗi trang:");
         sizeWrapper.appendChild(sizeLabel);
 
         const sizeSelect = document.createElement("select");
@@ -2342,7 +2429,7 @@ if (typeof document !== 'undefined') {
             { value: "25", label: "25" },
             { value: "50", label: "50" },
             { value: "100", label: "100" },
-            { value: "all", label: "Tất cả" }
+            { value: "all", label: _tr('paginationAllOption', {}, "Tất cả") }
         ];
         sizes.forEach(s => {
             const opt = document.createElement("option");
@@ -2388,9 +2475,9 @@ if (typeof document !== 'undefined') {
         };
 
         // « Đầu
-        controlsDiv.appendChild(createBtn("«", 1, curPage <= 1, false, "Trang đầu"));
+        controlsDiv.appendChild(createBtn("«", 1, curPage <= 1, false, _tr('paginationFirst', {}, "Trang đầu")));
         // ‹ Trước
-        controlsDiv.appendChild(createBtn("‹", curPage - 1, curPage <= 1, false, "Trang trước"));
+        controlsDiv.appendChild(createBtn("‹", curPage - 1, curPage <= 1, false, _tr('paginationPrev', {}, "Trang trước")));
 
         // Page buttons
         const pages = getPaginationPages(curPage, numPages);
@@ -2401,14 +2488,14 @@ if (typeof document !== 'undefined') {
                 ellipsis.textContent = "…";
                 controlsDiv.appendChild(ellipsis);
             } else {
-                controlsDiv.appendChild(createBtn(String(p), p, false, p === curPage, `Trang ${p}`));
+                controlsDiv.appendChild(createBtn(String(p), p, false, p === curPage, _tr('paginationPageTooltip', { page: p }, `Trang ${p}`)));
             }
         });
 
         // › Sau
-        controlsDiv.appendChild(createBtn("›", curPage + 1, curPage >= numPages, false, "Trang sau"));
+        controlsDiv.appendChild(createBtn("›", curPage + 1, curPage >= numPages, false, _tr('paginationNext', {}, "Trang sau")));
         // » Cuối
-        controlsDiv.appendChild(createBtn("»", numPages, curPage >= numPages, false, "Trang cuối"));
+        controlsDiv.appendChild(createBtn("»", numPages, curPage >= numPages, false, _tr('paginationLast', {}, "Trang cuối")));
 
         bar.appendChild(controlsDiv);
         container.appendChild(bar);
@@ -2422,17 +2509,17 @@ if (typeof document !== 'undefined') {
         section.className = "report-section";
 
         const groupTitle = document.createElement('h3');
-        groupTitle.textContent = "📈 TỔNG QUAN HIỆU SUẤT";
+        groupTitle.textContent = _tr('statsOverviewTitle', {}, "📈 TỔNG QUAN HIỆU SUẤT");
         section.appendChild(groupTitle);
 
         const statsData = [
-            { label: "Tổng số công việc", value: kpiStats.totalTask, icon: "📋" },
-            { label: "Kế hoạch / Phát sinh", value: `${kpiStats.totalPlannedTask} / ${kpiStats.totalUnplannedTask}`, icon: "⚖️" },
-            { label: "Time Estimate", value: `${kpiStats.totalEstimate}h`, icon: "⏱️" },
-            { label: "Time Spent", value: `${kpiStats.totalSpent}h`, icon: "⌛" },
-            { label: "Đúng hạn / Trễ hạn", value: `${kpiStats.totalTaskInTime} / ${kpiStats.totalTaskLate}`, icon: "🎯" },
-            { label: "Task Reopen", value: kpiStats.totalTaskReopen, icon: "🔄" },
-            { label: "Daily Spent", value: `${kpiStats.dailySpentTime}h`, icon: "📅" }
+            { label: _tr('statTotalTasks', {}, "Tổng số công việc"), value: kpiStats.totalTask, icon: "📋" },
+            { label: _tr('statPlannedUnplanned', {}, "Kế hoạch / Phát sinh"), value: `${kpiStats.totalPlannedTask} / ${kpiStats.totalUnplannedTask}`, icon: "⚖️" },
+            { label: `Time ${_tr('statEstimate', {}, "Estimate")}`, value: `${kpiStats.totalEstimate}h`, icon: "⏱️" },
+            { label: `Time ${_tr('statSpent', {}, "Spent")}`, value: `${kpiStats.totalSpent}h`, icon: "⌛" },
+            { label: _tr('statInTimeLate', {}, "Đúng hạn / Trễ hạn"), value: `${kpiStats.totalTaskInTime} / ${kpiStats.totalTaskLate}`, icon: "🎯" },
+            { label: _tr('statReopen', {}, "Task Reopen"), value: kpiStats.totalTaskReopen, icon: "🔄" },
+            { label: _tr('statDailySpent', {}, "Daily Spent"), value: `${kpiStats.dailySpentTime}h`, icon: "📅" }
         ];
 
         const grid = document.createElement("div");
@@ -3900,7 +3987,8 @@ function calculateMonthlyTimesheet(items = [], selYear, selMonth, refDate = new 
         itemsByDate.get(dateIso).push(item);
     });
 
-    const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof window !== 'undefined' && window.i18n && window.i18n.getLanguage && window.i18n.getLanguage() === 'en');
+    const dayNames = isEn ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] : ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
     const days = [];
 
     for (let d = 1; d <= daysInMonth; d++) {
@@ -4128,41 +4216,49 @@ function renderDailyTimesheet(timesheetData) {
             switch (day.status) {
                 case 'leave':
                     statusIcon = '🏖️';
-                    statusLabel = day.leaveReason ? `Nghỉ: ${day.leaveReason}` : 'Nghỉ cả ngày';
+                    statusLabel = day.leaveReason ? `${_tr('timesheetLeave', {}, 'Nghỉ')}: ${day.leaveReason}` : _tr('timesheetLeaveFullDay', {}, 'Nghỉ cả ngày');
                     break;
                 case 'leave-half-success':
                     statusIcon = '🌓';
-                    statusLabel = day.leaveReason ? `Nghỉ (0.5d): ${day.leaveReason}` : 'Nghỉ 0.5d (Đủ 4h)';
+                    statusLabel = day.leaveReason ? `${_tr('timesheetLeaveHalf', {}, 'Nghỉ (0.5d)')}: ${day.leaveReason}` : _tr('timesheetLeaveHalfSuccess', {}, 'Nghỉ 0.5d (Đủ 4h)');
                     break;
                 case 'success':
                     statusIcon = '✅';
-                    statusLabel = 'Đạt chuẩn';
+                    statusLabel = _tr('timesheetSuccess', {}, 'Đạt chuẩn');
                     break;
                 case 'warning':
                     statusIcon = '⚠️';
-                    statusLabel = `Thiếu ${Math.abs(day.diffHours)}h`;
+                    statusLabel = _tr('timesheetDeficitHours', { hours: Math.abs(day.diffHours) }, `Thiếu ${Math.abs(day.diffHours)}h`);
                     break;
                 case 'danger':
                     statusIcon = '❌';
-                    statusLabel = day.targetHours === 4 ? 'Chưa log (-4h)' : 'Chưa log (-8h)';
+                    statusLabel = day.targetHours === 4 ? _tr('timesheetNotLogged4h', {}, 'Chưa log (-4h)') : _tr('timesheetNotLogged8h', {}, 'Chưa log (-8h)');
                     break;
                 case 'weekend':
                     statusIcon = '☕';
-                    statusLabel = day.spentHours > 0 ? `+${day.spentHours}h` : 'Cuối tuần';
+                    statusLabel = day.spentHours > 0 ? `+${day.spentHours}h` : _tr('timesheetWeekend', {}, 'Cuối tuần');
                     break;
                 case 'future':
                 default:
                     statusIcon = '⏳';
-                    statusLabel = 'Chưa tới';
+                    statusLabel = _tr('timesheetFuture', {}, 'Chưa tới');
                     break;
             }
 
             statusDiv.innerHTML = `<span>${statusIcon}</span> <span>${statusLabel}</span>`;
             cell.appendChild(statusDiv);
 
+            const clickPrompt = _tr('clickToViewDetailOrLeave', {}, '👉 Bấm để xem chi tiết hoặc thiết lập ngày nghỉ');
             if (day.taskItems && day.taskItems.length > 0) {
+                const headerLine = _tr('timesheetDayTooltip', {
+                    dayName: day.dayName,
+                    dayNum: day.dayNum,
+                    month: day.dateIso.slice(5, 7),
+                    spent: day.spentHours,
+                    count: day.taskItems.length
+                }, `${day.dayName}, ngày ${day.dayNum}/${day.dateIso.slice(5, 7)} - Đã log: ${day.spentHours}h (${day.taskItems.length} công việc):`);
                 const tooltipLines = [
-                    `${day.dayName}, ngày ${day.dayNum}/${day.dateIso.slice(5, 7)} - Đã log: ${day.spentHours}h (${day.taskItems.length} công việc):`,
+                    headerLine,
                     '─────────────────────────',
                     ...day.taskItems.map((it, idx) => {
                         const title = it.title || it.taskUrl || `Công việc #${idx + 1}`;
@@ -4170,11 +4266,11 @@ function renderDailyTimesheet(timesheetData) {
                         return `• [${sp}h] ${title}`;
                     }),
                     '─────────────────────────',
-                    '👉 Bấm để xem chi tiết hoặc thiết lập ngày nghỉ'
+                    clickPrompt
                 ];
                 cell.title = tooltipLines.join('\n');
             } else {
-                cell.title = `${day.dayName}, ngày ${day.dayNum}/${day.dateIso.slice(5, 7)}\n👉 Bấm để xem chi tiết hoặc thiết lập ngày nghỉ`;
+                cell.title = `${day.dayName}, ${day.dayNum}/${day.dateIso.slice(5, 7)}\n${clickPrompt}`;
             }
 
             cell.addEventListener('click', () => {
@@ -4242,7 +4338,7 @@ function openDayDetailModal(day) {
     // Header title
     const titleEl = document.getElementById('modalDayTitle');
     if (titleEl) {
-        titleEl.textContent = `Chi tiết ngày ${day.dateIso} (${day.dayName})`;
+        titleEl.textContent = _tr('modalDayDetailTitle', { date: day.dateIso, day: day.dayName }, `Chi tiết ngày ${day.dateIso} (${day.dayName})`);
     }
 
     // Stats
@@ -4255,27 +4351,27 @@ function openDayDetailModal(day) {
     const badgeEl = document.getElementById('modalDayStatusBadge');
     if (badgeEl) {
         if (day.isLeave) {
-            badgeEl.textContent = day.leaveType === 'half' ? 'Nghỉ 0.5 ngày' : 'Nghỉ cả ngày (1.0d)';
+            badgeEl.textContent = day.leaveType === 'half' ? _tr('leaveDayHalfBadge', {}, 'Nghỉ 0.5 ngày') : _tr('leaveDayFullBadge', {}, 'Nghỉ cả ngày (1.0d)');
             badgeEl.style.background = 'rgba(168, 85, 247, 0.15)';
             badgeEl.style.color = '#7e22ce';
         } else if (day.status === 'success') {
-            badgeEl.textContent = 'Đạt chuẩn (>= 8h)';
+            badgeEl.textContent = _tr('timesheetSuccessStandard', {}, 'Đạt chuẩn (>= 8h)');
             badgeEl.style.background = 'rgba(16, 185, 129, 0.15)';
             badgeEl.style.color = '#047857';
         } else if (day.status === 'warning') {
-            badgeEl.textContent = `Thiếu ${Math.abs(day.diffHours)}h`;
+            badgeEl.textContent = _tr('timesheetDeficitHours', { hours: Math.abs(day.diffHours) }, `Thiếu ${Math.abs(day.diffHours)}h`);
             badgeEl.style.background = 'rgba(245, 158, 11, 0.15)';
             badgeEl.style.color = '#b45309';
         } else if (day.status === 'danger') {
-            badgeEl.textContent = 'Chưa log (0h)';
+            badgeEl.textContent = _tr('timesheetNotLogged0h', {}, 'Chưa log (0h)');
             badgeEl.style.background = 'rgba(239, 68, 68, 0.15)';
             badgeEl.style.color = '#b91c1c';
         } else if (day.status === 'weekend') {
-            badgeEl.textContent = 'Cuối tuần';
+            badgeEl.textContent = _tr('timesheetWeekend', {}, 'Cuối tuần');
             badgeEl.style.background = 'rgba(100, 116, 139, 0.15)';
             badgeEl.style.color = '#475569';
         } else {
-            badgeEl.textContent = 'Chưa tới';
+            badgeEl.textContent = _tr('timesheetFuture', {}, 'Chưa tới');
             badgeEl.style.background = 'rgba(148, 163, 184, 0.15)';
             badgeEl.style.color = '#64748b';
         }
@@ -4384,9 +4480,10 @@ const analyticsCharts = {
     kpiTrend: null
 };
 
-function getWeeksForMonth(selYear, selMonth) {
+function getWeeksForMonth(selYear, selMonth, lang) {
+    const isEn = (lang === 'en') || (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof window !== 'undefined' && window.i18n && window.i18n.getLanguage && window.i18n.getLanguage() === 'en');
     if (typeof getWeeksOfMonth === 'function') {
-        return getWeeksOfMonth(selYear, selMonth);
+        return getWeeksOfMonth(selYear, selMonth, isEn ? 'en' : 'vi');
     }
     const weeks = [];
     const firstDay = new Date(selYear, selMonth - 1, 1);
@@ -4415,7 +4512,8 @@ function getWeeksForMonth(selYear, selMonth) {
         const end = toIso(sunday);
         const startDisplay = `${String(currentMonday.getDate()).padStart(2, '0')}/${String(currentMonday.getMonth() + 1).padStart(2, '0')}`;
         const endDisplay = `${String(sunday.getDate()).padStart(2, '0')}/${String(sunday.getMonth() + 1).padStart(2, '0')}`;
-        const label = `Tuần ${weekNum} (${startDisplay} - ${endDisplay})`;
+        const weekPrefix = isEn ? 'Week' : 'Tuần';
+        const label = `${weekPrefix} ${weekNum} (${startDisplay} - ${endDisplay})`;
 
         weeks.push({ weekNum, start, end, startDisplay, endDisplay, label });
         currentMonday.setDate(currentMonday.getDate() + 7);
@@ -4526,8 +4624,14 @@ function calculateMonthlyChartData(items = [], selYear, selMonth, refDate = new 
 
     const resolvedRefDate = refDate || new Date();
 
-    const weeks = getWeeksForMonth(year, month);
-    const labels = weeks.map(w => w.label ? w.label.replace(' (Tuần này)', '') : `Tuần ${w.weekNum}`);
+    const isEn = (typeof activeLang !== 'undefined' && activeLang === 'en') || (typeof window !== 'undefined' && window.i18n && window.i18n.getLanguage && window.i18n.getLanguage() === 'en');
+    const weeks = getWeeksForMonth(year, month, isEn ? 'en' : 'vi');
+    const labels = weeks.map(w => {
+        if (w.label) {
+            return w.label.replace(' (Tuần này)', '').replace(' (This week)', '');
+        }
+        return isEn ? `Week ${w.weekNum}` : `Tuần ${w.weekNum}`;
+    });
     const estimateHours = new Array(weeks.length).fill(0);
     const spentHours = new Array(weeks.length).fill(0);
     const weekItemsMap = weeks.map(() => []);
@@ -4668,7 +4772,7 @@ function renderMonthlyCharts(chartData) {
                 labels: chartData.weeklyData.labels,
                 datasets: [
                     {
-                        label: 'Ước tính (Estimate)',
+                        label: _tr('chartLabelEstimate', {}, 'Ước tính (Estimate)'),
                         data: chartData.weeklyData.estimateHours,
                         backgroundColor: 'rgba(59, 130, 246, 0.75)',
                         borderColor: 'rgb(59, 130, 246)',
@@ -4676,7 +4780,7 @@ function renderMonthlyCharts(chartData) {
                         borderRadius: 4
                     },
                     {
-                        label: 'Thực tế (Spent)',
+                        label: _tr('chartLabelSpent', {}, 'Thực tế (Spent)'),
                         data: chartData.weeklyData.spentHours,
                         backgroundColor: 'rgba(16, 185, 129, 0.75)',
                         borderColor: 'rgb(16, 185, 129)',
@@ -4704,7 +4808,7 @@ function renderMonthlyCharts(chartData) {
                 scales: {
                     y: {
                         beginAtZero: true,
-                        title: { display: true, text: 'Số giờ (h)' }
+                        title: { display: true, text: _tr('chartAxisHours', {}, 'Số giờ (h)') }
                     }
                 }
             }
@@ -4717,7 +4821,7 @@ function renderMonthlyCharts(chartData) {
         analyticsCharts.taskType = new Chart(canvasType, {
             type: 'doughnut',
             data: {
-                labels: ['Kế hoạch (Planned)', 'Phát sinh (Unplanned)'],
+                labels: [_tr('chartLabelPlanned', {}, 'Kế hoạch (Planned)'), _tr('chartLabelUnplanned', {}, 'Phát sinh (Unplanned)')],
                 datasets: [{
                     data: [
                         chartData.taskTypeData.plannedCount,
@@ -4745,7 +4849,7 @@ function renderMonthlyCharts(chartData) {
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const val = context.raw || 0;
                                 const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-                                return ` ${context.label}: ${val} công việc (${pct}%)`;
+                                return _tr('chartTooltipTasks', { label: context.label, val, pct }, ` ${context.label}: ${val} công việc (${pct}%)`);
                             }
                         }
                     }
@@ -4760,7 +4864,7 @@ function renderMonthlyCharts(chartData) {
         analyticsCharts.taskStatus = new Chart(canvasStatus, {
             type: 'doughnut',
             data: {
-                labels: ['Đúng hạn (In-time)', 'Trễ hạn (Late)', 'Đang mở (Open)'],
+                labels: [_tr('chartLabelInTime', {}, 'Đúng hạn (In-time)'), _tr('chartLabelLate', {}, 'Trễ hạn (Late)'), _tr('chartLabelOpen', {}, 'Đang mở (Open)')],
                 datasets: [{
                     data: [
                         chartData.taskStatusData.inTimeCount,
@@ -4790,7 +4894,7 @@ function renderMonthlyCharts(chartData) {
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const val = context.raw || 0;
                                 const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-                                return ` ${context.label}: ${val} công việc (${pct}%)`;
+                                return _tr('chartTooltipTasks', { label: context.label, val, pct }, ` ${context.label}: ${val} công việc (${pct}%)`);
                             }
                         }
                     }
@@ -4807,7 +4911,7 @@ function renderMonthlyCharts(chartData) {
             data: {
                 labels: chartData.weeklyData.labels,
                 datasets: [{
-                    label: 'Điểm KPI',
+                    label: _tr('chartLabelKpiScore', {}, 'Điểm KPI'),
                     data: chartData.weeklyData.kpiScores,
                     borderColor: '#8b5cf6',
                     backgroundColor: 'rgba(139, 92, 246, 0.15)',
@@ -4831,9 +4935,9 @@ function renderMonthlyCharts(chartData) {
                         callbacks: {
                             label: function(context) {
                                 if (context.raw === null || context.raw === undefined) {
-                                    return ' Điểm KPI: Chưa có dữ liệu';
+                                    return ' ' + _tr('chartKpiNoData', {}, 'Điểm KPI: Chưa có dữ liệu');
                                 }
-                                return ` Điểm KPI: ${context.raw} / 100`;
+                                return ' ' + _tr('chartKpiTooltip', { score: context.raw }, `Điểm KPI: ${context.raw} / 100`);
                             }
                         }
                     }
@@ -4843,7 +4947,7 @@ function renderMonthlyCharts(chartData) {
                         beginAtZero: true,
                         min: 0,
                         max: 100,
-                        title: { display: true, text: 'Điểm (thang 100)' }
+                        title: { display: true, text: _tr('chartAxisKpiPoints', {}, 'Điểm (thang 100)') }
                     }
                 }
             }
@@ -4863,7 +4967,7 @@ function updateAnalyticsMonthBadge(selectedMonth) {
     }
     const parts = monthVal.split('-');
     if (parts.length >= 2) {
-        badge.textContent = `Tháng ${parts[1].padStart(2, '0')}/${parts[0]}`;
+        badge.textContent = _tr('monthBadgeLabel', { month: parts[1].padStart(2, '0'), year: parts[0] }, `Tháng ${parts[1].padStart(2, '0')}/${parts[0]}`);
     }
 }
 
@@ -5061,23 +5165,29 @@ function renderMonthlyKpiSummaryCards(monthItems = [], selYear, selMonth, timesh
         totalScore = Math.round(total * 100) / 100;
 
         if (totalScore >= 4.5) {
-            badge = { text: 'Xuất sắc', class: 'badge-success', icon: '🌟' };
+            badge = { text: _tr('ratingExcellent', {}, 'Xuất sắc'), class: 'badge-success', icon: '🌟' };
         } else if (totalScore >= 3.8) {
-            badge = { text: 'Tốt', class: 'badge-info', icon: '🟢' };
+            badge = { text: _tr('ratingGood', {}, 'Tốt'), class: 'badge-info', icon: '🟢' };
         } else if (totalScore >= 3.0) {
-            badge = { text: 'Khá', class: 'badge-warning', icon: '🟡' };
+            badge = { text: _tr('ratingAverage', {}, 'Khá'), class: 'badge-warning', icon: '🟡' };
         } else {
-            badge = { text: 'Cần chú ý', class: 'badge-danger', icon: '⚠️' };
+            badge = { text: _tr('ratingAttention', {}, 'Cần chú ý'), class: 'badge-danger', icon: '⚠️' };
         }
     }
 
     const roundSpent = Math.round(totalSpent * 10) / 10;
+    const leaveStr = (timesheetData && timesheetData.totalLeaveDays > 0)
+        ? _tr('deductedLeaveSub', { days: timesheetData.totalLeaveDays }, ` • Đã trừ ${timesheetData.totalLeaveDays}d nghỉ`)
+        : '';
+    const mrSubtext = mrClosedCount > 0
+        ? _tr('mrsClosedSub', { closed: mrClosedCount, total: totalMRs }, `${mrClosedCount}/${totalMRs} đã merge/đóng`)
+        : _tr('mrsMonthSub', { total: totalMRs }, `${totalMRs} MRs trong tháng`);
 
     container.innerHTML = `
         <div class="analytics-stat-card stat-card-kpi">
             <div class="analytics-stat-icon">🎯</div>
             <div class="analytics-stat-info">
-                <span class="analytics-stat-label">Dự báo Điểm KPI Tháng</span>
+                <span class="analytics-stat-label">${_tr('monthlyKpiForecastLabel', {}, 'Dự báo Điểm KPI Tháng')}</span>
                 <span class="analytics-stat-value">${totalWorkItems > 0 ? totalScore.toFixed(2) : '0.00'} <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-muted);">/ 5.0</span></span>
                 <span class="analytics-stat-sub">${badge.icon} ${badge.text} (${Math.round(totalScore * 20)}/100)</span>
             </div>
@@ -5086,36 +5196,36 @@ function renderMonthlyKpiSummaryCards(monthItems = [], selYear, selMonth, timesh
         <div class="analytics-stat-card stat-card-hours">
             <div class="analytics-stat-icon">⏱️</div>
             <div class="analytics-stat-info">
-                <span class="analytics-stat-label">Tổng Giờ Đã Log / Chỉ Tiêu</span>
+                <span class="analytics-stat-label">${_tr('totalLoggedHoursTargetLabel', {}, 'Tổng Giờ Đã Log / Chỉ Tiêu')}</span>
                 <span class="analytics-stat-value">${roundSpent}h <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-muted);">/ ${targetHours}h</span></span>
-                <span class="analytics-stat-sub">Đạt <strong>${achievementRate}%</strong> chỉ tiêu (${workingDays} ngày làm việc${timesheetData && timesheetData.totalLeaveDays > 0 ? ` • Đã trừ ${timesheetData.totalLeaveDays}d nghỉ` : ''})</span>
+                <span class="analytics-stat-sub">${_tr('achievementSub', { pct: achievementRate, days: workingDays, leaveStr }, `Đạt <strong>${achievementRate}%</strong> chỉ tiêu (${workingDays} ngày làm việc${leaveStr})`)}</span>
             </div>
         </div>
 
         <div class="analytics-stat-card stat-card-intime">
             <div class="analytics-stat-icon">✅</div>
             <div class="analytics-stat-info">
-                <span class="analytics-stat-label">Tỷ lệ đúng hạn</span>
+                <span class="analytics-stat-label">${_tr('onTimeRateLabel', {}, 'Tỷ lệ đúng hạn')}</span>
                 <span class="analytics-stat-value">${totalWorkItems > 0 ? onTimeRate + '%' : '—'}</span>
-                <span class="analytics-stat-sub">${inTimeCount}/${totalWorkItems} công việc đúng hạn</span>
+                <span class="analytics-stat-sub">${_tr('onTimeCountSub', { inTime: inTimeCount, total: totalWorkItems }, `${inTimeCount}/${totalWorkItems} công việc đúng hạn`)}</span>
             </div>
         </div>
 
         <div class="analytics-stat-card stat-card-mrs">
             <div class="analytics-stat-icon">🚀</div>
             <div class="analytics-stat-info">
-                <span class="analytics-stat-label">Tổng Merge Requests</span>
+                <span class="analytics-stat-label">${_tr('totalMergeRequestsLabel', {}, 'Tổng Merge Requests')}</span>
                 <span class="analytics-stat-value">${totalMRs} <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-muted);">MRs</span></span>
-                <span class="analytics-stat-sub">${mrClosedCount > 0 ? `${mrClosedCount}/${totalMRs} đã merge/đóng` : `${totalMRs} MRs trong tháng`}</span>
+                <span class="analytics-stat-sub">${mrSubtext}</span>
             </div>
         </div>
 
         <div class="analytics-stat-card stat-card-plan">
             <div class="analytics-stat-icon">⚖️</div>
             <div class="analytics-stat-info">
-                <span class="analytics-stat-label">Kế hoạch / Phát sinh</span>
+                <span class="analytics-stat-label">${_tr('plannedVsUnplannedLabel', {}, 'Kế hoạch / Phát sinh')}</span>
                 <span class="analytics-stat-value">${totalWorkItems > 0 ? `${plannedRate}% / ${unplannedRate}%` : '—'}</span>
-                <span class="analytics-stat-sub">${plannedCount} kế hoạch • ${unplannedCount} phát sinh</span>
+                <span class="analytics-stat-sub">${_tr('plannedVsUnplannedSub', { planned: plannedCount, unplanned: unplannedCount }, `${plannedCount} kế hoạch • ${unplannedCount} phát sinh`)}</span>
             </div>
         </div>
     `;
